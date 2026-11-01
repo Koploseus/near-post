@@ -1,0 +1,21 @@
+[workspace]
+members = ["goalars", "players", "items", "league"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+repository = "https://github.com/Koploseus/near-post"
+
+[workspace.dependencies]
+near-contract-standards = "=5.30.0"
+near-sdk = "=5.30.0"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

@@ -1,0 +1,54 @@
+:root {
+  --paper: #f3ead7;
+  --paper-2: #e3d6ba;
+  --ink: #1b2340;
+  --ink-deep: #121933;
+  --ink-shadow: #0e1428;
+  --seat: #2a3150;
+  --red: #c8202f;
+  --yellow: #f2b705;
+  --blue: #2f5da8;
+  --green-ok: #45d483;
+  --muted-on-ink: #cfc6b0;
+  --muted-on-paper: #5a5446;
+  --display: "Archivo Black", system-ui, sans-serif;
+  --body: Archivo, system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ink); color: var(--paper); font-family: var(--body); }
+a { color: var(--yellow); }
+button { font: inherit; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px; padding-top: 18px; padding-bottom: 18px; }
+.brand { font-family: var(--display); font-size: 22px; letter-spacing: 1px; color: var(--yellow); }
+.nav { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.nav a { font-weight: 700; font-size: 14px; letter-spacing: .5px; text-transform: uppercase; text-decoration: none; padding: 10px 14px; color: var(--paper); border-radius: 6px 6px 0 0; }
+.nav a[aria-current="page"] { background: var(--paper); color: var(--ink); font-weight: 800; }
+.eyebrow { font-weight: 800; font-size: 13px; letter-spacing: 2px; color: var(--yellow); }
+h1 { margin: 0; font-family: var(--display); font-size: clamp(28px, 5vw, 40px); line-height: 1.05; }
+.sub { font-size: 17px; color: var(--muted-on-ink); }
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; background: var(--ink-deep); padding: 5px; border-radius: 8px; }
+.seg button { min-height: 44px; padding: 0 14px; font-weight: 700; font-size: 14px; border: 0; border-radius: 6px; background: transparent; color: var(--paper); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
+.stand { background: var(--ink-deep); border-radius: 6px; padding: 18px 18px 0; box-shadow: 0 20px 50px rgba(0,0,0,.4); }
+.grid { display: grid; grid-template-columns: repeat(40, minmax(0, 1fr)); gap: 3px; }
+.sq { aspect-ratio: 1; border-radius: 2px; transition: background-color .35s ease; }
+.sq.you { outline: 3px solid #fff; outline-offset: -1px; animation: pop .4s ease-out both; }
+.done .sq.lit { animation: wave 1.6s ease-in-out infinite; }
+.pitch { margin-top: 14px; height: 54px; background: #2e7d4f repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 60px, transparent 60px 120px); border-top: 4px solid var(--paper); }
+.row2 { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; margin: 28px 0 48px; }
+.att { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.bar { position: relative; height: 16px; background: var(--seat); border-radius: 8px; }
+.bar > div { height: 100%; border-radius: 8px; transition: width .6s; }
+.bar > i { position: absolute; left: 60%; top: -6px; bottom: -6px; width: 3px; background: var(--paper); }
+.cta { min-height: 60px; padding: 0 28px; font-family: var(--display); font-size: 17px; letter-spacing: .5px; color: var(--ink); border: 3px solid var(--ink-shadow); box-shadow: 5px 5px 0 var(--ink-shadow); border-radius: 4px; cursor: pointer; }
+.card { flex: 1 1 320px; min-width: 0; background: var(--paper); color: var(--ink); border-radius: 4px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; background-image: radial-gradient(rgba(27,35,64,.07) 1px, transparent 1.5px); background-size: 7px 7px; }
+.card .k { font-weight: 800; font-size: 12px; letter-spacing: 2px; color: var(--red); }
+.card dl { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px 12px; margin: 0; border-top: 2px dashed #cdbf9f; padding-top: 12px; }
+.card dd { margin: 0; font-weight: 800; }
+.note { font-size: 14px; color: var(--muted-on-paper); }
+.preview { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: var(--ink); background: var(--yellow); padding: 3px 8px; border-radius: 3px; }
+@keyframes wave { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
+@keyframes pop { 0% { transform: scale(.6); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

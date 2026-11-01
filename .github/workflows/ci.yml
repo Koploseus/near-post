@@ -1,0 +1,63 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # The pinned image is what makes the checked-in wasm reproducible.
+    container:
+      image: sourcescan/cargo-near:0.22.0-rust-1.99.1@sha256:c9655eaf7436b90c87ea8b25739f91063032c5c30ba24cfeafe72c142943b5bb
+      options: --user 0
+    defaults:
+      run:
+        shell: bash
+        working-directory: contracts
+    env:
+      CARGO_BUILD_JOBS: '2'
+      RUSTUP_TOOLCHAIN: 1.99.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          rustup component add rustfmt clippy --toolchain 1.99.1
+          cargo near --version
+          rustc --version
+      - name: Record checked-in wasm hashes
+        run: sha256sum res/*.wasm | tee /tmp/checked-in.sha256
+      - name: Build every contract
+        run: bash build.sh
+      - name: Checked-in wasm must match this build
+        run: sha256sum --check /tmp/checked-in.sha256
+      - name: Format, Clippy, unit tests
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --workspace --lib
+
+  typescript:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        run: |
+          npm install --global pnpm@12.16.1
+          pnpm install --frozen-lockfile
+      - name: Typecheck, test, build
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
