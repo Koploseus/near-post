@@ -17,7 +17,8 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 ## The game in one minute
 
 - **Sign in with email.** No wallet, no seed phrase, no gas prompt. (Not built yet.)
-- **Your club starts in Division 3** with a 5M G starter grant.
+- **Your club starts in Division 3.** Every new account gets 1M G, then 1M more
+  on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **Players are stickers in an album** (NEP-171 NFTs). Train them, sell them, or
   open a youth pack to create a new one.
 - **Goals mint G:** 6M G per goal, 4.2M to the scorer and 1.8M to the club. A
@@ -69,18 +70,23 @@ model in `apps/sim/src/model.ts`):
 
 | League | Day 1 | Day 30 | Day 60 |
 | --- | --- | --- | --- |
-| 8 clubs, attacking, loyal fans | 600M | 3.02B | 4.30B |
-| 8 clubs, attacking, absent fans | 568M | 2.07B | 2.62B |
-| 8 clubs, defensive, loyal fans | 548M | 2.27B | 3.34B |
-| 8 clubs, defensive, absent fans | 517M | 1.29B | 1.47B |
-| 8 clubs, no newcomers, absent fans | 469M | 193M | 0 |
-| 64 clubs, attacking, loyal fans | 4.93B | 8.99B | 9.22B |
+| 8 clubs, attacking, loyal fans | 254M | 2.93B | 4.21B |
+| 8 clubs, attacking, absent fans | 186M | 1.97B | 2.48B |
+| 8 clubs, defensive, loyal fans | 223M | 2.27B | 3.26B |
+| 8 clubs, defensive, absent fans | 155M | 1.24B | 1.46B |
+| 8 clubs, no newcomers, absent fans | 161M | 280M | 0 |
+| 64 clubs, attacking, loyal fans | 2.49B | 8.98B | 9.23B |
 
 A living league grows its own money; a dead one burns it away; a big one bends
 towards the cap and never reaches it. Assumptions: 8 clubs, 100 accounts plus
 10 a day, one fan per 16 accounts on top of 50 per club, 70% of players train
 daily. In the dead league, spending is not limited by balances, so "0" means
-players could no longer afford training.
+players could no longer afford training. The model assumes every account
+keeps coming at the league's attendance rate; accounts that sign up and never
+return (or fake ones) get 1M instead of 5M, which the model does not count.
+
+Early players get more: the closer supply is to the cap, the smaller every
+mint. That is the cap working, and it is intended.
 
 ## How it is built
 

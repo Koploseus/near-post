@@ -6,7 +6,9 @@
 
 export const RULES = {
   maxSupply: 10_000_000_000,
-  starterGrant: 5_000_000,
+  signupGrant: 1_000_000,
+  welcomeBonus: 1_000_000,
+  welcomeVisits: 4,
   goalMint: 6_000_000,
   goalClubShare: 0.3, // 1.8M of 6M
   ownGoalBurn: 6_000_000,
@@ -101,12 +103,26 @@ export function simulate(league: League, days = 60, seed = 7): number[] {
 
   let accounts = league.accounts0;
   let players = league.accounts0;
-  for (let i = 0; i < accounts; i++) mint(RULES.starterGrant);
+  // waiting[k] = accounts with k welcome bonuses still to collect.
+  const waiting = new Array<number>(RULES.welcomeVisits + 1).fill(0);
+  const signUp = (n: number) => {
+    for (let i = 0; i < n; i++) mint(RULES.signupGrant);
+    waiting[RULES.welcomeVisits]! += n;
+  };
+  signUp(accounts);
   const out: number[] = [];
 
   for (let day = 1; day <= days; day++) {
-    for (let i = 0; i < league.newAccountsPerDay; i++) mint(RULES.starterGrant);
+    signUp(league.newAccountsPerDay);
     accounts += league.newAccountsPerDay;
+    // Each newcomer who comes to the stadium collects one welcome bonus.
+    for (let k = 1; k <= RULES.welcomeVisits; k++) {
+      let came = 0;
+      for (let i = 0; i < waiting[k]!; i++) if (r() < league.attendance) came++;
+      for (let i = 0; i < came; i++) mint(RULES.welcomeBonus);
+      waiting[k]! -= came;
+      waiting[k - 1]! += came;
+    }
 
     for (let side = 0; side < league.clubs; side++) {
       for (let g = poisson(r, league.goalsPerMatch / 2); g > 0; g--) {
