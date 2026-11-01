@@ -9,10 +9,10 @@ empty one burns the club's treasury.
 
 Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
-> **Status, 1 November 2026: scaffold.** The four contracts compile
-> reproducibly and their rules are unit-tested; the relay reads the league from
-> chain; the web app shows the stadium screen on an example stand. Match days,
-> email login and gas relaying are not built yet. Nothing is deployed.
+> **Status, 1 November 2026.** The four contracts compile reproducibly and are
+> unit-tested, match days included; the relay reads the league from chain; the
+> web app shows the stadium screen on an example stand. Email login, gas
+> relaying and the transfer market are not built yet. Nothing is deployed.
 
 ## The game in one minute
 
@@ -21,8 +21,13 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **Players are stickers in an album** (NEP-171 NFTs). Train them, sell them, or
   open a youth pack to create a new one.
+- **Match days are played on chain.** Every club meets every other once per
+  cycle. Anyone can call `play_match_day` when it is due; the score comes from
+  the block's random seed. Win 3 points, draw 1.
 - **Goals mint G:** 6M G per goal, 4.2M to the scorer and 1.8M to the club. A
   goal after the 90th minute counts double; an own goal burns 6M G.
+- **Rivals make derbies.** Two clubs that name each other (`set_rival`) play
+  derbies, where the stands mint or burn double.
 - **The stadium is a tifo.** Each fan who checks in paints part of it. At 60% of
   the club's fans the tifo is complete and every fan present gets 100k G. If it is
   not complete at kick-off, 2% of the club treasury burns. Derbies double both.
@@ -95,7 +100,7 @@ mint. That is the cap working, and it is intended.
 | `contracts/goalars` | The G token. Only the league can mint, within the 10B curve; anyone can burn their own. | NEP-141 |
 | `contracts/players` | Players as NFTs, with the sell-on clause as a payout. Only the league creates players. | NEP-171, NEP-199 |
 | `contracts/items` | Boots, kits, training passes. Only the league mints. | NEP-245 (core) |
-| `contracts/league` | The rules: clubs, starter grant, fans, stadium check-in. Match days come next. | — |
+| `contracts/league` | The rules: clubs, welcome grant, fans, stadium check-in, match days (fixtures, scores, goals, stands), claims, table. | — |
 | `apps/relay` | TypeScript API. Today: reads rules and stands from chain. Next: email login, session keys, gas relaying, match-day trigger. | — |
 | `apps/web` | The game in the browser (React). Sticker-album and tifo look. | — |
 | `apps/sim` | Supply simulation with the contract's rules. | — |
@@ -116,7 +121,16 @@ because a contract cannot check an email or pay gas for a player.
 
 ## Limits
 
-- Match randomness will come from NEAR's block random seed. A block producer
+- Until squads exist, a goal's scorer share (4.2M) is credited to the club's
+  manager. Club shares go to the club treasury, which the league holds as real
+  G so that penalties can burn it.
+- Personal rewards are credits: the account calls `claim` to mint them, and
+  like every mint they are scaled under the 10B cap at that moment.
+- At most 64 clubs, so a match day fits in one transaction. Gas for a full
+  64-club match day is not measured yet (next: sandbox tests).
+- No seasons yet: no promotion, no relegation burn.
+
+- Match randomness comes from NEAR's block random seed. A block producer
   could in theory bias it. Acceptable for a game without bets; there are no bets.
 - `items` implements NEP-245 balances, supply, transfer and batch transfer;
   `mt_transfer_call` and approvals are not implemented yet.
