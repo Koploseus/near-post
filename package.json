@@ -1,0 +1,16 @@
+{
+  "name": "near-post",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=26.13.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "dev:relay": "pnpm --filter @near-post/relay dev",
+    "dev:web": "pnpm --filter @near-post/web dev"
+  }
+}
