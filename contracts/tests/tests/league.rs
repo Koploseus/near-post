@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use near_workspaces::network::Sandbox;
-use near_workspaces::types::Gas;
+use near_workspaces::types::{Gas, NearToken};
 use near_workspaces::{Account, Contract, Worker};
 use serde_json::{Value, json};
 
@@ -14,6 +14,7 @@ struct Game {
     worker: Worker<Sandbox>,
     league: Contract,
     goalars: Contract,
+    players: Contract,
 }
 
 async fn deploy() -> Result<Game> {
@@ -46,6 +47,7 @@ async fn deploy() -> Result<Game> {
         worker,
         league,
         goalars,
+        players,
     })
 }
 
@@ -111,12 +113,32 @@ fn g(v: &Value) -> u128 {
 async fn a_match_day_end_to_end() -> Result<()> {
     let game = deploy().await?;
     let (home, away) = (game.account().await?, game.account().await?);
-    game.call(&home, "create_club", json!({ "name": "Rive Nord" }))
-        .await?
-        .into_result()?;
+    let created = game
+        .call(&home, "create_club", json!({ "name": "Rive Nord" }))
+        .await?;
+    println!(
+        "create_club with its academy: {} Tgas",
+        created.total_gas_burnt.as_tgas()
+    );
+    created.into_result()?;
     game.call(&away, "create_club", json!({ "name": "Port-Lune" }))
         .await?
         .into_result()?;
+
+    // Each club got eleven player NFTs, and the league knows them.
+    for club in [&home, &away] {
+        let nfts: String = game
+            .players
+            .view("nft_supply_for_owner")
+            .args_json(json!({ "account_id": club.id() }))
+            .await?
+            .json()?;
+        assert_eq!(nfts, "11");
+        let squad = game
+            .view("squad", json!({ "account_id": club.id() }))
+            .await?;
+        assert_eq!(squad.as_array().unwrap().len(), 11);
+    }
 
     // Three fans for Rive Nord, two come: a full house (target 2 of 3).
     let mut fans = Vec::new();
@@ -206,16 +228,76 @@ async fn a_match_day_end_to_end() -> Result<()> {
         100_000 * ONE_G * (cap - supply) / cap
     );
 
-    // The manager's goal credits mint on claim.
-    let credits = g(&game
-        .view("credits_of", json!({ "account_id": home.id() }))
-        .await?);
-    if credits > 0 {
-        let before = game.balance(home.id().as_str()).await?;
-        game.call(&home, "claim", json!({})).await?.into_result()?;
-        let got = game.balance(home.id().as_str()).await? - before;
-        assert!(got > 0 && got <= credits);
+    // Every goal is in a named player's wallet; his owner claims it.
+    for goal in m["goals"].as_array().unwrap() {
+        assert!(!goal["name"].as_str().unwrap().is_empty());
     }
+    let scorer = m["goals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["kind"] != "Own")
+        .map(|g| g["player"].as_str().unwrap().to_string());
+    if let Some(token) = scorer {
+        let player = game
+            .view("get_player", json!({ "token_id": token }))
+            .await?;
+        let owner = player["owner"].as_str().unwrap().to_string();
+        let wallet = g(&player["wallet"]);
+        assert!(wallet > 0);
+        let manager = if owner == home.id().as_str() {
+            &home
+        } else {
+            &away
+        };
+        let before = game.balance(&owner).await?;
+        game.call(manager, "claim_player", json!({ "token_id": token }))
+            .await?
+            .into_result()?;
+        let got = game.balance(&owner).await? - before;
+        assert!(got > 0 && got <= wallet);
+        // A stranger cannot.
+        assert!(
+            game.call(&fans[2], "claim_player", json!({ "token_id": token }))
+                .await?
+                .is_failure()
+        );
+    }
+
+    // A transfer in the players contract moves the player between squads.
+    let token = game
+        .view("squad", json!({ "account_id": home.id() }))
+        .await?[10]["token_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    home.call(game.players.id(), "nft_transfer")
+        .args_json(json!({ "receiver_id": away.id(), "token_id": token }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(100))
+        .transact()
+        .await?
+        .into_result()?;
+    let squad_len = |v: Value| v.as_array().unwrap().len();
+    assert_eq!(
+        squad_len(
+            game.view("squad", json!({ "account_id": home.id() }))
+                .await?
+        ),
+        10
+    );
+    assert_eq!(
+        squad_len(
+            game.view("squad", json!({ "account_id": away.id() }))
+                .await?
+        ),
+        12
+    );
+    assert_eq!(
+        game.view("get_player", json!({ "token_id": token }))
+            .await?["owner"],
+        json!(away.id())
+    );
     Ok(())
 }
 
@@ -255,5 +337,7 @@ async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
     }
     let table = game.view("table", json!({})).await?;
     assert_eq!(table.as_array().unwrap().len(), 64);
+    let total: String = game.players.view("nft_total_supply").await?.json()?;
+    assert_eq!(total, "704");
     Ok(())
 }

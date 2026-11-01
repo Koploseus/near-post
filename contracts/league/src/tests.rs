@@ -205,28 +205,6 @@ fn table_points_and_goals_add_up() {
 }
 
 #[test]
-fn goals_credit_the_manager_and_queue_the_club_share() {
-    let mut l = league_with(2, 0);
-    at("anyone.testnet", due(&l), 3);
-    let results = l.play_match_day();
-    let r = the_rules();
-    let m = &results[0];
-    for (club, home) in [(&m.home, true), (&m.away, false)] {
-        let expected: u128 = m
-            .goals
-            .iter()
-            .filter(|g| g.for_home == home)
-            .map(|g| match g.kind {
-                GoalKind::Normal => r.goal_scorer_share.0,
-                GoalKind::Late => 2 * r.goal_scorer_share.0,
-                GoalKind::Own => 0,
-            })
-            .sum();
-        assert_eq!(l.credits_of(club.clone()).0, expected);
-    }
-}
-
-#[test]
 fn treasury_split_follows_nominal_shares_and_loses_nothing() {
     let mut l = league_with(3, 0);
     let nominal = vec![
@@ -337,41 +315,6 @@ fn a_one_sided_rivalry_is_not_a_derby() {
 }
 
 #[test]
-fn own_goals_burn_from_the_club_at_fault() {
-    // Find a seed whose first match has an own goal, then play it.
-    let seed = (1..=255u8)
-        .find(|&s| {
-            play_match(play::match_seed([s; 32], 1, 0))
-                .iter()
-                .any(|g| g.kind == GoalKind::Own)
-        })
-        .expect("a seed with an own goal");
-    {
-        let mut l = league_with(2, 0);
-        for c in ["c0", "c1"] {
-            l.clubs
-                .get_mut(&acc(&format!("{c}.testnet")))
-                .unwrap()
-                .treasury = U128(100_000_000 * ONE_G);
-        }
-        at("anyone.testnet", due(&l), seed);
-        let m = l.play_match_day().remove(0);
-        let own_against = |home_at_fault: bool| {
-            m.goals
-                .iter()
-                .filter(|g| g.kind == GoalKind::Own && g.for_home != home_at_fault)
-                .count() as u128
-        };
-        let (h, a) = (own_against(true), own_against(false));
-        assert!(h + a > 0);
-        let burn = the_rules().own_goal_burn.0;
-        let t = |id: &AccountId| l.get_club(id.clone()).unwrap().treasury.0;
-        assert_eq!(t(&m.home), 100_000_000 * ONE_G - h * burn);
-        assert_eq!(t(&m.away), 100_000_000 * ONE_G - a * burn);
-    }
-}
-
-#[test]
 #[should_panic(expected = "the league is full")]
 fn the_league_is_bounded() {
     let mut l = league();
@@ -387,4 +330,205 @@ fn claiming_nothing_fails() {
     let mut l = league();
     as_caller("nobody.testnet");
     l.claim();
+}
+
+fn player_count_by_position(l: &League, club: &str) -> [usize; 4] {
+    let mut c = [0; 4];
+    for p in l.squad(acc(club)) {
+        c[match p.position {
+            Position::Gk => 0,
+            Position::Df => 1,
+            Position::Mf => 2,
+            Position::Fw => 3,
+        }] += 1;
+    }
+    c
+}
+
+#[test]
+fn a_new_club_signs_an_academy_of_eleven() {
+    let l = league_with(1, 0);
+    let squad = l.squad(acc("c0.testnet"));
+    assert_eq!(squad.len(), 11);
+    assert_eq!(player_count_by_position(&l, "c0.testnet"), [1, 4, 4, 2]);
+    for p in &squad {
+        assert_eq!(p.owner, acc("c0.testnet"));
+        assert!((10..=60).contains(&p.attack) && (20..=60).contains(&p.defence));
+        assert!(p.name.contains(' '));
+    }
+    assert_eq!(l.starting_eleven(acc("c0.testnet")).len(), 11);
+}
+
+fn ids(l: &League, club: &str) -> Vec<String> {
+    l.squad(acc(club)).into_iter().map(|p| p.token_id).collect()
+}
+
+#[test]
+fn a_manager_sets_his_eleven() {
+    let mut l = league_with(1, 0);
+    let squad = ids(&l, "c0.testnet");
+    as_caller("c0.testnet");
+    let mut lineup = squad.clone();
+    lineup.reverse();
+    l.set_lineup(lineup.clone());
+    let xi: Vec<String> = l
+        .starting_eleven(acc("c0.testnet"))
+        .into_iter()
+        .map(|p| p.token_id)
+        .collect();
+    assert_eq!(xi, lineup);
+}
+
+#[test]
+#[should_panic(expected = "a lineup is eleven players")]
+fn a_lineup_has_eleven() {
+    let mut l = league_with(1, 0);
+    let mut squad = ids(&l, "c0.testnet");
+    squad.pop();
+    as_caller("c0.testnet");
+    l.set_lineup(squad);
+}
+
+#[test]
+#[should_panic(expected = "you do not own that player")]
+fn no_lineup_with_someone_elses_player() {
+    let mut l = league_with(2, 0);
+    let mut squad = ids(&l, "c0.testnet");
+    squad[10] = ids(&l, "c1.testnet")[10].clone();
+    as_caller("c0.testnet");
+    l.set_lineup(squad);
+}
+
+#[test]
+#[should_panic(expected = "a player is listed twice")]
+fn no_player_twice() {
+    let mut l = league_with(1, 0);
+    let mut squad = ids(&l, "c0.testnet");
+    squad[10] = squad[9].clone();
+    as_caller("c0.testnet");
+    l.set_lineup(squad);
+}
+
+#[test]
+#[should_panic(expected = "only the players contract reports transfers")]
+fn only_the_players_contract_reports_transfers() {
+    let mut l = league_with(1, 0);
+    let token = ids(&l, "c0.testnet")[0].clone();
+    as_caller("attacker.testnet");
+    l.on_player_transferred(token, acc("c0.testnet"), acc("attacker.testnet"));
+}
+
+#[test]
+fn a_sold_player_changes_squad_keeps_his_wallet_and_leaves_the_eleven() {
+    let mut l = league_with(2, 0);
+    let squad = ids(&l, "c0.testnet");
+    as_caller("c0.testnet");
+    l.set_lineup(squad.clone());
+    let star = squad[10].clone(); // a forward
+    l.players.get_mut(&star).unwrap().wallet = U128(42);
+    as_caller("players.testnet");
+    l.on_player_transferred(star.clone(), acc("c0.testnet"), acc("c1.testnet"));
+    assert_eq!(l.squad(acc("c0.testnet")).len(), 10);
+    assert_eq!(l.squad(acc("c1.testnet")).len(), 12);
+    let p = l.get_player(star.clone()).unwrap();
+    assert_eq!((p.owner, p.wallet), (acc("c1.testnet"), U128(42)));
+    let xi: Vec<String> = l
+        .starting_eleven(acc("c0.testnet"))
+        .into_iter()
+        .map(|p| p.token_id)
+        .collect();
+    assert_eq!(xi.len(), 10);
+    assert!(!xi.contains(&star));
+    // The buyer fields his best eleven, not twelve.
+    assert_eq!(l.starting_eleven(acc("c1.testnet")).len(), 11);
+}
+
+#[test]
+fn goals_fill_the_scorers_wallets_and_raise_their_attack() {
+    let mut l = league_with(2, 0);
+    let before: Vec<Player> = [l.squad(acc("c0.testnet")), l.squad(acc("c1.testnet"))].concat();
+    let r = the_rules();
+    let mut expected: std::collections::HashMap<String, (u128, u32)> = Default::default();
+    for d in 0..6u64 {
+        at("anyone.testnet", due(&l), d as u8 + 1);
+        for m in l.play_match_day() {
+            for g in m.goals {
+                let k = match g.kind {
+                    GoalKind::Normal => 1,
+                    GoalKind::Late => 2,
+                    GoalKind::Own => 0,
+                };
+                assert!(!g.name.is_empty());
+                let e = expected.entry(g.player).or_default();
+                e.0 += k * r.goal_scorer_share.0;
+                e.1 += (k > 0) as u32;
+            }
+        }
+    }
+    assert!(
+        expected.values().any(|e| e.1 > 0),
+        "no goal in six match days"
+    );
+    for p in before {
+        let now = l.get_player(p.token_id.clone()).unwrap();
+        let (wallet, goals) = expected.get(&p.token_id).copied().unwrap_or_default();
+        assert_eq!(now.wallet.0, wallet);
+        assert_eq!(now.goals, goals);
+        assert_eq!(now.attack as u32, (p.attack as u32 + goals).min(99));
+    }
+}
+
+#[test]
+fn own_goals_burn_from_the_club_at_fault() {
+    let mut l = league_with(2, 0);
+    let burn = the_rules().own_goal_burn.0;
+    for d in 0..80u64 {
+        for c in ["c0", "c1"] {
+            l.clubs
+                .get_mut(&acc(&format!("{c}.testnet")))
+                .unwrap()
+                .treasury = U128(100_000_000 * ONE_G);
+        }
+        at("anyone.testnet", due(&l), (d % 250) as u8 + 1);
+        let m = l.play_match_day().remove(0);
+        let own = |home_at_fault: bool| {
+            m.goals
+                .iter()
+                .filter(|g| g.kind == GoalKind::Own && g.for_home != home_at_fault)
+                .count() as u128
+        };
+        let (h, a) = (own(true), own(false));
+        if h + a == 0 {
+            continue;
+        }
+        let t = |id: &AccountId| l.get_club(id.clone()).unwrap().treasury.0;
+        assert_eq!(t(&m.home), 100_000_000 * ONE_G - h * burn);
+        assert_eq!(t(&m.away), 100_000_000 * ONE_G - a * burn);
+        // The player named is from the side at fault.
+        let og = m.goals.iter().find(|g| g.kind == GoalKind::Own).unwrap();
+        let at_fault = if og.for_home { &m.away } else { &m.home };
+        assert_eq!(&l.get_player(og.player.clone()).unwrap().owner, at_fault);
+        return;
+    }
+    panic!("no own goal in 80 match days");
+}
+
+#[test]
+#[should_panic(expected = "you do not own that player")]
+fn only_the_owner_claims_a_players_wallet() {
+    let mut l = league_with(1, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    l.players.get_mut(&token).unwrap().wallet = U128(5);
+    as_caller("thief.testnet");
+    l.claim_player(token);
+}
+
+#[test]
+fn the_owner_claims_and_the_wallet_empties() {
+    let mut l = league_with(1, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    l.players.get_mut(&token).unwrap().wallet = U128(5);
+    as_caller("c0.testnet");
+    l.claim_player(token.clone());
+    assert_eq!(l.get_player(token).unwrap().wallet, U128(0));
 }

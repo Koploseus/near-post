@@ -7,15 +7,21 @@
 //! credits goals, settles every stand (full house or 2% treasury burn) and
 //! opens the next day.
 //!
-//! Where the G go: a club's share of goals goes to its treasury, which this
-//! contract holds as real G (so penalties can burn it). Personal rewards
-//! (goal shares for the manager until squads exist, full-house rewards for
-//! fans) are credited and minted when the account calls `claim`; like every
-//! mint, they are scaled under the 10B cap at that moment.
+//! Squads: every new club gets eleven players (a 4-4-2), minted as NFTs in the
+//! players contract. The manager picks the starting eleven; the eleven's
+//! ratings drive the score (see `play.rs`). The players contract tells the
+//! league about every transfer, so a sold player leaves his old club's squad.
+//!
+//! Where the G go: a goal's scorer share goes to the scorer's own wallet, which
+//! follows him when he is sold; his current owner claims it. The club share
+//! goes to the club treasury, which this contract holds as real G (so penalties
+//! can burn it). Fans' full-house rewards are credits minted on `claim`. Like
+//! every mint, claims are scaled under the 10B cap at that moment.
 
 mod play;
 
-pub use play::{Goal, GoalKind, fixtures, play_match};
+use play::{ByteStream, ELEVEN, FORMATION, derive_seed};
+pub use play::{GoalKind, OnPitch, Position, fixtures, play_match};
 
 use near_sdk::json_types::{U64, U128};
 use near_sdk::store::{LookupMap, LookupSet, Vector};
@@ -92,10 +98,71 @@ pub trait Goalars {
     fn burn(&mut self, amount: U128, memo: Option<String>);
 }
 
+#[ext_contract(ext_players)]
+pub trait PlayersContract {
+    fn nft_mint_batch(&mut self, mints: Vec<MintArgs>);
+}
+
 #[ext_contract(ext_self)]
 pub trait SelfCallbacks {
     fn on_treasury_minted(&mut self, nominal: Vec<(AccountId, U128)>) -> U128;
     fn on_claim_minted(&mut self, account_id: AccountId, amount: U128) -> U128;
+    fn on_player_claim_minted(&mut self, token_id: String, amount: U128) -> U128;
+}
+
+/// What the players contract needs to mint one player (NEP-171 metadata).
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct MintArgs {
+    pub token_id: String,
+    pub owner_id: AccountId,
+    pub trained_by: AccountId,
+    pub metadata: PlayerMetadata,
+}
+
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlayerMetadata {
+    pub title: String,
+    pub description: String,
+    pub copies: u64,
+    pub extra: String,
+}
+
+/// A footballer as the league sees him. The NFT lives in the players contract.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Player {
+    pub token_id: String,
+    pub name: String,
+    pub position: Position,
+    pub attack: u8,
+    pub defence: u8,
+    pub owner: AccountId,
+    pub goals: u32,
+    /// G earned by his goals, claimable by whoever owns him.
+    pub wallet: U128,
+}
+
+impl Player {
+    fn on_pitch(&self) -> OnPitch {
+        OnPitch {
+            position: self.position,
+            attack: self.attack,
+            defence: self.defence,
+        }
+    }
+}
+
+/// A goal as stored and shown: who touched it last, by token and name.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Goal {
+    pub for_home: bool,
+    pub minute: u8,
+    pub kind: GoalKind,
+    pub player: String,
+    pub name: String,
 }
 
 #[near]
@@ -111,6 +178,9 @@ enum StorageKey {
     Stands,
     StandClaims,
     Credits,
+    Players,
+    Squads,
+    Lineups,
 }
 
 #[near(serializers = [json, borsh])]
@@ -201,11 +271,17 @@ pub struct League {
     stand_claims: LookupSet<(AccountId, u32, AccountId)>,
     /// Nominal G an account can claim.
     credits: LookupMap<AccountId, u128>,
+    players: LookupMap<String, Player>,
+    /// Token ids owned by each account, kept in step by the players contract.
+    squads: LookupMap<AccountId, Vec<String>>,
+    lineups: LookupMap<AccountId, Vec<String>>,
+    next_player: u64,
 }
 
 const MINT_GAS: Gas = Gas::from_tgas(10);
 const BURN_GAS: Gas = Gas::from_tgas(10);
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
+const ACADEMY_GAS: Gas = Gas::from_tgas(60);
 const MAX_NAME: usize = 32;
 const MS: u64 = 1_000_000;
 
@@ -242,6 +318,10 @@ impl League {
             stands: LookupMap::new(StorageKey::Stands),
             stand_claims: LookupSet::new(StorageKey::StandClaims),
             credits: LookupMap::new(StorageKey::Credits),
+            players: LookupMap::new(StorageKey::Players),
+            squads: LookupMap::new(StorageKey::Squads),
+            lineups: LookupMap::new(StorageKey::Lineups),
+            next_player: 0,
         }
     }
 
@@ -271,7 +351,9 @@ impl League {
 
     // ---- Clubs and fans ----
 
-    /// Creates the caller's club in Division 3. A new account gets the signup grant.
+    /// Creates the caller's club in Division 3 with eleven academy players
+    /// (a 4-4-2, ratings 40 to 60), minted as NFTs. A new account gets the
+    /// signup grant.
     pub fn create_club(&mut self, name: String) {
         let manager = env::predecessor_account_id();
         let name = name.trim().to_string();
@@ -306,6 +388,125 @@ impl League {
         );
         self.club_ids.push(manager.clone());
         self.welcome(&manager);
+        self.sign_academy(&manager);
+    }
+
+    // ---- Squads ----
+
+    /// The manager's starting eleven: eleven different players he owns, one
+    /// of them a goalkeeper. Until he sets one, or when one is sold, the best
+    /// available 4-4-2 plays.
+    pub fn set_lineup(&mut self, token_ids: Vec<String>) {
+        let manager = env::predecessor_account_id();
+        require!(
+            self.clubs.contains_key(&manager),
+            "you do not manage a club"
+        );
+        require!(token_ids.len() == ELEVEN, "a lineup is eleven players");
+        let squad = self.squads.get(&manager).cloned().unwrap_or_default();
+        let mut seen = std::collections::HashSet::new();
+        let mut keepers = 0;
+        for id in &token_ids {
+            require!(seen.insert(id.clone()), "a player is listed twice");
+            require!(squad.contains(id), "you do not own that player");
+            if self.players.get(id).map(|p| p.position) == Some(Position::Gk) {
+                keepers += 1;
+            }
+        }
+        require!(keepers == 1, "a lineup has exactly one goalkeeper");
+        self.lineups.insert(manager, token_ids);
+    }
+
+    pub fn squad(&self, account_id: AccountId) -> Vec<Player> {
+        self.squads
+            .get(&account_id)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.players.get(id).cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The eleven that would start now.
+    pub fn starting_eleven(&self, club_id: AccountId) -> Vec<Player> {
+        self.eleven_of(&club_id)
+            .iter()
+            .filter_map(|id| self.players.get(id).cloned())
+            .collect()
+    }
+
+    pub fn get_player(&self, token_id: String) -> Option<Player> {
+        self.players.get(&token_id).cloned()
+    }
+
+    /// Called by the players contract after every transfer: the player moves
+    /// to his new owner's squad, leaves the old lineup, and keeps his wallet.
+    pub fn on_player_transferred(
+        &mut self,
+        token_id: String,
+        old_owner: AccountId,
+        new_owner: AccountId,
+    ) {
+        require!(
+            env::predecessor_account_id() == self.players_id,
+            "only the players contract reports transfers"
+        );
+        let Some(player) = self.players.get_mut(&token_id) else {
+            return;
+        };
+        player.owner = new_owner.clone();
+        if let Some(squad) = self.squads.get_mut(&old_owner) {
+            squad.retain(|t| t != &token_id);
+        }
+        if let Some(lineup) = self.lineups.get_mut(&old_owner) {
+            lineup.retain(|t| t != &token_id);
+        }
+        let squad = self.squads.entry(new_owner).or_default();
+        if !squad.contains(&token_id) {
+            squad.push(token_id);
+        }
+    }
+
+    /// The owner of a player mints the G in his wallet (scaled under the cap).
+    pub fn claim_player(&mut self, token_id: String) {
+        let caller = env::predecessor_account_id();
+        let player = self
+            .players
+            .get_mut(&token_id)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        require!(player.owner == caller, "you do not own that player");
+        let amount = player.wallet.0;
+        require!(amount > 0, "nothing to claim");
+        player.wallet = U128(0);
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(MINT_GAS)
+            .mint(caller, U128(amount), Some(format!("wallet of {token_id}")))
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .on_player_claim_minted(token_id, U128(amount)),
+            )
+            .detach();
+    }
+
+    /// Puts the G back in the player's wallet if the mint failed.
+    #[private]
+    pub fn on_player_claim_minted(
+        &mut self,
+        token_id: String,
+        amount: U128,
+        #[callback_result] minted: Result<U128, PromiseError>,
+    ) -> U128 {
+        match minted {
+            Ok(m) => m,
+            Err(_) => {
+                if let Some(p) = self.players.get_mut(&token_id) {
+                    p.wallet = U128(p.wallet.0 + amount.0);
+                }
+                U128(0)
+            }
+        }
     }
 
     /// The caller's club names its rival. When two clubs name each other, their
@@ -434,14 +635,26 @@ impl League {
 
         for (index, (h, a)) in fixtures(ids.len(), day - 1).into_iter().enumerate() {
             let (home, away) = (ids[h].clone(), ids[a].clone());
-            let goals = play_match(play::match_seed(block_seed, day, index as u32));
+            let home_xi = self.eleven_of(&home);
+            let away_xi = self.eleven_of(&away);
+            let pitch = |ids: &[String]| -> Vec<OnPitch> {
+                ids.iter()
+                    .filter_map(|id| self.players.get(id).map(|p| p.on_pitch()))
+                    .collect()
+            };
+            let raw = play_match(
+                derive_seed(block_seed, &[day as u64, index as u64]),
+                &pitch(&home_xi),
+                &pitch(&away_xi),
+            );
             let derby = self.are_rivals(&home, &away);
             if derby {
                 derby_clubs.push(home.clone());
                 derby_clubs.push(away.clone());
             }
             let (mut hg, mut ag) = (0u8, 0u8);
-            for g in &goals {
+            let mut goals = Vec::with_capacity(raw.len());
+            for g in &raw {
                 let (scorer, at_fault) = if g.for_home {
                     hg += 1;
                     (&home, &away)
@@ -449,6 +662,26 @@ impl League {
                     ag += 1;
                     (&away, &home)
                 };
+                // Who touched it last: a scorer of the scoring side, or for an
+                // own goal a player of the side at fault.
+                let touched_by = if (g.kind == GoalKind::Own) != g.for_home {
+                    &home_xi
+                } else {
+                    &away_xi
+                };
+                let token = touched_by.get(g.player).cloned().unwrap_or_default();
+                let name = self
+                    .players
+                    .get(&token)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+                goals.push(Goal {
+                    for_home: g.for_home,
+                    minute: g.minute,
+                    kind: g.kind,
+                    player: token.clone(),
+                    name,
+                });
                 match g.kind {
                     GoalKind::Own => {
                         burn_total += self.take_from_treasury(at_fault, rules.own_goal_burn.0);
@@ -459,9 +692,10 @@ impl League {
                         } else {
                             1
                         };
-                        let manager = self.clubs.get(scorer).map(|c| c.manager.clone());
-                        if let Some(m) = manager {
-                            *self.credits.entry(m).or_insert(0) += k * rules.goal_scorer_share.0;
+                        if let Some(p) = self.players.get_mut(&token) {
+                            p.wallet = U128(p.wallet.0 + k * rules.goal_scorer_share.0);
+                            p.goals += 1;
+                            p.attack = (p.attack + 1).min(99);
                         }
                         treasury_mints.push((scorer.clone(), k * rules.goal_club_share.0));
                     }
@@ -601,7 +835,158 @@ impl League {
     }
 }
 
+const FIRST_NAMES: [&str; 32] = [
+    "Matteo", "Lucas", "Noah", "Sami", "Theo", "Yanis", "Enzo", "Liam", "Adam", "Nael", "Ilyes",
+    "Hugo", "Malo", "Rayan", "Gabin", "Tiago", "Ismael", "Kenzo", "Elias", "Nolan", "Aaron",
+    "Mael", "Sacha", "Jules", "Amir", "Leon", "Owen", "Timeo", "Ethan", "Marius", "Kylian",
+    "Oscar",
+];
+const LAST_NAMES: [&str; 32] = [
+    "Duval",
+    "Ferrand",
+    "Haddad",
+    "Lambert",
+    "Morel",
+    "Petit",
+    "Belkacem",
+    "Garnier",
+    "Roux",
+    "Fontaine",
+    "Mercier",
+    "Benali",
+    "Lefevre",
+    "Chevalier",
+    "Diallo",
+    "Moreau",
+    "Perrin",
+    "Traore",
+    "Marchand",
+    "Colin",
+    "Renaud",
+    "Sylla",
+    "Barbier",
+    "Leroy",
+    "Camara",
+    "Nicolas",
+    "Fabre",
+    "Gauthier",
+    "Mendy",
+    "Boyer",
+    "Rolland",
+    "Keita",
+];
+
 impl League {
+    /// Mints the eleven academy players of a new club.
+    fn sign_academy(&mut self, club: &AccountId) {
+        let mut stream = ByteStream::new(derive_seed(
+            env::random_seed_array(),
+            &[self.next_player, self.club_ids.len() as u64],
+        ));
+        let mut mints = Vec::with_capacity(ELEVEN);
+        let mut squad = Vec::with_capacity(ELEVEN);
+        for (position, count) in FORMATION {
+            for _ in 0..count {
+                let (attack, defence) = match position {
+                    Position::Gk => (stream.range(10, 25), stream.range(45, 60)),
+                    Position::Df => (stream.range(25, 40), stream.range(45, 60)),
+                    Position::Mf => (stream.range(40, 55), stream.range(40, 55)),
+                    Position::Fw => (stream.range(45, 60), stream.range(20, 35)),
+                };
+                let name = format!(
+                    "{} {}",
+                    FIRST_NAMES[stream.next() as usize % FIRST_NAMES.len()],
+                    LAST_NAMES[stream.next() as usize % LAST_NAMES.len()]
+                );
+                let token_id = format!("p{}", self.next_player);
+                self.next_player += 1;
+                let pos = match position {
+                    Position::Gk => "GK",
+                    Position::Df => "DF",
+                    Position::Mf => "MF",
+                    Position::Fw => "FW",
+                };
+                mints.push(MintArgs {
+                    token_id: token_id.clone(),
+                    owner_id: club.clone(),
+                    trained_by: club.clone(),
+                    metadata: PlayerMetadata {
+                        title: format!("{name} · {pos}"),
+                        description: "Academy player. Live ratings: league get_player.".into(),
+                        copies: 1,
+                        extra: format!(
+                            "{{\"position\":\"{pos}\",\"attack\":{attack},\"defence\":{defence}}}"
+                        ),
+                    },
+                });
+                self.players.insert(
+                    token_id.clone(),
+                    Player {
+                        token_id: token_id.clone(),
+                        name,
+                        position,
+                        attack,
+                        defence,
+                        owner: club.clone(),
+                        goals: 0,
+                        wallet: U128(0),
+                    },
+                );
+                squad.push(token_id);
+            }
+        }
+        self.squads.insert(club.clone(), squad);
+        ext_players::ext(self.players_id.clone())
+            .with_static_gas(ACADEMY_GAS)
+            .nft_mint_batch(mints)
+            .detach();
+    }
+
+    /// The eleven that starts for a club: its lineup, minus players it no
+    /// longer owns, topped up with the best available players for a 4-4-2.
+    fn eleven_of(&self, club: &AccountId) -> Vec<String> {
+        let squad = self.squads.get(club).cloned().unwrap_or_default();
+        let mut xi: Vec<String> = self
+            .lineups
+            .get(club)
+            .map(|l| l.iter().filter(|t| squad.contains(t)).cloned().collect())
+            .unwrap_or_default();
+        if xi.len() >= ELEVEN {
+            xi.truncate(ELEVEN);
+            return xi;
+        }
+        let mut bench: Vec<&Player> = squad
+            .iter()
+            .filter(|t| !xi.contains(t))
+            .filter_map(|t| self.players.get(t))
+            .collect();
+        bench.sort_by_key(|p| std::cmp::Reverse(p.attack as u32 + p.defence as u32));
+        let has = |xi: &Vec<String>, pos: Position| {
+            xi.iter()
+                .filter(|t| self.players.get(*t).map(|p| p.position) == Some(pos))
+                .count()
+        };
+        for (pos, need) in FORMATION {
+            let mut missing = need.saturating_sub(has(&xi, pos));
+            bench.retain(|p| {
+                if missing > 0 && p.position == pos && xi.len() < ELEVEN {
+                    xi.push(p.token_id.clone());
+                    missing -= 1;
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        for p in bench {
+            if xi.len() >= ELEVEN {
+                break;
+            }
+            xi.push(p.token_id.clone());
+        }
+        xi
+    }
+
     /// Signup grant, once per account.
     fn welcome(&mut self, account_id: &AccountId) {
         if self.welcome.contains_key(account_id) {

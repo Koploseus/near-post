@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use near_contract_standards::non_fungible_token::core::{
     NonFungibleTokenCore, NonFungibleTokenResolver,
 };
+use near_contract_standards::non_fungible_token::enumeration::NonFungibleTokenEnumeration;
 use near_contract_standards::non_fungible_token::events::NftMint;
 use near_contract_standards::non_fungible_token::metadata::{
     NFT_METADATA_SPEC, NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata,
@@ -17,7 +18,32 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::{NonFungibleToken, Token, TokenId};
 use near_sdk::json_types::U128;
 use near_sdk::store::LookupMap;
-use near_sdk::{AccountId, BorshStorageKey, PanicOnDefault, PromiseOrValue, env, near, require};
+use near_sdk::{
+    AccountId, BorshStorageKey, Gas, PanicOnDefault, PromiseOrValue, env, ext_contract, near,
+    require,
+};
+
+#[ext_contract(ext_league)]
+pub trait League {
+    fn on_player_transferred(
+        &mut self,
+        token_id: String,
+        old_owner: AccountId,
+        new_owner: AccountId,
+    );
+}
+
+const NOTIFY_GAS: Gas = Gas::from_tgas(10);
+
+/// One player to mint, for `nft_mint_batch`.
+#[near(serializers = [json])]
+#[derive(Clone, Debug)]
+pub struct MintArgs {
+    pub token_id: TokenId,
+    pub owner_id: AccountId,
+    pub trained_by: AccountId,
+    pub metadata: TokenMetadata,
+}
 
 /// Basis points out of 10_000.
 pub const TRAINER_BPS: u128 = 1_000;
@@ -90,10 +116,38 @@ impl Players {
         trained_by: AccountId,
         metadata: TokenMetadata,
     ) -> Token {
+        self.assert_league();
+        self.mint_one(token_id, owner_id, trained_by, metadata)
+    }
+
+    /// Creates several players at once (a new club's academy). League only.
+    pub fn nft_mint_batch(&mut self, mints: Vec<MintArgs>) {
+        self.assert_league();
+        for m in mints {
+            self.mint_one(m.token_id, m.owner_id, m.trained_by, m.metadata);
+        }
+    }
+
+    pub fn career(&self, token_id: TokenId) -> Option<Career> {
+        self.careers.get(&token_id).cloned()
+    }
+}
+
+impl Players {
+    fn assert_league(&self) {
         require!(
             env::predecessor_account_id() == self.league_id,
             "only the league creates players"
         );
+    }
+
+    fn mint_one(
+        &mut self,
+        token_id: TokenId,
+        owner_id: AccountId,
+        trained_by: AccountId,
+        metadata: TokenMetadata,
+    ) -> Token {
         let token =
             self.tokens
                 .internal_mint_with_refund(token_id.clone(), owner_id, Some(metadata), None);
@@ -113,10 +167,23 @@ impl Players {
         token
     }
 
-    pub fn career(&self, token_id: TokenId) -> Option<Career> {
-        self.careers.get(&token_id).cloned()
+    /// Records the previous owner as a past club and tells the league, which
+    /// moves the player between squads.
+    fn after_transfer(&mut self, token_id: &TokenId, previous: AccountId, new_owner: AccountId) {
+        self.record_past_club(token_id, previous.clone());
+        self.notify_league(token_id, previous, new_owner);
     }
 
+    fn notify_league(&self, token_id: &TokenId, old_owner: AccountId, new_owner: AccountId) {
+        ext_league::ext(self.league_id.clone())
+            .with_static_gas(NOTIFY_GAS)
+            .on_player_transferred(token_id.clone(), old_owner, new_owner)
+            .detach();
+    }
+}
+
+#[near]
+impl Players {
     /// NEP-199: how `balance` from a sale would be split today.
     pub fn nft_payout(
         &self,
@@ -160,11 +227,13 @@ impl Players {
         let payout = self.nft_payout(token_id.clone(), balance, max_len_payout);
         let previous = self.owner_of(&token_id);
         self.tokens
-            .nft_transfer(receiver_id, token_id.clone(), approval_id, memo);
-        self.record_past_club(&token_id, previous);
+            .nft_transfer(receiver_id.clone(), token_id.clone(), approval_id, memo);
+        self.after_transfer(&token_id, previous, receiver_id);
         payout
     }
+}
 
+impl Players {
     fn owner_of(&self, token_id: &TokenId) -> AccountId {
         self.tokens
             .owner_by_id
@@ -219,8 +288,8 @@ impl NonFungibleTokenCore for Players {
     ) {
         let previous = self.owner_of(&token_id);
         self.tokens
-            .nft_transfer(receiver_id, token_id.clone(), approval_id, memo);
-        self.record_past_club(&token_id, previous);
+            .nft_transfer(receiver_id.clone(), token_id.clone(), approval_id, memo);
+        self.after_transfer(&token_id, previous, receiver_id);
     }
 
     #[payable]
@@ -233,7 +302,7 @@ impl NonFungibleTokenCore for Players {
         msg: String,
     ) -> PromiseOrValue<bool> {
         let previous = self.owner_of(&token_id);
-        self.record_past_club(&token_id, previous);
+        self.after_transfer(&token_id, previous, receiver_id.clone());
         self.tokens
             .nft_transfer_call(receiver_id, token_id, approval_id, memo, msg)
     }
@@ -255,10 +324,13 @@ impl NonFungibleTokenResolver for Players {
     ) -> bool {
         let kept = self.tokens.nft_resolve_transfer(
             previous_owner_id.clone(),
-            receiver_id,
+            receiver_id.clone(),
             token_id.clone(),
             approved_account_ids,
         );
+        if !kept {
+            self.notify_league(&token_id, receiver_id, previous_owner_id.clone());
+        }
         // The receiver gave it back: the previous owner is the owner again,
         // so he is not a past club.
         if !kept
@@ -268,6 +340,31 @@ impl NonFungibleTokenResolver for Players {
             career.past_clubs.pop();
         }
         kept
+    }
+}
+
+#[near]
+impl NonFungibleTokenEnumeration for Players {
+    fn nft_total_supply(&self) -> U128 {
+        self.tokens.nft_total_supply()
+    }
+
+    fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token> {
+        self.tokens.nft_tokens(from_index, limit)
+    }
+
+    fn nft_supply_for_owner(&self, account_id: AccountId) -> U128 {
+        self.tokens.nft_supply_for_owner(account_id)
+    }
+
+    fn nft_tokens_for_owner(
+        &self,
+        account_id: AccountId,
+        from_index: Option<U128>,
+        limit: Option<u64>,
+    ) -> Vec<Token> {
+        self.tokens
+            .nft_tokens_for_owner(account_id, from_index, limit)
     }
 }
 
@@ -403,5 +500,33 @@ mod tests {
         as_caller("rive-nord.testnet");
         p.nft_transfer(acc("cite-phare.testnet"), "duval".into(), None, None);
         p.nft_payout("duval".into(), U128(1_000), Some(1));
+    }
+
+    #[test]
+    fn the_league_mints_a_batch() {
+        let mut p = setup();
+        let mints = (0..11)
+            .map(|i| MintArgs {
+                token_id: format!("p{i}"),
+                owner_id: acc("club.testnet"),
+                trained_by: acc("club.testnet"),
+                metadata: meta(&format!("Player {i}")),
+            })
+            .collect();
+        p.nft_mint_batch(mints);
+        assert_eq!(p.nft_supply_for_owner(acc("club.testnet")), U128(11));
+        assert_eq!(p.nft_total_supply(), U128(12));
+        assert_eq!(
+            p.career("p3".into()).unwrap().trained_by,
+            acc("club.testnet")
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "only the league creates players")]
+    fn nobody_else_mints_a_batch() {
+        let mut p = setup();
+        as_caller("attacker.testnet");
+        p.nft_mint_batch(vec![]);
     }
 }
