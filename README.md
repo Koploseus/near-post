@@ -65,6 +65,14 @@ docker run --rm --user 0 -v "$PWD":/__w/near-post/near-post -w /__w/near-post/ne
   bash -c 'rustup component add rustfmt clippy && bash build.sh && cargo test --workspace --lib'
 ```
 
+Sandbox tests deploy the four checked-in wasm together on a local nearcore
+2.14.0 (`NEAR_SANDBOX_BIN_PATH` points at the binary): a full match day with
+fans, claims and the cap curve, and a 64-club match day for gas.
+
+```bash
+cd contracts && cargo test -p tests -- --test-threads=1 --nocapture
+```
+
 `build.sh` prints the sha256 of each wasm. They must equal the files in
 `contracts/res/`, which is what the CI checks on every pull request.
 
@@ -126,8 +134,9 @@ because a contract cannot check an email or pay gas for a player.
   G so that penalties can burn it.
 - Personal rewards are credits: the account calls `claim` to mint them, and
   like every mint they are scaled under the 10B cap at that moment.
-- At most 64 clubs, so a match day fits in one transaction. Gas for a full
-  64-club match day is not measured yet (next: sandbox tests).
+- At most 64 clubs, so a match day fits in one transaction. Measured in the
+  sandbox: a 64-club match day burns 51 Tgas in the league call (67 Tgas with
+  the mint, burn and callback), well under the 300 Tgas limit.
 - No seasons yet: no promotion, no relegation burn.
 
 - Match randomness comes from NEAR's block random seed. A block producer

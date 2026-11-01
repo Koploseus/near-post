@@ -13,7 +13,7 @@ jobs:
     # The pinned image is what makes the checked-in wasm reproducible.
     container:
       image: sourcescan/cargo-near:0.22.0-rust-1.99.1@sha256:c9655eaf7436b90c87ea8b25739f91063032c5c30ba24cfeafe72c142943b5bb
-      options: --user 0
+      options: --user 0 --ulimit nofile=65535:65535
     defaults:
       run:
         shell: bash
@@ -21,12 +21,15 @@ jobs:
     env:
       CARGO_BUILD_JOBS: '2'
       RUSTUP_TOOLCHAIN: 1.99.1
+      NEAR_SANDBOX_BIN_PATH: /tmp/nearcore-2.14.0/Linux-x86_64/near-sandbox
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Toolchain
         run: |
+          apt-get update
+          apt-get install -y pkg-config libssl-dev curl
           rustup component add rustfmt clippy --toolchain 1.99.1
           cargo near --version
           rustc --version
@@ -41,6 +44,14 @@ jobs:
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
           cargo test --workspace --lib
+      - name: Sandbox (nearcore 2.14.0, checksum pinned)
+        run: |
+          mkdir -p /tmp/nearcore-2.14.0
+          curl --fail --location --silent --show-error https://s3-us-west-1.amazonaws.com/build.nearprotocol.com/nearcore/Linux-x86_64/2.14.0/near-sandbox.tar.gz -o /tmp/near-sandbox.tar.gz
+          echo 'a0ba004218b218bd74351795e7ce2eda4a2b6af5cd3e252bd5e8bfe3c8f2e691  /tmp/near-sandbox.tar.gz' | sha256sum --check
+          tar --no-same-owner -xzf /tmp/near-sandbox.tar.gz -C /tmp/nearcore-2.14.0
+          ulimit -n 65535
+          cargo test -p tests -- --test-threads=1 --nocapture
 
   typescript:
     runs-on: ubuntu-24.04
