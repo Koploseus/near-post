@@ -8,14 +8,15 @@
 use near_sdk::json_types::U128;
 use near_sdk::store::{LookupMap, LookupSet};
 use near_sdk::{
-    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, env, ext_contract, near,
-    require,
+    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, env, ext_contract, near, require,
 };
 
 /// 1 G in the token's smallest unit (goalars has 6 decimals).
 pub const ONE_G: u128 = 1_000_000;
 
 /// The economy, in G and basis points (out of 10_000). Fixed forever.
+/// Mints are nominal: the goalars contract scales each one by the room left
+/// under the 10B cap.
 #[near(serializers = [json])]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rules {
@@ -29,28 +30,38 @@ pub struct Rules {
     pub full_house_mint_per_fan: U128,
     pub empty_stand_burn_bps: u32,
     pub relegation_burn_bps: u32,
-    pub starter_grant: U128,
+    /// Paid once per account, on its first club or follow.
+    pub signup_grant: U128,
+    /// Paid on each of an account's first `welcome_visits` stadium check-ins.
+    pub welcome_bonus: U128,
+    pub welcome_visits: u8,
     pub training_cost: U128,
     pub sale_tax_bps: u32,
+    /// Hard cap, enforced by the goalars contract: every mint is scaled by
+    /// (cap - supply) / cap.
+    pub max_supply: U128,
     pub trainer_bps: u32,
     pub past_club_bps: u32,
 }
 
 pub fn the_rules() -> Rules {
     Rules {
-        goal_mint: U128(60 * ONE_G),
-        goal_scorer_share: U128(42 * ONE_G),
-        goal_club_share: U128(18 * ONE_G),
+        goal_mint: U128(6_000_000 * ONE_G),
+        goal_scorer_share: U128(4_200_000 * ONE_G),
+        goal_club_share: U128(1_800_000 * ONE_G),
         late_goal_multiplier: 2,
-        own_goal_burn: U128(60 * ONE_G),
+        own_goal_burn: U128(6_000_000 * ONE_G),
         derby_multiplier: 2,
         stadium_target_bps: 6_000,
-        full_house_mint_per_fan: U128(ONE_G),
+        full_house_mint_per_fan: U128(100_000 * ONE_G),
         empty_stand_burn_bps: 200,
         relegation_burn_bps: 1_000,
-        starter_grant: U128(50 * ONE_G),
-        training_cost: U128(4 * ONE_G),
+        signup_grant: U128(1_000_000 * ONE_G),
+        welcome_bonus: U128(1_000_000 * ONE_G),
+        welcome_visits: 4,
+        training_cost: U128(400_000 * ONE_G),
         sale_tax_bps: 300,
+        max_supply: U128(10_000_000_000 * ONE_G),
         trainer_bps: 1_000,
         past_club_bps: 200,
     }
@@ -58,7 +69,7 @@ pub fn the_rules() -> Rules {
 
 #[ext_contract(ext_goalars)]
 pub trait Goalars {
-    fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>);
+    fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>) -> U128;
 }
 
 #[near]
@@ -68,6 +79,7 @@ enum StorageKey {
     FanOf,
     Present,
     Attendance,
+    Welcome,
 }
 
 #[near(serializers = [json, borsh])]
@@ -103,6 +115,8 @@ pub struct League {
     fan_of: LookupMap<AccountId, AccountId>,
     present: LookupSet<(AccountId, u32, AccountId)>,
     attendance: LookupMap<(AccountId, u32), u32>,
+    /// Accounts that got the signup grant, with how many welcome bonuses they got.
+    welcome: LookupMap<AccountId, u8>,
 }
 
 const MINT_GAS: Gas = Gas::from_tgas(10);
@@ -121,6 +135,7 @@ impl League {
             fan_of: LookupMap::new(StorageKey::FanOf),
             present: LookupSet::new(StorageKey::Present),
             attendance: LookupMap::new(StorageKey::Attendance),
+            welcome: LookupMap::new(StorageKey::Welcome),
         }
     }
 
@@ -140,8 +155,8 @@ impl League {
         self.match_day
     }
 
-    /// Creates the caller's club in Division 3 and pays the starter grant.
-    pub fn create_club(&mut self, name: String) -> Promise {
+    /// Creates the caller's club in Division 3. A new account gets the signup grant.
+    pub fn create_club(&mut self, name: String) {
         let manager = env::predecessor_account_id();
         let name = name.trim().to_string();
         require!(
@@ -162,14 +177,12 @@ impl League {
                 full_house_streak: 0,
             },
         );
-        ext_goalars::ext(self.goalars_id.clone())
-            .with_static_gas(MINT_GAS)
-            .with_attached_deposit(NearToken::from_yoctonear(0))
-            .mint(
-                manager,
-                the_rules().starter_grant,
-                Some("starter grant".into()),
-            )
+        self.welcome(&manager);
+    }
+
+    /// How many welcome bonuses an account has received, or None before its signup grant.
+    pub fn welcome_status(&self, account_id: AccountId) -> Option<u8> {
+        self.welcome.get(&account_id).copied()
     }
 
     pub fn get_club(&self, club_id: AccountId) -> Option<Club> {
@@ -180,6 +193,7 @@ impl League {
     pub fn follow(&mut self, club_id: AccountId) {
         require!(self.clubs.contains_key(&club_id), "no such club");
         let fan = env::predecessor_account_id();
+        self.welcome(&fan);
         if let Some(previous) = self.fan_of.get(&fan).cloned() {
             if previous == club_id {
                 return;
@@ -194,7 +208,8 @@ impl League {
         }
     }
 
-    /// The caller takes their seat for their club's current match day. Free, once per day.
+    /// The caller takes their seat for their club's current match day. Free, once
+    /// per day. The first `welcome_visits` check-ins of an account each pay the welcome bonus.
     pub fn check_in(&mut self) -> Stand {
         let fan = env::predecessor_account_id();
         let club_id = self
@@ -204,10 +219,17 @@ impl League {
             .unwrap_or_else(|| env::panic_str("follow a club first"));
         let day = self.match_day;
         require!(
-            self.present.insert((club_id.clone(), day, fan)),
+            self.present.insert((club_id.clone(), day, fan.clone())),
             "already in the stand"
         );
         *self.attendance.entry((club_id.clone(), day)).or_insert(0) += 1;
+        let rules = the_rules();
+        if let Some(paid) = self.welcome.get_mut(&fan)
+            && *paid < rules.welcome_visits
+        {
+            *paid += 1;
+            self.mint(fan, rules.welcome_bonus, "welcome bonus");
+        }
         self.stand(club_id)
     }
 
@@ -229,6 +251,27 @@ impl League {
             target,
             full_house: club.fans > 0 && present >= target,
         }
+    }
+}
+
+impl League {
+    /// Signup grant, once per account.
+    fn welcome(&mut self, account_id: &AccountId) {
+        if self.welcome.contains_key(account_id) {
+            return;
+        }
+        self.welcome.insert(account_id.clone(), 0);
+        self.mint(account_id.clone(), the_rules().signup_grant, "signup grant");
+    }
+
+    /// Schedules a mint on the goalars contract. The amount is nominal: goalars
+    /// scales it under the 10B cap.
+    fn mint(&self, account_id: AccountId, amount: U128, memo: &str) {
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(NearToken::from_yoctonear(0))
+            .mint(account_id, amount, Some(memo.into()))
+            .detach();
     }
 }
 
@@ -269,7 +312,11 @@ mod tests {
     fn rules_match_the_design() {
         let r = league().rules();
         assert_eq!(r.goal_scorer_share.0 + r.goal_club_share.0, r.goal_mint.0);
-        assert_eq!(r.starter_grant, U128(50 * ONE_G));
+        assert_eq!(
+            r.signup_grant.0 + r.welcome_visits as u128 * r.welcome_bonus.0,
+            5_000_000 * ONE_G
+        );
+        assert_eq!(r.max_supply, U128(10_000_000_000 * ONE_G));
         assert_eq!(r.stadium_target_bps, 6_000);
     }
 
@@ -284,7 +331,7 @@ mod tests {
     fn a_manager_has_one_club() {
         let mut l = league();
         as_caller("koplo.testnet");
-        let _ = l.create_club("Olympique Rive Nord".into());
+        l.create_club("Olympique Rive Nord".into());
         assert_eq!(l.get_club(acc("koplo.testnet")).unwrap().division, 3);
     }
 
@@ -293,15 +340,15 @@ mod tests {
     fn no_second_club() {
         let mut l = league();
         as_caller("koplo.testnet");
-        let _ = l.create_club("A".into());
-        let _ = l.create_club("B".into());
+        l.create_club("A".into());
+        l.create_club("B".into());
     }
 
     #[test]
     fn fans_fill_the_stand_to_a_full_house() {
         let mut l = league();
         as_caller("koplo.testnet");
-        let _ = l.create_club("Rive Nord".into());
+        l.create_club("Rive Nord".into());
         for f in ["a", "b", "c", "d", "e"] {
             as_caller(&format!("{f}.testnet"));
             l.follow(acc("koplo.testnet"));
@@ -321,7 +368,7 @@ mod tests {
     fn one_seat_per_fan_per_day() {
         let mut l = league();
         as_caller("koplo.testnet");
-        let _ = l.create_club("Rive Nord".into());
+        l.create_club("Rive Nord".into());
         as_caller("a.testnet");
         l.follow(acc("koplo.testnet"));
         l.check_in();
@@ -332,13 +379,43 @@ mod tests {
     fn switching_club_moves_the_fan() {
         let mut l = league();
         as_caller("x.testnet");
-        let _ = l.create_club("X".into());
+        l.create_club("X".into());
         as_caller("y.testnet");
-        let _ = l.create_club("Y".into());
+        l.create_club("Y".into());
         as_caller("fan.testnet");
         l.follow(acc("x.testnet"));
         l.follow(acc("y.testnet"));
         assert_eq!(l.get_club(acc("x.testnet")).unwrap().fans, 0);
         assert_eq!(l.get_club(acc("y.testnet")).unwrap().fans, 1);
+    }
+
+    #[test]
+    fn welcome_bonus_is_paid_on_the_first_four_visits_only() {
+        let mut l = league();
+        as_caller("koplo.testnet");
+        l.create_club("Rive Nord".into());
+        as_caller("fan.testnet");
+        assert_eq!(l.welcome_status(acc("fan.testnet")), None);
+        l.follow(acc("koplo.testnet"));
+        assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
+        for day in 1..=6 {
+            l.match_day = day;
+            l.check_in();
+        }
+        assert_eq!(l.welcome_status(acc("fan.testnet")), Some(4));
+    }
+
+    #[test]
+    fn signup_grant_once_even_after_switching_clubs() {
+        let mut l = league();
+        as_caller("x.testnet");
+        l.create_club("X".into());
+        as_caller("y.testnet");
+        l.create_club("Y".into());
+        as_caller("fan.testnet");
+        l.follow(acc("x.testnet"));
+        l.follow(acc("y.testnet"));
+        l.follow(acc("x.testnet"));
+        assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
     }
 }

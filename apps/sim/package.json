@@ -1,0 +1,16 @@
+{
+  "name": "@near-post/sim",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sim": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
