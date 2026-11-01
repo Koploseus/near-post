@@ -1,0 +1,31 @@
+{
+  "network": "testnet",
+  "version": "v1",
+  "deployed_at": "2026-11-01T21:43:45.173Z",
+  "contracts": {
+    "league": {
+      "account_id": "league-v1.near-post.testnet",
+      "wasm_sha256": "652cca45cfa1fa9ff8c1c97c0720bba10ceb4e04dbe2a826db5b6c44b9f62daa",
+      "deploy_tx": "C4qPooTgUBnRfzJ8HPF24CWs3Nb9CwFQjssngzgkrNzJ",
+      "init_tx": "6j7Y1KoXxt1APUu6oYEktyt21RsZjj72JVTsnFs1ABX6"
+    },
+    "goalars": {
+      "account_id": "goalars-v1.near-post.testnet",
+      "wasm_sha256": "feca54f200139603fa874b675808d616fe283562d3ecfa2f54ede46b6ac78596",
+      "deploy_tx": "3gNKQnkGyAnqfPrKssmWM2GDp1oKJdF8s87qwa5sqzH7",
+      "init_tx": "HBvvLzn7jr34i8nKjmxSphwfWCWdMywuGDgh1Ub3MdQA"
+    },
+    "players": {
+      "account_id": "players-v1.near-post.testnet",
+      "wasm_sha256": "1d281348d894e3a78cc4e4627199a935005a3c6af71ac6ffe84c52349eb3cb4c",
+      "deploy_tx": "B865BX2MouATfZzjigc5JqUciZrUF3tTHdQY8AcQtHRY",
+      "init_tx": "9bnVpNiZJNch5r9oos1T33BhTbcaL4MfnqVLfMZKcfda"
+    },
+    "items": {
+      "account_id": "items-v1.near-post.testnet",
+      "wasm_sha256": "418c1b2ace81c011ddc27658cd5153d56335b6f105e37b234c807a99c73ba603",
+      "deploy_tx": "EXQbgr2LoyU8ryqGgVJbvSYfieGmxRSuMYMiEwf1rNpV",
+      "init_tx": "k7SXL7z7iqiQRWNkNE1SpaGrEcVZi1pkQacVy5fGtKN"
+    }
+  }
+}
