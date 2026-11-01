@@ -4,6 +4,10 @@
 //! create tokens: the league account fixed at init. There is no owner and no
 //! upgrade method, so nobody can mint outside the league's rules.
 //! Anyone can burn their own tokens; nobody can burn someone else's.
+//!
+//! Supply is capped at 10 billion G, and the cap is a curve, not a wall: every
+//! mint is scaled by the room left, `amount × (cap − supply) / cap`. At 5B a goal
+//! mints half as much; burns free room for new mints.
 
 use near_contract_standards::fungible_token::events::{FtBurn, FtMint};
 use near_contract_standards::fungible_token::metadata::{
@@ -22,6 +26,15 @@ use near_sdk::{
 
 /// 1 G in the token's smallest unit (6 decimals).
 pub const ONE_G: u128 = 1_000_000;
+/// Hard cap: 10 billion G.
+pub const MAX_SUPPLY: u128 = 10_000_000_000 * ONE_G;
+
+/// What a mint of `amount` really creates when `supply` already exists.
+pub fn scaled_mint(amount: u128, supply: u128) -> u128 {
+    let room = MAX_SUPPLY.saturating_sub(supply);
+    // amount and room are both <= 1e16, so the product (<= 1e32) fits in u128.
+    amount.min(MAX_SUPPLY) * room / MAX_SUPPLY
+}
 
 #[near]
 #[derive(BorshStorageKey)]
@@ -51,24 +64,36 @@ impl Goalars {
         self.league_id.clone()
     }
 
-    /// Creates `amount` for `account_id`. Only the league calls this: goals,
-    /// full houses and starter grants. Storage for a new holder is paid by this contract.
-    pub fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>) {
+    /// Creates up to `amount` for `account_id`, scaled by the room left under
+    /// the cap (see `scaled_mint`), and returns what was really minted. Only the
+    /// league calls this: goals, full houses and starter grants. Storage for a
+    /// new holder is paid by this contract.
+    pub fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>) -> U128 {
         require!(
             env::predecessor_account_id() == self.league_id,
             "only the league mints goalars"
         );
         require!(amount.0 > 0, "amount must be positive");
+        let minted = scaled_mint(amount.0, self.token.total_supply);
+        if minted == 0 {
+            return U128(0);
+        }
         if !self.token.accounts.contains_key(&account_id) {
             self.token.internal_register_account(&account_id);
         }
-        self.token.internal_deposit(&account_id, amount.0);
+        self.token.internal_deposit(&account_id, minted);
         FtMint {
             owner_id: &account_id,
-            amount,
+            amount: U128(minted),
             memo: memo.as_deref(),
         }
         .emit();
+        U128(minted)
+    }
+
+    /// The cap, for anyone to read.
+    pub fn max_supply(&self) -> U128 {
+        U128(MAX_SUPPLY)
     }
 
     /// Destroys `amount` of the caller's own goalars. The league uses it to burn
@@ -207,6 +232,41 @@ mod tests {
         g.mint(acc("fan.testnet"), U128(60 * ONE_G), Some("goal".into()));
         assert_eq!(g.ft_balance_of(acc("fan.testnet")), U128(60 * ONE_G));
         assert_eq!(g.ft_total_supply(), U128(60 * ONE_G));
+    }
+
+    #[test]
+    fn mints_shrink_as_supply_nears_the_cap() {
+        assert_eq!(scaled_mint(6_000_000 * ONE_G, 0), 6_000_000 * ONE_G);
+        assert_eq!(
+            scaled_mint(6_000_000 * ONE_G, MAX_SUPPLY / 2),
+            3_000_000 * ONE_G
+        );
+        assert_eq!(
+            scaled_mint(6_000_000 * ONE_G, MAX_SUPPLY / 10 * 9),
+            600_000 * ONE_G
+        );
+        assert_eq!(scaled_mint(6_000_000 * ONE_G, MAX_SUPPLY), 0);
+    }
+
+    #[test]
+    fn supply_never_passes_the_cap_and_burns_free_room() {
+        as_caller("league.testnet");
+        let mut g = Goalars::new(acc("league.testnet"));
+        for _ in 0..20 {
+            g.mint(acc("whale.testnet"), U128(MAX_SUPPLY / 4), None);
+        }
+        let supply = g.ft_total_supply().0;
+        assert!(supply < MAX_SUPPLY);
+        assert!(supply > MAX_SUPPLY / 100 * 99);
+        // Asking for more than the cap still never passes it.
+        g.mint(acc("whale.testnet"), U128(u128::MAX), None);
+        assert!(g.ft_total_supply().0 <= MAX_SUPPLY);
+        let supply = g.ft_total_supply().0;
+        as_caller("whale.testnet");
+        g.burn(U128(supply / 2), None);
+        as_caller("league.testnet");
+        let room_back = g.mint(acc("fan.testnet"), U128(1_000 * ONE_G), None).0;
+        assert!(room_back > 400 * ONE_G && room_back < 600 * ONE_G);
     }
 
     #[test]

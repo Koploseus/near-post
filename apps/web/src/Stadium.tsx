@@ -33,7 +33,7 @@ export function Stadium() {
           <h1>{done ? "TIFO COMPLETE!" : empty ? "THE TIFO HAS HOLES" : `${need} FANS TO GO`}</h1>
           <p className="sub">
             {done
-              ? "Full house. Every fan in the stand gets 1 G, ×2 for the derby."
+              ? "Full house. Every fan in the stand gets 100k G, ×2 for the derby."
               : empty
                 ? "At kick-off the gaps stay. 2% of the club treasury burns and the streak resets."
                 : "Fill the stand to 60% before kick-off and the tifo unfurls."}
@@ -79,7 +79,7 @@ export function Stadium() {
           </div>
           <span className="sub" style={{ fontSize: 15 }}>
             Each fan who checks in paints part of the tifo. The white line is 60%: the tifo is complete and every fan in the
-            stand gets 1 G.
+            stand gets 100k G.
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
             <button type="button" className="cta" style={{ background: seated ? "#9be3b8" : "var(--yellow)" }} onClick={() => setSeated(true)}>
@@ -95,7 +95,7 @@ export function Stadium() {
           <span className="k">THE RULES</span>
           <dl>
             <dt>Full house (60%)</dt>
-            <dd style={{ color: "#1e7a47" }}>+1 G per fan</dd>
+            <dd style={{ color: "#1e7a47" }}>+100k G per fan</dd>
             <dt>Derby</dt>
             <dd>×2</dd>
             <dt>Tifo not complete</dt>

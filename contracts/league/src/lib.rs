@@ -16,6 +16,8 @@ use near_sdk::{
 pub const ONE_G: u128 = 1_000_000;
 
 /// The economy, in G and basis points (out of 10_000). Fixed forever.
+/// Mints are nominal: the goalars contract scales each one by the room left
+/// under the 10B cap.
 #[near(serializers = [json])]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rules {
@@ -32,25 +34,29 @@ pub struct Rules {
     pub starter_grant: U128,
     pub training_cost: U128,
     pub sale_tax_bps: u32,
+    /// Hard cap, enforced by the goalars contract: every mint is scaled by
+    /// (cap - supply) / cap.
+    pub max_supply: U128,
     pub trainer_bps: u32,
     pub past_club_bps: u32,
 }
 
 pub fn the_rules() -> Rules {
     Rules {
-        goal_mint: U128(60 * ONE_G),
-        goal_scorer_share: U128(42 * ONE_G),
-        goal_club_share: U128(18 * ONE_G),
+        goal_mint: U128(6_000_000 * ONE_G),
+        goal_scorer_share: U128(4_200_000 * ONE_G),
+        goal_club_share: U128(1_800_000 * ONE_G),
         late_goal_multiplier: 2,
-        own_goal_burn: U128(60 * ONE_G),
+        own_goal_burn: U128(6_000_000 * ONE_G),
         derby_multiplier: 2,
         stadium_target_bps: 6_000,
-        full_house_mint_per_fan: U128(ONE_G),
+        full_house_mint_per_fan: U128(100_000 * ONE_G),
         empty_stand_burn_bps: 200,
         relegation_burn_bps: 1_000,
-        starter_grant: U128(50 * ONE_G),
-        training_cost: U128(4 * ONE_G),
+        starter_grant: U128(5_000_000 * ONE_G),
+        training_cost: U128(400_000 * ONE_G),
         sale_tax_bps: 300,
+        max_supply: U128(10_000_000_000 * ONE_G),
         trainer_bps: 1_000,
         past_club_bps: 200,
     }
@@ -58,7 +64,7 @@ pub fn the_rules() -> Rules {
 
 #[ext_contract(ext_goalars)]
 pub trait Goalars {
-    fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>);
+    fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>) -> U128;
 }
 
 #[near]
@@ -269,7 +275,8 @@ mod tests {
     fn rules_match_the_design() {
         let r = league().rules();
         assert_eq!(r.goal_scorer_share.0 + r.goal_club_share.0, r.goal_mint.0);
-        assert_eq!(r.starter_grant, U128(50 * ONE_G));
+        assert_eq!(r.starter_grant, U128(5_000_000 * ONE_G));
+        assert_eq!(r.max_supply, U128(10_000_000_000 * ONE_G));
         assert_eq!(r.stadium_target_bps, 6_000);
     }
 
