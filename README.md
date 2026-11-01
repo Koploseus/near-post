@@ -10,9 +10,10 @@ empty one burns the club's treasury.
 Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
 > **Status, 1 November 2026.** The four contracts compile reproducibly and are
-> unit-tested, match days included; the relay reads the league from chain; the
-> web app shows the stadium screen on an example stand. Email login, gas
-> relaying and the transfer market are not built yet. Nothing is deployed.
+> unit-tested and sandbox-tested, match days included, and **deployed on
+> testnet** (v1, below). The relay reads the league from chain; the web app
+> shows the stadium screen on an example stand. Email login, gas relaying and
+> the transfer market are not built yet.
 
 ## The game in one minute
 
@@ -38,10 +39,39 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   the room left: `minted = amount × (10B − supply) / 10B`. At 5B a goal mints
   3M instead of 6M; at 9B, 600k. Burns free room for new mints. The goalars
   contract enforces it, so no bug in the league can pass the cap.
-- **No admin key.** Nobody, including us, can mint G or change a rule after
-  launch. No presale, no team allocation.
+- **No admin method.** No contract has an owner, an admin function or an
+  upgrade method: nobody, including us, can mint G or change a rule through
+  them. No presale, no team allocation. (On testnet the contract accounts still
+  hold their deploy keys while we iterate; see Limits.)
 
-## Try it (today)
+## Live on testnet (v1)
+
+| Contract | Account |
+| --- | --- |
+| League | [`league-v1.near-post.testnet`](https://testnet.nearblocks.io/address/league-v1.near-post.testnet) |
+| Goalars | [`goalars-v1.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v1.near-post.testnet) |
+| Players | [`players-v1.near-post.testnet`](https://testnet.nearblocks.io/address/players-v1.near-post.testnet) |
+| Items | [`items-v1.near-post.testnet`](https://testnet.nearblocks.io/address/items-v1.near-post.testnet) |
+
+Each account's code hash is the base58 sha256 of the matching file in
+`contracts/res/` (see `deployments/testnet.json`). A match day is due every
+10 minutes and anyone can play it.
+
+First match day, 1 November 2026: the derby Olympique Rive Nord 2-0 FC Port-Lune
+([play_match_day](https://testnet.nearblocks.io/txns/Ez3szi66K2zpa2sTcvzQd1iGdATqSraaZgZtf3TYgcv3)).
+Rive Nord's one fan was in the stand, so the tifo was complete and, derby
+oblige, his claim minted 200k G scaled by the cap curve
+([claim](https://testnet.nearblocks.io/txns/4LTb68BMmTCKSKxc5jSyRGDUspmUQU1V5Dc5eyeybLoH)).
+The two goals put 3.6M G in Rive Nord's treasury, which the league holds.
+
+Read it yourself:
+
+```bash
+near contract call-function as-read-only league-v1.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v1.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+```
+
+## Try it locally
 
 Requirements: Node 26.13 or later, pnpm 12.16, Docker (for contracts).
 
@@ -112,6 +142,7 @@ mint. That is the cap working, and it is intended.
 | `apps/relay` | TypeScript API. Today: reads rules and stands from chain. Next: email login, session keys, gas relaying, match-day trigger. | — |
 | `apps/web` | The game in the browser (React). Sticker-album and tifo look. | — |
 | `apps/sim` | Supply simulation with the contract's rules. | — |
+| `scripts/deploy-testnet.mjs` | Deploys the checked-in wasm and writes `deployments/testnet.json`. Keys stay outside the repo. | — |
 
 The rules are readable on chain with the league's `rules()` view.
 
@@ -128,6 +159,10 @@ because a contract cannot check an email or pay gas for a player.
 - If it goes down, every NFT and every G stays on chain.
 
 ## Limits
+
+- **Testnet contract accounts still hold their deploy keys** while the game is
+  being built, so we can redeploy. They will be deleted before submission;
+  after that, a new version means new accounts (v2), not an upgrade.
 
 - Until squads exist, a goal's scorer share (4.2M) is credited to the club's
   manager. Club shares go to the club treasury, which the league holds as real
