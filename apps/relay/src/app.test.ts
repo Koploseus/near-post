@@ -39,6 +39,11 @@ class FakeChain implements Chain {
     a.balance += yocto;
     return "tx-transfer";
   }
+  relayed: unknown[] = [];
+  async relay(signed: unknown) {
+    this.relayed.push(signed);
+    return { hash: "tx-relayed", value: null, error: null };
+  }
   async call(contractId: string, method: string) {
     if (this.refuse) throw new Error(this.refuse);
     this.calls.push(`call ${contractId}.${method}`);

@@ -46,6 +46,10 @@ const Env = z.object({
    * key is fixed in the league at init). Secret.
    */
   ATTESTER_PRIVATE_KEY: z.string().startsWith("ed25519:").optional(),
+  /** Gas the relay pays per player account and day (meta transactions). */
+  RELAYED_PER_DAY: z.coerce.number().int().min(0).default(300),
+  GOALARS_ID: z.string().min(2).optional(),
+  PLAYERS_ID: z.string().min(2).optional(),
   /** Demo crowd, "club:count,...": fan accounts <club>-f<n>.<parent> sharing CROWD_PRIVATE_KEY. */
   CROWD: z.string().optional(),
   CROWD_PRIVATE_KEY: z.string().startsWith("ed25519:").optional(),

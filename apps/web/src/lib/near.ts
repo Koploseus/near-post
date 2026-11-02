@@ -1,4 +1,4 @@
-import { Account, JsonRpcProvider, KeyPair } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
 import { GOALARS, LEAGUE, PLAYERS, RELAY, RPC } from "./config.js";
 
 export const provider = new JsonRpcProvider({ url: RPC });
@@ -71,6 +71,9 @@ export async function finishSignIn(email: string, code: string): Promise<Session
 
 export const topUp = (accountId: string) => relay(`/v1/accounts/${accountId}/topup`, {});
 
+/** Accounts the relay made for email sign-in: it pays their gas. */
+const PLAYER_ACCOUNT = /^u[0-9a-f]{16}\./;
+
 /** Calls a contract with the player's own key. Returns the tx hash and the decoded return value. */
 export async function call<T = unknown>(
   s: Session,
@@ -80,11 +83,26 @@ export async function call<T = unknown>(
   opts: { tgas?: number; deposit?: bigint } = {},
 ): Promise<{ hash: string; value: T | undefined }> {
   const account = new Account(s.accountId, provider, s.privateKey as `ed25519:${string}`);
+  const gas = BigInt(opts.tgas ?? 100) * 10n ** 12n;
+  if (PLAYER_ACCOUNT.test(s.accountId)) {
+    // Gasless: sign a delegate action (NEP-366); the relay sends it and pays the gas.
+    const { signedDelegate } = await account.createSignedMetaTransaction({
+      receiverId: contractId,
+      actions: [actions.functionCall(methodName, args, gas, opts.deposit ?? 0n)],
+      blockHeightTtl: 120,
+    });
+    const bytes = encodeSignedDelegate(signedDelegate);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    const r = await relay<{ hash: string; value: string | null }>("/v1/relay", { signed_delegate: btoa(bin) });
+    const raw = r.value ? atob(r.value) : "";
+    return { hash: r.hash, value: raw ? (JSON.parse(raw) as T) : undefined };
+  }
   const r = await account.callFunctionRaw({
     contractId,
     methodName,
     args,
-    gas: BigInt(opts.tgas ?? 100) * 10n ** 12n,
+    gas,
     deposit: opts.deposit ?? 0n,
   });
   const status = r.status as { SuccessValue?: string; Failure?: unknown };
