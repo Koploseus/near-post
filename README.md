@@ -20,9 +20,20 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 - **Sign in with email.** No wallet, no seed phrase, no gas prompt. (Not built yet.)
 - **Your club starts in Division 3.** Every new account gets 1M G, then 1M more
   on each of its first 4 stadium visits: 5M for a fan who shows up.
-- **Players are stickers in an album** (NEP-171 NFTs). A new club signs eleven
-  academy players (a 4-4-2, ratings 40 to 60). The manager picks the starting
-  eleven (`set_lineup`); a sold player leaves his old squad automatically.
+- **You are a footballer.** `create_footballer(name, position)` mints your
+  player as an NFT in your name: a free agent. Give that registration to a club
+  (an NFT transfer) and you are in its squad. Report before each match day
+  (`report_for_match`): present, you play at your rating; absent, an academy
+  player takes your place.
+- **Clubs are full from day one.** A new club signs eleven academy players (a
+  4-4-2, ratings 40 to 60), played by the league, so there is always eleven a
+  side however few people play. People replace them as they join.
+- **Teammates elect a captain every week, on chain.** Each person in the squad
+  has one vote (`vote_captain`), changeable until the week ends; the last match
+  day of the week counts it (ties go to the better-rated player) and keeps the
+  result as history. The captain picks the eleven (`set_lineup`); without a
+  captain the club's manager does, and without either the best available
+  4-4-2 plays.
 - **The players decide the score.** Each side gets six chances; each becomes a
   goal with a probability set by its attack against the other side's defence
   (position-weighted ratings, home advantage 10%). A stronger eleven usually
@@ -32,17 +43,23 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   cycle. Anyone can call `play_match_day` when it is due; the score comes from
   the block's random seed. Win 3 points, draw 1.
 - **Goals mint G:** 6M G per goal, 4.2M to the scorer's own wallet and 1.8M to
-  the club. The wallet follows the player when he is sold; whoever owns him
-  claims it (`claim_player`). A goal after the 90th minute counts double; an
-  own goal burns 6M G.
+  the club. A goal after the 90th minute counts double; an own goal burns 6M G.
+- **What a player earns:** his goals; a 200k salary from the club treasury for
+  every match he starts (while the treasury lasts); 5% of every sale of his
+  registration. All of it follows the person, not the club: he collects with
+  `claim_player`. Academy players' wallets go to their club.
+- **Training:** send 400k G to the league with `ft_transfer_call` and
+  `msg {"train": "<token_id>"}`; the G burn and the player gains a point
+  (attack for midfielders and forwards, defence for the others). Once per match
+  day.
 - **Rivals make derbies.** Two clubs that name each other (`set_rival`) play
   derbies, where the stands mint or burn double.
 - **The stadium is a tifo.** Each fan who checks in paints part of it. At 60% of
   the club's fans the tifo is complete and every fan present gets 100k G. If it is
   not complete at kick-off, 2% of the club treasury burns. Derbies double both.
 - **The sell-on clause is in the token.** On every sale: 10% to the club that
-  trained the player, 2% to each of his last 3 clubs, 3% burned, the rest to
-  the seller. Any NEP-199 market pays it.
+  trained the player, 2% to each of his last 3 clubs, 5% to the person who
+  plays him, 3% burned, the rest to the seller. Any NEP-199 market pays it.
 - **10 billion G, ever.** Supply starts at zero and every mint is scaled by
   the room left: `minted = amount × (10B − supply) / 10B`. At 5B a goal mints
   3M instead of 6M; at 9B, 600k. Burns free room for new mints. The goalars
@@ -180,9 +197,10 @@ because a contract cannot check an email or pay gas for a player.
 - Personal rewards are credits: the account calls `claim` to mint them, and
   like every mint they are scaled under the 10B cap at that moment.
 - At most 64 clubs, so a match day fits in one transaction. Measured in the
-  sandbox: a 64-club match day (704 players) burns 126 Tgas in the league call
-  (141 Tgas in total), under the 300 Tgas limit; creating a club and minting
-  its eleven players costs 34 Tgas.
+  sandbox: over a full week of 64 clubs (720 players, 16 of them people), the
+  worst match day, the one that also elects 64 captains, burns 146 Tgas in the
+  league call (163 Tgas in total), under the 300 Tgas limit; creating a club
+  and minting its eleven players costs 34 Tgas.
 - No seasons yet: no promotion, no relegation burn.
 
 - Match randomness comes from NEAR's block random seed. A block producer
@@ -191,9 +209,12 @@ because a contract cannot check an email or pay gas for a player.
   `mt_transfer_call` and approvals are not implemented yet.
 - In `players`, a `nft_transfer_call` that the receiver refuses when the
   player already had 3 past clubs forgets the oldest one.
-- No training yet: ratings only rise with goals.
-- Nothing is deployed yet; the stadium screen runs on example data marked
-  "Preview".
+- No transfer market yet: registrations move by NFT transfer (free) or any
+  NEP-199 market; the sell-on payout is computed but nothing in the game pays
+  it yet.
+- Salaries are paid while the treasury lasts, starter by starter: when it runs
+  dry, the later starters of that match day are not paid.
+- The stadium screen runs on example data marked "Preview".
 
 ## Versions
 

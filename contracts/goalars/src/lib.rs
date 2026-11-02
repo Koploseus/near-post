@@ -52,11 +52,12 @@ pub struct Goalars {
 #[near]
 impl Goalars {
     #[init]
+    /// The league is registered from the start, so it can receive G
+    /// (training fees, payouts) before it ever mints.
     pub fn new(league_id: AccountId) -> Self {
-        Self {
-            token: FungibleToken::new(StorageKey::Token),
-            league_id,
-        }
+        let mut token = FungibleToken::new(StorageKey::Token);
+        token.internal_register_account(&league_id);
+        Self { token, league_id }
     }
 
     /// The only account allowed to mint.
@@ -297,5 +298,13 @@ mod tests {
         g.mint(acc("fan.testnet"), U128(ONE_G), None);
         as_caller("fan.testnet");
         g.burn(U128(2 * ONE_G), None);
+    }
+
+    #[test]
+    fn the_league_can_receive_before_it_mints() {
+        as_caller("deployer.testnet");
+        let g = Goalars::new(acc("league.testnet"));
+        assert!(g.storage_balance_of(acc("league.testnet")).is_some());
+        assert_eq!(g.ft_balance_of(acc("league.testnet")), U128(0));
     }
 }
