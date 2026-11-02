@@ -1,5 +1,6 @@
 import { SKILLS, positionLabel, tier } from "../lib/format.js";
 import type { Player } from "../lib/types.js";
+import { useAgents } from "../lib/agents.js";
 import { HairBack, HairFront, LookDefs, SKIN } from "./Look.js";
 
 /**
@@ -9,6 +10,7 @@ import { HairBack, HairFront, LookDefs, SKIN } from "./Look.js";
 export function Sticker({ p, onClick, selected, badge }: { p: Player; onClick?: () => void; selected?: boolean; badge?: string }) {
   const n = Number(p.token_id.replace(/\D/g, "")) || 0;
   const t = tier(p.overall);
+  const ai = useAgents().get(p.controller ?? "")?.kind === "footballer";
   const body = (
     <>
       <span className="sticker-face">
@@ -28,6 +30,7 @@ export function Sticker({ p, onClick, selected, badge }: { p: Player; onClick?: 
         <span className="rating">{p.overall}</span>
         <span className="pos">{positionLabel[p.position]}</span>
         {badge && <span className="badge">{badge}</span>}
+        {ai && <span className="ai-tag sticker-ai">AI</span>}
       </span>
       <span className="strip">{p.name}</span>
       <span className="card-stats" aria-hidden="true">

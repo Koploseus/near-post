@@ -6,6 +6,7 @@ import { clock, liveDay, scoreOf, visible } from "../lib/live.js";
 import { league } from "../lib/near.js";
 import { ROLE_NAME } from "../lib/pitch.js";
 import type { Club, Lineup, MatchResult, Stand } from "../lib/types.js";
+import { agentFeed, useAgents } from "../lib/agents.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 
 function useNow(ms = 1000) {
@@ -196,6 +197,7 @@ export function Dashboard() {
             </a>
           </section>
         )}
+        <AiDesk day={day} />
       </aside>
     </div>
   );
@@ -214,5 +216,26 @@ function LiveScore({ m, kickoff, day, now, names }: { m: MatchResult; kickoff: n
       <span>{clubName(names.get(m.away) ?? "")}</span>
       <em>{c.label}</em>
     </span>
+  );
+}
+
+/** The last things the AI coaches and footballers said (not at half-time: no spoiler). */
+function AiDesk({ day }: { day: number }) {
+  const roster = useAgents();
+  const { data } = useData(() => agentFeed({ limit: 60 }), [day]);
+  const lines = (data ?? []).filter((e) => e.quote && e.kind !== "setup" && e.half !== 2).slice(0, 4);
+  if (!lines.length) return null;
+  return (
+    <section className="paper panel ai-desk">
+      <span className="k">AI DRESSING ROOM</span>
+      {lines.map((e) => (
+        <p key={`${e.agent}-${e.at}`}>
+          <b>{roster.get(e.agent)?.name ?? ""}</b> <q>{e.quote}</q>
+        </p>
+      ))}
+      <a className="link" href="#/ai">
+        Everything they decided →
+      </a>
+    </section>
   );
 }

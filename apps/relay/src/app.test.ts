@@ -397,3 +397,36 @@ describe("passkey backups", () => {
     expect(vaults.get("u1.near-post.testnet").map((e) => e.created_ms)).toEqual([2, 3, 4, 5, 6]);
   });
 });
+
+describe("agents' journal", () => {
+  it("lists the agents and what they did", async () => {
+    const { Journal } = await import("./agents/journal.js");
+    const { roster } = await import("./agents/roster.js");
+    const journal = new Journal(null);
+    const agents = roster("near-post.testnet");
+    journal.add({
+      at: 1,
+      day: 4,
+      agent: agents[0]!.account,
+      kind: "tactic",
+      half: 2,
+      quote: "Down 0-1: we go forward.",
+      source: "model",
+      refused: [],
+      acts: [{ what: "formation", formation: "4-3-3" }],
+      txs: ["tx1"],
+      errors: [],
+      evidence: null,
+      signature: null,
+    });
+    const app = createApp(config, new FakeChain(), { mailer: mailbox().mailer, agents: { roster: agents, journal } });
+    const list = (await (await app.request("/v1/agents")).json()) as { agents: unknown[] };
+    expect(list.agents).toHaveLength(agents.length);
+    const feed = (await (await app.request("/v1/agents/feed?limit=5")).json()) as { entries: { quote: string }[] };
+    expect(feed.entries[0]!.quote).toBe("Down 0-1: we go forward.");
+    const one = await app.request(`/v1/agents/${agents[0]!.account}`);
+    expect(((await one.json()) as { entries: unknown[] }).entries).toHaveLength(1);
+    expect((await app.request("/v1/agents/u0123456789abcdef.near-post.testnet")).status).toBe(404);
+    expect((await createApp(config, new FakeChain(), { mailer: mailbox().mailer }).request("/v1/agents")).status).toBe(200);
+  });
+});

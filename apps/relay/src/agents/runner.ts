@@ -79,8 +79,8 @@ export interface AgentsDeps {
 
 const ONE_YOCTO = 1n;
 const APPROVAL_DEPOSIT = 10n ** 22n; // 0.01 NEAR, the approval's storage
-const LOW_NEAR = near("0.15");
-const TOP_UP_NEAR = near("0.3");
+const LOW_NEAR = near("0.1");
+const TOP_UP_NEAR = near("0.2");
 const STALE_BID_DAYS = 3;
 
 const whole = (v: string | bigint) => Number(BigInt(v) / ONE_G);
@@ -148,7 +148,7 @@ export class Agents {
       if (this.ready.has(a.account) || this.cantSign.has(a.account)) continue;
       try {
         if (a.kind === "footballer" && (await this.d.chain.balance(a.account)) === null) {
-          await this.d.chain.createAccount(a.account, this.d.publicKeyOf(a), near("0.5"));
+          await this.d.chain.createAccount(a.account, this.d.publicKeyOf(a), near("0.25"));
         }
         if (!(await this.d.chain.hasKey(a.account, this.d.publicKeyOf(a)))) {
           this.cantSign.add(a.account);
