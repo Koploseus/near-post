@@ -9,11 +9,10 @@ empty one burns the club's treasury.
 
 Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
-> **Status, 1 November 2026.** The four contracts compile reproducibly and are
-> unit-tested and sandbox-tested, match days included, and **deployed on
-> testnet** (v1, below). The relay reads the league from chain; the web app
-> shows the stadium screen on an example stand. Email login, gas relaying and
-> the transfer market are not built yet.
+> **Status, 2 November 2026.** The four contracts compile reproducibly, are
+> unit-tested and sandbox-tested, and run on **testnet** (v3, below). The relay
+> signs players in by email and plays match days. The web app plays the whole
+> game on testnet: stands and tifo, match day, locker room, album, market.
 
 ## The game in one minute
 
@@ -134,10 +133,20 @@ pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
-- Open http://localhost:5173 and pick **Kick-off**: the tifo completes and the
-  stand waves. Pick **If fans stay home**: the tifo stays full of holes and the
-  page says 2% of the treasury burns.
-- Click **Take your seat**: your square lights up, bottom row.
+The web app reads the v3 contracts on testnet. Email sign-in goes through the
+relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
+server proxies `/v1` to it. Screens, under `#/`:
+
+- **Stands**: a club's live tifo, painted by the fans who checked in. Take your
+  seat, follow a club, claim a full house, collect.
+- **Match day**: countdown, the button that plays a due match day (anyone can),
+  last results with scorers, the table.
+- **Locker room**: sign in with email, create your footballer, sign for a club,
+  report for the match, train (400k G burned), collect goals and salary, top up gas.
+- **Album**: your club's squad as stickers (XI, C), the back of a sticker with
+  its career, the captain vote.
+- **Market**: scout a squad, bid in G, cancel; a manager accepts with one
+  approval; collect sale shares.
 
 Contracts, built and tested in the same pinned image as the CI:
 
@@ -266,7 +275,7 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   no price, so no sell-on share. Offers have no expiry; the bidder cancels.
 - Salaries are paid while the treasury lasts, starter by starter: when it runs
   dry, the later starters of that match day are not paid.
-- The stadium screen runs on example data marked "Preview".
+- The web app talks to a public testnet RPC, which can be slow or rate-limited.
 
 ## Versions
 
