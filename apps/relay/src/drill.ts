@@ -1,88 +1,120 @@
 /**
- * The training drill, shared by the web app (which plays it) and the relay
- * (which replays the clicks and signs the score). No imports: it runs the same
- * in the browser and in Node.
+ * The training drills, shared by the web app (which plays them) and the relay
+ * (which replays the inputs and signs the score). No imports outside this
+ * folder: they run the same in the browser and in Node.
  *
- * Targets pop up one after another on a pitch of FIELD.w × FIELD.h. Hit a
- * target inside its circle while it is up. The ticket's seed (from the chain)
- * fixes where and when; the trained skill's level makes targets smaller and
- * shorter-lived. A click that lands less than REACTION_MS after a target
- * appears does not count: humans are not that fast.
+ * One football game per family of skills, each fully set by the ticket's
+ * seed (from the chain) and the trained skill's level, which makes it harder
+ * as the skill rises. The score depends only on the trace of presses and
+ * releases, so the relay can replay it exactly.
+ *
+ * - Penalties (shooting, physical): see penalty.ts.
+ * - Through balls (passing), Dribble (dribbling), Sprint (pace) and Tackles
+ *   (defending): see games.ts.
  */
 
+import {
+  type Challenge,
+  type Duel,
+  type PassRound,
+  type Press,
+  type Race,
+  dribble,
+  dribbleSetup,
+  passSetup,
+  passes,
+  sprintSetup,
+  sprints,
+  tackleSetup,
+  tackles,
+} from "./games.js";
+import { type PenaltySetup, penalties, penaltySetup } from "./penalty.js";
+
 export const FIELD = { w: 1000, h: 600 } as const;
-export const TARGETS = 12;
-export const REACTION_MS = 120;
-export const MAX_CLICKS = 60;
+/** Sprints take many presses; nothing needs more than this. */
+export const MAX_CLICKS = 800;
+const MAX_MS = 90_000;
 
-export interface Target {
-  appearAt: number;
-  x: number;
-  y: number;
-  r: number;
-  ttl: number;
-}
+export type Skill = "pace" | "shooting" | "passing" | "dribbling" | "defending" | "physical";
+export type Game = "penalties" | "passes" | "dribble" | "sprint" | "tackles";
+export type Click = Press;
 
-export interface Click {
-  /** Milliseconds since the drill started. */
-  t: number;
-  x: number;
-  y: number;
-}
+export const GAME_OF: Record<Skill, Game> = {
+  shooting: "penalties",
+  physical: "penalties",
+  passing: "passes",
+  dribbling: "dribble",
+  pace: "sprint",
+  defending: "tackles",
+};
 
-/** A small seeded PRNG (mulberry32), seeded with an FNV-1a hash of the whole seed. */
-function rng(seedHex: string): () => number {
-  if (!/^[0-9a-f]{16,}$/.test(seedHex)) throw new Error("bad drill seed");
-  let a = 0x811c9dc5;
-  for (let i = 0; i < seedHex.length; i++) a = Math.imul(a ^ seedHex.charCodeAt(i), 0x01000193);
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export type Drill =
+  | { game: "penalties"; setup: PenaltySetup }
+  | { game: "passes"; setup: PassRound[] }
+  | { game: "dribble"; setup: Challenge[] }
+  | { game: "sprint"; setup: Race[] }
+  | { game: "tackles"; setup: Duel[] };
 
-/** The targets of a drill. `level` is the trained skill's value (1 to 99). */
-export function drill(seedHex: string, level: number): Target[] {
-  const rand = rng(seedHex);
+/** The drill for a ticket, from the seed. `level` is the skill (1 to 99). */
+export function drill(seedHex: string, level: number, skill: Skill): Drill {
   const l = Math.min(99, Math.max(1, Math.round(level)));
-  const r = Math.round(70 - l * 0.3);
-  const ttl = Math.round(1150 - l * 4);
-  const out: Target[] = [];
-  for (let i = 0; i < TARGETS; i++) {
-    out.push({
-      appearAt: 900 + i * 1150 + Math.floor(rand() * 300),
-      x: Math.round(r + rand() * (FIELD.w - 2 * r)),
-      y: Math.round(r + rand() * (FIELD.h - 2 * r)),
-      r,
-      ttl,
-    });
+  switch (GAME_OF[skill]) {
+    case "penalties":
+      return { game: "penalties", setup: penaltySetup(seedHex, l) };
+    case "passes":
+      return { game: "passes", setup: passSetup(seedHex, l) };
+    case "dribble":
+      return { game: "dribble", setup: dribbleSetup(seedHex, l) };
+    case "sprint":
+      return { game: "sprint", setup: sprintSetup(seedHex, l) };
+    case "tackles":
+      return { game: "tackles", setup: tackleSetup(seedHex, l) };
   }
-  return out;
 }
 
-/** How long a drill lasts, in milliseconds. */
-export const duration = (targets: Target[]) => Math.max(...targets.map((t) => t.appearAt + t.ttl));
-
-/** Targets hit by these clicks. Each click hits at most one target, each target counts once. */
-export function hits(targets: Target[], clicks: Click[]): number {
-  const done = new Set<number>();
-  for (const c of clicks.slice(0, MAX_CLICKS)) {
-    const i = targets.findIndex(
-      (t, k) =>
-        !done.has(k) &&
-        c.t >= t.appearAt + REACTION_MS &&
-        c.t <= t.appearAt + t.ttl &&
-        (c.x - t.x) ** 2 + (c.y - t.y) ** 2 <= t.r ** 2,
-    );
-    if (i >= 0) done.add(i);
-  }
-  return done.size;
+/** How many rounds the drill has. */
+export function rounds(d: Drill): number {
+  return d.game === "penalties" ? d.setup.kicks.length : d.setup.length;
 }
 
-/** Skill points for a number of hits: 11+ → 3, 9+ → 2, 6+ → 1. */
-export const points = (hit: number) => (hit >= 11 ? 3 : hit >= 9 ? 2 : hit >= 6 ? 1 : 0);
+/** Each round's outcome (a goal, a pass received, a challenge beaten, a race won, a clean tackle) and when the drill ends. */
+export function replay(d: Drill, clicks: Click[]): { won: boolean[]; end: number } {
+  const cs = clicks.slice(0, MAX_CLICKS);
+  switch (d.game) {
+    case "penalties": {
+      const ks = penalties(d.setup, cs);
+      return { won: ks.map((k) => k.shot?.result === "goal"), end: ks[ks.length - 1]!.end };
+    }
+    case "passes": {
+      const ps = passes(d.setup, cs);
+      return { won: ps.map((p) => p.pass?.result === "received"), end: ps[ps.length - 1]!.end };
+    }
+    case "dribble": {
+      const p = dribble(d.setup, cs);
+      return { won: p.challenges.map((c) => c.dodged), end: p.end };
+    }
+    case "sprint": {
+      const rs = sprints(d.setup, cs);
+      return { won: rs.map((r) => r.won), end: rs[rs.length - 1]!.end };
+    }
+    case "tackles": {
+      const ds = tackles(d.setup, cs);
+      return { won: ds.map((x) => x.won), end: ds[ds.length - 1]!.end };
+    }
+  }
+}
+
+export const outcomes = (d: Drill, clicks: Click[]) => replay(d, clicks).won;
+/** When a played drill is over. */
+export const drillEnd = (d: Drill, clicks: Click[]) => replay(d, clicks).end;
+/** Successful rounds. */
+export const hits = (d: Drill, clicks: Click[]) => outcomes(d, clicks).filter(Boolean).length;
+
+/** Skill points for a score: 90% of the rounds give 3, 70% give 2, 50% give 1. */
+export function points(hit: number, total: number): number {
+  const r = total > 0 ? hit / total : 0;
+  return r >= 0.9 ? 3 : r >= 0.7 ? 2 : r >= 0.5 ? 1 : 0;
+}
 
 /** Why a trace is not believable, or null. */
 export function implausible(clicks: unknown): string | null {
@@ -93,8 +125,9 @@ export function implausible(clicks: unknown): string | null {
       typeof c === "object" &&
       c !== null &&
       [c.t, c.x, c.y].every((v) => typeof v === "number" && Number.isFinite(v)) &&
+      (c.up === undefined || typeof c.up === "boolean") &&
       c.t >= last &&
-      c.t <= 30_000 &&
+      c.t <= MAX_MS &&
       c.x >= 0 &&
       c.x <= FIELD.w &&
       c.y >= 0 &&

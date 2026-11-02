@@ -4,7 +4,7 @@ import { z } from "zod";
 import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount, normalizeEmail } from "./auth.js";
 import { type Chain, near } from "./chain.js";
 import type { Config } from "./config.js";
-import { drill, duration, hits, implausible, points } from "./drill.js";
+import { MAX_CLICKS, drill, drillEnd, hits, implausible, points, rounds } from "./drill.js";
 import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
 
 const AccountId = z
@@ -15,7 +15,7 @@ const AccountId = z
 
 const Start = z.object({ email: z.email().max(254) });
 const TokenId = z.string().regex(/^p\d{1,12}$/);
-const Attest = z.object({ token_id: TokenId, clicks: z.array(z.unknown()).max(60) });
+const Attest = z.object({ token_id: TokenId, clicks: z.array(z.unknown()).max(MAX_CLICKS) });
 
 interface Ticket {
   id: number;
@@ -189,17 +189,18 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const { ticket, level } = open;
     if (signed.has(ticket.id)) return c.json({ error: "already_attested" }, 409);
     const start = started.get(ticket.id);
-    const targets = drill(ticket.seed, level);
-    if (start === undefined || now() - start < duration(targets) - 500) {
+    const d = drill(ticket.seed, level, ticket.skill);
+    if (start === undefined || now() - start < drillEnd(d, body.data.clicks as Parameters<typeof hits>[1]) - 500) {
       return c.json({ error: "implausible", reason: "the drill did not last that long" }, 422);
     }
     signed.add(ticket.id);
     started.delete(ticket.id);
-    const hit = hits(targets, body.data.clicks as Parameters<typeof hits>[1]);
-    const pts = points(hit);
+    const hit = hits(d, body.data.clicks as Parameters<typeof hits>[1]);
+    const total = rounds(d);
+    const pts = points(hit, total);
     const message = `near-post:train:${config.LEAGUE_ID}:${ticket.token_id}:${ticket.id}:${pts}`;
     const signature = Buffer.from(attester!.sign(new TextEncoder().encode(message)).signature).toString("base64");
-    return c.json({ token_id: ticket.token_id, ticket: ticket.id, hits: hit, points: pts, signature });
+    return c.json({ token_id: ticket.token_id, ticket: ticket.id, hits: hit, rounds: total, points: pts, signature });
   });
 
   // ---- League reads ----

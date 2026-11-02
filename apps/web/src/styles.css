@@ -188,8 +188,6 @@ a.cta.signin { display: inline-flex; align-items: center; text-decoration: none;
 .big-score strong { color: #1e7a47; font-family: var(--display); font-weight: 400; }
 .drill-wrap { grid-column: 1 / -1; margin-bottom: 24px; }
 .drill-head { display: flex; justify-content: space-between; font-family: var(--display); font-size: 20px; color: var(--yellow); margin-bottom: 8px; }
-.drill { position: relative; width: 100%; border: 4px solid var(--paper); border-radius: 6px; background: #2e7d4f repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 10%, transparent 10% 20%); cursor: crosshair; touch-action: none; user-select: none; overflow: hidden; }
-.drill::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; background: rgba(243,234,215,.6); }
 .target { position: absolute; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, var(--paper) 0 22%, var(--red) 23% 48%, var(--paper) 49% 62%, var(--red) 63%); box-shadow: 0 4px 0 rgba(0,0,0,.3); animation: pop .15s ease-out both; z-index: 1; }
 .sheet { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .duel { width: 100%; max-width: 520px; border-collapse: collapse; }
@@ -354,3 +352,11 @@ a.result:hover, a.result:focus-visible { background: rgba(242,183,5,.18); }
 .xi em { font-style: normal; font-family: var(--display); text-align: right; }
 .others a.link { display: block; padding: 4px 0; color: var(--ink); text-decoration: none; }
 .others a.link.on { font-weight: 800; text-decoration: underline; }
+
+/* ---- Training drills ---- */
+.game-canvas { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 600; border: 4px solid var(--paper); border-radius: 6px; touch-action: none; cursor: grab; background: #1B2340; }
+.pen-dots { display: inline-flex; gap: 8px; align-items: center; }
+.pen-dots i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--paper); }
+.pen-dots i.in { background: #45d483; }
+.pen-dots i.out { background: var(--red); }
+.pen-help { color: var(--muted-on-ink) !important; margin-top: 8px; }

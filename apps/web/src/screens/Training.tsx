@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { type Click, FIELD, type Target, drill, duration, hits, points } from "../../../relay/src/drill.js";
+import { type ReactNode, useEffect, useState } from "react";
+import { type Click, type Drill as DrillT, drill } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
+import { DribbleGame, PassesGame, SprintGame, TacklesGame } from "./Games.js";
+import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { attestDrill, finishTraining, league, startDrill, train } from "../lib/near.js";
@@ -12,6 +14,7 @@ const SAVED = "near-post.attested";
 interface Attested {
   ticket: number;
   hits: number;
+  rounds: number;
   points: number;
   signature: string;
 }
@@ -43,7 +46,7 @@ export function Training({ me }: { me: Player }) {
   const day = schedule?.match_day ?? 0;
   const { data: ticket, reload } = useData(() => league<Ticket | null>("training_ticket", { token_id: me.token_id }), [me.token_id, day]);
   const [skill, setSkill] = useState<Skill>(me.position === "Fw" ? "shooting" : me.position === "Mf" ? "passing" : "defending");
-  const [run, setRun] = useState<{ targets: Target[] } | null>(null);
+  const [run, setRun] = useState<{ drill: DrillT } | null>(null);
   const [attested, setAttested] = useState<Attested | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,22 +56,18 @@ export function Training({ me }: { me: Player }) {
   const skillName = (k: Skill) => SKILLS.find(([s]) => s === k)![2];
 
   if (run && ticket) {
-    return (
-      <Drill
-        targets={run.targets}
-        onDone={async (clicks) => {
-          setRun(null);
-          try {
-            const a = await attestDrill(me.token_id, clicks);
-            const saved = { ticket: ticket.id, ...a };
-            saveAttested(saved);
-            setAttested(saved);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-          }
-        }}
-      />
-    );
+    const finish = async (clicks: Click[]) => {
+      setRun(null);
+      try {
+        const a = await attestDrill(me.token_id, clicks);
+        const saved = { ticket: ticket.id, ...a };
+        saveAttested(saved);
+        setAttested(saved);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    return game(run.drill, finish);
   }
 
   return (
@@ -78,7 +77,7 @@ export function Training({ me }: { me: Player }) {
         attested ? (
           <>
             <p className="big-score">
-              {attested.hits} / 12 hits · <strong>+{attested.points}</strong> {skillName(ticket.skill)}
+              {attested.hits} / {attested.rounds} · <strong>+{attested.points}</strong> {skillName(ticket.skill)}
             </p>
             <p className="note">The relay signed your score. Submit it before the next match day.</p>
             <Action
@@ -94,15 +93,14 @@ export function Training({ me }: { me: Player }) {
         ) : (
           <>
             <p className="note">
-              Paid: a {skillName(ticket.skill).toLowerCase()} drill. Hit the targets as they pop up: 11 hits give 3 points, 9 give 2, 6
-              give 1. It gets harder as the skill rises.
+              Paid: {HOW[ticket.skill]} Score 90% to gain 3 points, 70% for 2, 50% for 1. It gets harder as the skill rises.
             </p>
             <Action
               label="START THE DRILL"
               run={async () => {
                 setError(null);
                 const s = await startDrill(me.token_id);
-                setRun({ targets: drill(s.ticket.seed, s.level) });
+                setRun({ drill: drill(s.ticket.seed, s.level, s.ticket.skill) });
               }}
             />
           </>
@@ -138,64 +136,28 @@ export function Training({ me }: { me: Player }) {
   );
 }
 
-/** The drill itself: targets pop up on a pitch; clicks are recorded for the relay. */
-function Drill({ targets, onDone }: { targets: Target[]; onDone: (clicks: Click[]) => void }) {
-  const field = useRef<HTMLDivElement>(null);
-  const clicks = useRef<Click[]>([]);
-  const [now, setNow] = useState(0);
-  const [start] = useState(() => performance.now());
-  const end = duration(targets);
+const PENALTIES = "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.";
+const HOW: Record<string, string> = {
+  shooting: PENALTIES,
+  physical: PENALTIES,
+  passing: "five through balls. Drag from the ball to where your running teammate will be, away from the defenders.",
+  dribbling: "eight defenders slide in. Swipe left or right (or ← →) once each one commits, before he gets to you.",
+  pace: "five races to a ball played into space. After GO, press left and right in turn (or ← →) to sprint.",
+  defending: "six duels. The attacker cuts left or right, sometimes after a feint: swipe to his side (or ← →) as he cuts.",
+};
 
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      const t = performance.now() - start;
-      setNow(t);
-      if (t >= end) onDone(clicks.current);
-      else raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const up = targets.filter((t) => now >= t.appearAt && now <= t.appearAt + t.ttl);
-  const hit = hits(targets, clicks.current);
-  return (
-    <div className="drill-wrap">
-      <div className="drill-head">
-        <span>
-          {hit} / {targets.length} hits · +{points(hit)}
-        </span>
-        <span>{Math.max(0, Math.ceil((end - now) / 1000))}s</span>
-      </div>
-      <div
-        ref={field}
-        className="drill"
-        style={{ aspectRatio: `${FIELD.w} / ${FIELD.h}` }}
-        onPointerDown={(e) => {
-          const box = field.current!.getBoundingClientRect();
-          clicks.current.push({
-            t: Math.round(performance.now() - start),
-            x: Math.round(((e.clientX - box.left) / box.width) * FIELD.w),
-            y: Math.round(((e.clientY - box.top) / box.height) * FIELD.h),
-          });
-        }}
-        role="application"
-        aria-label="Training drill: click the targets as they appear"
-      >
-        {up.map((t) => (
-          <span
-            key={t.appearAt}
-            className="target"
-            style={{
-              left: `${((t.x - t.r) / FIELD.w) * 100}%`,
-              top: `${((t.y - t.r) / FIELD.h) * 100}%`,
-              width: `${((2 * t.r) / FIELD.w) * 100}%`,
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  );
+/** The canvas game for a drill. */
+function game(d: DrillT, onDone: (trace: Click[]) => void): ReactNode {
+  switch (d.game) {
+    case "penalties":
+      return <PenaltyGame setup={d.setup} onDone={onDone} />;
+    case "passes":
+      return <PassesGame setup={d.setup} onDone={onDone} />;
+    case "dribble":
+      return <DribbleGame setup={d.setup} onDone={onDone} />;
+    case "sprint":
+      return <SprintGame setup={d.setup} onDone={onDone} />;
+    case "tackles":
+      return <TacklesGame setup={d.setup} onDone={onDone} />;
+  }
 }

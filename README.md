@@ -71,10 +71,14 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   `claim_player`. Academy players' wallets go to their club.
 - **Training is a drill.** Send 400k G to the league with `ft_transfer_call`
   and `msg {"train": {"token_id": "<id>", "skill": "pace"}}`: the G burn and a
-  training ticket opens. Then play the drill in the browser: 12 targets pop up
-  on a pitch, smaller and quicker as the skill rises. 11 hits give 3 points, 9
-  give 2, 6 give 1; from 80 a training adds at most 2, from 90 at most 1. The
-  relay replays your clicks against the ticket's on-chain seed and signs the
+  training ticket opens. Then play a football game in the browser, one per
+  family of skills: penalties against a keeper (shooting, physical), through
+  balls to a running teammate (passing), dodging slide tackles (dribbling), a
+  sprint to a loose ball (pace), timing a tackle on a cutting attacker
+  (defending). It gets harder as the skill rises. 90% of the rounds give 3
+  points, 70% give 2, 50% give 1; from 80 a training adds at most 2, from 90
+  at most 1. The relay replays your inputs against the ticket's on-chain seed
+  (`apps/relay/src/penalty.ts`, `games.ts`) and signs the
   points; `finish_training` checks that signature. Once per match day.
 - **The drill's attester is the one trusted key.** A contract cannot see a
   browser game, so the league accepts training points signed by one ed25519
