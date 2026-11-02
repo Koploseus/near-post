@@ -393,3 +393,5 @@ a.result:hover, a.result:focus-visible { background: rgba(242,183,5,.18); }
 @keyframes unbox { 0% { transform: rotateY(90deg) scale(.6); opacity: 0 } 100% { transform: none; opacity: 1 } }
 @media (max-width: 700px) { .wardrobe-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .unbox { animation: none; } }
+.worn .chip { padding: 2px 8px; font-size: 11px; min-height: 0; }
+.wardrobe-items > .k { display: block; margin: 4px 0 6px; }

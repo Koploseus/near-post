@@ -137,10 +137,10 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v5.near-post.testnet`](https://testnet.nearblocks.io/address/league-v5.near-post.testnet) |
-| Goalars | [`goalars-v5.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v5.near-post.testnet) |
-| Players | [`players-v5.near-post.testnet`](https://testnet.nearblocks.io/address/players-v5.near-post.testnet) |
-| Items | [`items-v5.near-post.testnet`](https://testnet.nearblocks.io/address/items-v5.near-post.testnet) |
+| League | [`league-v6.near-post.testnet`](https://testnet.nearblocks.io/address/league-v6.near-post.testnet) |
+| Goalars | [`goalars-v6.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v6.near-post.testnet) |
+| Players | [`players-v6.near-post.testnet`](https://testnet.nearblocks.io/address/players-v6.near-post.testnet) |
+| Items | [`items-v6.near-post.testnet`](https://testnet.nearblocks.io/address/items-v6.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -155,8 +155,8 @@ they are no longer used.
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v5.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v5.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v6.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v6.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally

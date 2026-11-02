@@ -1,31 +1,31 @@
 {
   "network": "testnet",
-  "version": "v5",
-  "deployed_at": "2026-11-02T13:27:00.128Z",
+  "version": "v6",
+  "deployed_at": "2026-11-02T16:29:58.401Z",
   "contracts": {
     "league": {
-      "account_id": "league-v5.near-post.testnet",
-      "wasm_sha256": "18dc1c62fb3d9b733ff67f6354c957ac81a32c1e138fd46897220b94e66c19a8",
-      "deploy_tx": "B2ZF9FsjBTkggRgTo75z73rXZhLxmSGWScPSD1b7bfUN",
-      "init_tx": "BJDRrZpEJqox9GCQx1bJcTKkPUWjQxCdCuWVc57jQV5d"
+      "account_id": "league-v6.near-post.testnet",
+      "wasm_sha256": "44fdf955dbac236f55a5159ac538cf8a1563b5b0a641f7fcaeb9afdc56f79c81",
+      "deploy_tx": "HuYRmBkcq6xmr5UqTLoS2MNH4iK4RcsE54B3b2MNXRNY",
+      "init_tx": "6dZYNkt4zouPxcmmQksm8fGnvQvEVqQqrABTsApgiwdZ"
     },
     "goalars": {
-      "account_id": "goalars-v5.near-post.testnet",
+      "account_id": "goalars-v6.near-post.testnet",
       "wasm_sha256": "43a1787022ed40db1c0b2fdb6d75e9d301aa2f2f7d9f3f6c9870c41405b7679b",
-      "deploy_tx": "9Qxrh5BFMt1CvTPdq29j4cnPHpK9wzfaGZMVjZAmcRcg",
-      "init_tx": "8HSYiwmUZ9HyZxPdF9Rw2RqMLxpfnZwHmx7cQY9GssRP"
+      "deploy_tx": "6d1ybVShGsGzwN2j8eRbGwD6i9vCK8zbDS1J8HyqkYgL",
+      "init_tx": "AB8PGAzz91G6zt9Q6b4ZaTx65DogGiTSQz3Hn1iuDqsh"
     },
     "players": {
-      "account_id": "players-v5.near-post.testnet",
+      "account_id": "players-v6.near-post.testnet",
       "wasm_sha256": "dbf6f7d0397aef9a0dbaa36ff565b5fc54a2add2f68b40e20a56000a5523b1bd",
-      "deploy_tx": "ASEi6fdusoGgHE5o6V6HzGo9hDJbFjM2hEKYbhK4yHms",
-      "init_tx": "AceyHTLbuzkYFgEeVtZYNFrJ9gP4HbpHaLwJVBEq9BWk"
+      "deploy_tx": "HTR8rjcU1kXZCoPKGu6L5Z6RijU7jQMogyC3i9m8U7G1",
+      "init_tx": "J1wbfJ2HvsQkhW6xzY2YZ2bWPhCeaEMbTeohFCqkiH5m"
     },
     "items": {
-      "account_id": "items-v5.near-post.testnet",
-      "wasm_sha256": "418c1b2ace81c011ddc27658cd5153d56335b6f105e37b234c807a99c73ba603",
-      "deploy_tx": "Xs27PnBgvXbXAi79zzGCCKBE6cp4Ju8P85FWvYFs6Kd",
-      "init_tx": "7hyjjnniapNpSSojtvmgGEyw6WYKU14pt7zRrzmnHJzo"
+      "account_id": "items-v6.near-post.testnet",
+      "wasm_sha256": "87c567ba64fce0aa45f45d663a831dd28b6bff106b044e8069b09dab91bd4bbc",
+      "deploy_tx": "CtexagL1JtDRP66eF8sWkbyxbvFwy7S96pDjbqnL7kmS",
+      "init_tx": "AEM32kzjyxuP3zfsEYD5jVfqz9Xd9ZLU2sEEMyFgCYT4"
     }
   },
   "attester": "ed25519:4cqYajyLcamJ9VPFLbNff3hqdwedoTQwkenqWEqsJLpc"

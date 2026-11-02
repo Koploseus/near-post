@@ -85,8 +85,14 @@ export function Wardrobe({ me }: { me: Player }) {
                 later();
               }}
             />
-            <span className="note">Three items: common 70%, rare 22%, epic 7%, legendary 1%. The G burns.</span>
+            <span className="note">
+              Three items: common 70%, rare 22%, epic 7%, legendary 1%. The G burns.
+              {BigInt(balance) < BigInt(data.price) && ` You have ${g(balance)}.`}
+            </span>
           </div>
+          {reveal && data.unboxed.length > 0 && (
+            <span className="k">JUST UNBOXED</span>
+          )}
           {reveal && data.unboxed.length > 0 && (
             <div className="unboxed" role="status">
               {data.unboxed.map((id, i) => {
@@ -102,6 +108,7 @@ export function Wardrobe({ me }: { me: Player }) {
             </div>
           )}
 
+          <span className="k">YOUR ITEMS</span>
           {owned.length === 0 ? (
             <p className="note">No item yet. Open a pack.</p>
           ) : (
