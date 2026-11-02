@@ -125,6 +125,7 @@ export function SignIn() {
       {step.k === "secure" && (
         <>
           <h2 id="signin-title">Add a passkey</h2>
+          <p className="lead">To sign in on all your devices.</p>
           <button
             type="button"
             className="cta passkey-cta"

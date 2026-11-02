@@ -165,6 +165,7 @@ function Account() {
         </p>
       ) : (
         <>
+          <p className="note">Add a passkey to sign in on all your devices.</p>
           {passkeysAvailable() && (
             <Action
               className="cta small"
