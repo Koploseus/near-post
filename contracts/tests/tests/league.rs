@@ -483,3 +483,101 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
         .into_result()?;
     Ok(())
 }
+
+#[tokio::test]
+async fn a_club_buys_a_player_and_the_price_is_shared() -> Result<()> {
+    let game = deploy().await?;
+    let (seller, buyer) = (game.account().await?, game.account().await?);
+    for (c, name) in [(&seller, "Rive Nord"), (&buyer, "Cite-Phare")] {
+        game.call(c, "create_club", json!({ "name": name }))
+            .await?
+            .into_result()?;
+    }
+    let token = game
+        .view("squad", json!({ "account_id": seller.id() }))
+        .await?[10]["token_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let price = 500_000 * ONE_G;
+
+    // The buyer bids 500k G: the league holds them.
+    buyer
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": price.to_string(),
+            "msg": json!({ "bid": token }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?
+        .into_result()?;
+    let offers = game
+        .view("offers_for", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(offers.as_array().unwrap().len(), 1);
+    let offer_id = offers[0]["id"].as_u64().unwrap();
+
+    // The seller accepts by approving the league with the offer id.
+    let supply = game.supply().await?;
+    let sale = seller
+        .call(game.players.id(), "nft_approve")
+        .args_json(json!({
+            "token_id": token,
+            "account_id": game.league.id(),
+            "msg": json!({ "accept": offer_id }).to_string(),
+        }))
+        .deposit(NearToken::from_millinear(10))
+        .gas(Gas::from_tgas(250))
+        .transact()
+        .await?;
+    println!("sale: {} Tgas", sale.total_gas_burnt.as_tgas());
+    sale.into_result()?;
+
+    // The registration moved, the squads followed, the offer is sold.
+    let nft: Value = game
+        .players
+        .view("nft_token")
+        .args_json(json!({ "token_id": token }))
+        .await?
+        .json()?;
+    assert_eq!(nft["owner_id"], json!(buyer.id()));
+    assert_eq!(
+        game.view("get_player", json!({ "token_id": token }))
+            .await?["owner"],
+        json!(buyer.id())
+    );
+    assert_eq!(
+        game.view("get_offer", json!({ "offer_id": offer_id }))
+            .await?["state"],
+        "Sold"
+    );
+    // The seller trained him, so no 10% to himself: 3% burned, 97% to him.
+    let tax = price * 3 / 100;
+    assert_eq!(supply - game.supply().await?, tax);
+    assert_eq!(
+        g(&game
+            .view("owed_of", json!({ "account_id": seller.id() }))
+            .await?),
+        price - tax
+    );
+    let before = game.balance(seller.id().as_str()).await?;
+    game.call(&seller, "collect", json!({}))
+        .await?
+        .into_result()?;
+    assert_eq!(
+        game.balance(seller.id().as_str()).await? - before,
+        price - tax
+    );
+    // The career now lists the seller as a past club for the next sale.
+    let career: Value = game
+        .players
+        .view("career")
+        .args_json(json!({ "token_id": token }))
+        .await?
+        .json()?;
+    assert_eq!(career["past_clubs"], json!([seller.id()]));
+    Ok(())
+}

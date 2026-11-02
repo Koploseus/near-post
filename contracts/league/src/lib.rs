@@ -111,6 +111,16 @@ pub trait Goalars {
 #[ext_contract(ext_players)]
 pub trait PlayersContract {
     fn nft_mint_batch(&mut self, mints: Vec<MintArgs>);
+    #[allow(clippy::too_many_arguments)]
+    fn nft_transfer_payout(
+        &mut self,
+        receiver_id: AccountId,
+        token_id: String,
+        approval_id: Option<u64>,
+        memo: Option<String>,
+        balance: U128,
+        max_len_payout: Option<u32>,
+    ) -> Payout;
 }
 
 #[ext_contract(ext_self)]
@@ -119,6 +129,8 @@ pub trait SelfCallbacks {
     fn on_claim_minted(&mut self, account_id: AccountId, amount: U128) -> U128;
     fn on_player_claim_minted(&mut self, token_id: String, amount: U128) -> U128;
     fn on_salary_paid(&mut self, token_id: String, amount: U128);
+    fn on_sale(&mut self, offer_id: u64) -> String;
+    fn on_collected(&mut self, account_id: AccountId, amount: U128);
 }
 
 /// What the players contract needs to mint one player (NEP-171 metadata).
@@ -162,10 +174,47 @@ pub struct Player {
     pub last_trained_day: u32,
 }
 
-/// `msg` of a training payment.
+/// `msg` of a payment to the league.
 #[near(serializers = [json])]
-pub struct TrainOrder {
-    pub train: String,
+#[serde(rename_all = "snake_case")]
+pub enum Order {
+    Train(String),
+    Bid(String),
+}
+
+/// `msg` of an approval that accepts an offer.
+#[near(serializers = [json])]
+pub struct Accept {
+    pub accept: u64,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OfferState {
+    Open,
+    /// The owner accepted; the transfer is in flight.
+    Accepting,
+    Sold,
+    Cancelled,
+}
+
+/// A club's offer for a player's registration. The price is held by the league.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Offer {
+    pub id: u64,
+    pub token_id: String,
+    pub buyer: AccountId,
+    pub price: U128,
+    pub state: OfferState,
+    pub match_day: u32,
+}
+
+/// NEP-199 payout, as the players contract returns it.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Payout {
+    pub payout: std::collections::HashMap<AccountId, U128>,
 }
 
 /// A club's captain for one week, elected by its person-played players.
@@ -224,6 +273,9 @@ enum StorageKey {
     Reported,
     Ballots,
     Captains,
+    Offers,
+    OffersByToken,
+    Owed,
 }
 
 #[near(serializers = [json, borsh])]
@@ -327,12 +379,18 @@ pub struct League {
     ballots: LookupMap<(AccountId, u32), Vec<(String, String)>>,
     /// (club, week) -> elected captain. Kept as history.
     captains: LookupMap<(AccountId, u32), Captain>,
+    offers: LookupMap<u64, Offer>,
+    offers_by_token: LookupMap<String, Vec<u64>>,
+    next_offer: u64,
+    /// Real G the league holds for an account: sale shares, cancelled offers.
+    owed: LookupMap<AccountId, u128>,
 }
 
 const MINT_GAS: Gas = Gas::from_tgas(10);
 const BURN_GAS: Gas = Gas::from_tgas(10);
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const ACADEMY_GAS: Gas = Gas::from_tgas(60);
+const SALE_GAS: Gas = Gas::from_tgas(60);
 const MAX_NAME: usize = 32;
 const MS: u64 = 1_000_000;
 
@@ -377,6 +435,10 @@ impl League {
             reported: LookupSet::new(StorageKey::Reported),
             ballots: LookupMap::new(StorageKey::Ballots),
             captains: LookupMap::new(StorageKey::Captains),
+            offers: LookupMap::new(StorageKey::Offers),
+            offers_by_token: LookupMap::new(StorageKey::OffersByToken),
+            next_offer: 0,
+            owed: LookupMap::new(StorageKey::Owed),
         }
     }
 
@@ -597,11 +659,14 @@ impl League {
         self.captains.get(&(club_id, week)).cloned()
     }
 
-    /// Training: send `training_cost` G to the league with
-    /// `ft_transfer_call(league, amount, msg: {"train": "<token_id>"})`. The G
-    /// burn and the player gains a point (attack for midfielders and forwards,
-    /// defence for keepers and defenders). Once per player per match day, by
-    /// the person who plays him (or his owner for an academy player).
+    /// Goalars sent to the league with `ft_transfer_call`. Two orders:
+    /// - `{"train": "<token_id>"}`: exactly `training_cost`, burned; the
+    ///   player gains a point (attack for midfielders and forwards, defence for
+    ///   keepers and defenders). Once per player per match day, by the person
+    ///   who plays him (or his owner for an academy player).
+    /// - `{"bid": "<token_id>"}`: a club offers this amount for a player's
+    ///   registration. The G stay with the league until the owner accepts
+    ///   (see `nft_on_approve`) or the club cancels.
     pub fn ft_on_transfer(
         &mut self,
         sender_id: AccountId,
@@ -610,38 +675,177 @@ impl League {
     ) -> PromiseOrValue<U128> {
         require!(
             env::predecessor_account_id() == self.goalars_id,
-            "only goalars pays for training"
+            "only goalars is accepted"
         );
-        let rules = the_rules();
-        require!(
-            amount == rules.training_cost,
-            "training costs exactly training_cost"
-        );
-        let order: TrainOrder = near_sdk::serde_json::from_str(&msg)
-            .unwrap_or_else(|_| env::panic_str("msg must be {\"train\":\"<token_id>\"}"));
-        let day = self.match_day;
-        let player = self
-            .players
-            .get_mut(&order.train)
-            .unwrap_or_else(|| env::panic_str("no such player"));
-        require!(
-            player.beneficiary() == &sender_id,
-            "you cannot train that player"
-        );
-        require!(
-            player.last_trained_day < day,
-            "already trained this match day"
-        );
-        player.last_trained_day = day;
-        match player.position {
-            Position::Mf | Position::Fw => player.attack = (player.attack + 1).min(99),
-            Position::Gk | Position::Df => player.defence = (player.defence + 1).min(99),
+        let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
+            env::panic_str("msg must be {\"train\":\"<token_id>\"} or {\"bid\":\"<token_id>\"}")
+        });
+        match order {
+            Order::Train(token) => self.train(sender_id, amount, token),
+            Order::Bid(token) => {
+                self.bid(sender_id, amount, token);
+            }
         }
-        ext_goalars::ext(self.goalars_id.clone())
-            .with_static_gas(BURN_GAS)
-            .burn(amount, Some(format!("training {}", order.train)))
-            .detach();
         PromiseOrValue::Value(U128(0))
+    }
+
+    // ---- Transfer market ----
+
+    /// The owner of a player sells his registration to an open offer by
+    /// approving the league on the players contract:
+    /// `nft_approve(token_id, league, msg: {"accept": <offer id>})`. The league
+    /// then transfers the NFT with its NEP-199 payout and shares the price:
+    /// 10% to the training club, 2% to each of his last 3 clubs, 5% to the
+    /// person who plays him, 3% burned, the rest to the seller.
+    pub fn nft_on_approve(
+        &mut self,
+        token_id: String,
+        owner_id: AccountId,
+        approval_id: u64,
+        msg: String,
+    ) -> PromiseOrValue<String> {
+        require!(
+            env::predecessor_account_id() == self.players_id,
+            "only the players contract approves sales"
+        );
+        let accept: Accept = near_sdk::serde_json::from_str(&msg)
+            .unwrap_or_else(|_| env::panic_str("msg must be {\"accept\":<offer id>}"));
+        let owner_now = self.players.get(&token_id).map(|p| p.owner.clone());
+        require!(
+            owner_now.as_ref() == Some(&owner_id),
+            "the league does not see you as the owner yet"
+        );
+        let offer = self
+            .offers
+            .get_mut(&accept.accept)
+            .unwrap_or_else(|| env::panic_str("no such offer"));
+        require!(
+            offer.token_id == token_id,
+            "that offer is for another player"
+        );
+        require!(offer.state == OfferState::Open, "that offer is not open");
+        require!(offer.buyer != owner_id, "you cannot sell to yourself");
+        offer.state = OfferState::Accepting;
+        let (buyer, price, id) = (offer.buyer.clone(), offer.price, offer.id);
+        PromiseOrValue::Promise(
+            ext_players::ext(self.players_id.clone())
+                .with_static_gas(SALE_GAS)
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .nft_transfer_payout(
+                    buyer,
+                    token_id,
+                    Some(approval_id),
+                    Some(format!("sale, offer {id}")),
+                    price,
+                    Some(10),
+                )
+                .then(
+                    ext_self::ext(env::current_account_id())
+                        .with_static_gas(CALLBACK_GAS)
+                        .on_sale(id),
+                ),
+        )
+    }
+
+    /// Shares the price as the players contract's payout says, or reopens the
+    /// offer if the transfer failed.
+    #[private]
+    pub fn on_sale(
+        &mut self,
+        offer_id: u64,
+        #[callback_result] payout: Result<Payout, PromiseError>,
+    ) -> String {
+        let Some(offer) = self.offers.get_mut(&offer_id) else {
+            return "no such offer".into();
+        };
+        let Ok(payout) = payout else {
+            offer.state = OfferState::Open;
+            return "transfer failed: offer reopened".into();
+        };
+        offer.state = OfferState::Sold;
+        let price = offer.price.0;
+        let shares = settle_payout(&payout, price, &env::current_account_id());
+        let mut burn = 0u128;
+        for (account, amount) in shares {
+            if account == env::current_account_id() {
+                burn += amount;
+            } else {
+                *self.owed.entry(account).or_insert(0) += amount;
+            }
+        }
+        if burn > 0 {
+            ext_goalars::ext(self.goalars_id.clone())
+                .with_static_gas(BURN_GAS)
+                .burn(U128(burn), Some(format!("sale tax, offer {offer_id}")))
+                .detach();
+        }
+        "sold".into()
+    }
+
+    /// The buyer withdraws an open offer; its G become collectable again.
+    pub fn cancel_offer(&mut self, offer_id: u64) {
+        let caller = env::predecessor_account_id();
+        let offer = self
+            .offers
+            .get_mut(&offer_id)
+            .unwrap_or_else(|| env::panic_str("no such offer"));
+        require!(offer.buyer == caller, "only the bidder cancels");
+        require!(offer.state == OfferState::Open, "that offer is not open");
+        offer.state = OfferState::Cancelled;
+        *self.owed.entry(caller).or_insert(0) += offer.price.0;
+    }
+
+    pub fn get_offer(&self, offer_id: u64) -> Option<Offer> {
+        self.offers.get(&offer_id).cloned()
+    }
+
+    /// Open offers for a player.
+    pub fn offers_for(&self, token_id: String) -> Vec<Offer> {
+        self.offers_by_token
+            .get(&token_id)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.offers.get(id))
+                    .filter(|o| o.state == OfferState::Open)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// G the league holds for an account: sale shares and cancelled offers.
+    pub fn owed_of(&self, account_id: AccountId) -> U128 {
+        U128(self.owed.get(&account_id).copied().unwrap_or(0))
+    }
+
+    /// Withdraws what the league holds for the caller.
+    pub fn collect(&mut self) {
+        let caller = env::predecessor_account_id();
+        let amount = self.owed.remove(&caller).unwrap_or(0);
+        require!(amount > 0, "nothing to collect");
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(NearToken::from_yoctonear(1))
+            .ft_transfer(caller.clone(), U128(amount), Some("collect".into()))
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .on_collected(caller, U128(amount)),
+            )
+            .detach();
+    }
+
+    /// Puts the G back if the transfer failed (an unregistered account).
+    #[private]
+    pub fn on_collected(
+        &mut self,
+        account_id: AccountId,
+        amount: U128,
+        #[callback_result] paid: Result<(), PromiseError>,
+    ) {
+        if paid.is_err() {
+            *self.owed.entry(account_id).or_insert(0) += amount.0;
+        }
     }
 
     pub fn squad(&self, account_id: AccountId) -> Vec<Player> {
@@ -1155,6 +1359,61 @@ const LAST_NAMES: [&str; 32] = [
 ];
 
 impl League {
+    fn train(&mut self, sender_id: AccountId, amount: U128, token: String) {
+        require!(
+            amount == the_rules().training_cost,
+            "training costs exactly training_cost"
+        );
+        let day = self.match_day;
+        let player = self
+            .players
+            .get_mut(&token)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        require!(
+            player.beneficiary() == &sender_id,
+            "you cannot train that player"
+        );
+        require!(
+            player.last_trained_day < day,
+            "already trained this match day"
+        );
+        player.last_trained_day = day;
+        match player.position {
+            Position::Mf | Position::Fw => player.attack = (player.attack + 1).min(99),
+            Position::Gk | Position::Df => player.defence = (player.defence + 1).min(99),
+        }
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(BURN_GAS)
+            .burn(amount, Some(format!("training {token}")))
+            .detach();
+    }
+
+    fn bid(&mut self, buyer: AccountId, price: U128, token: String) -> u64 {
+        require!(self.clubs.contains_key(&buyer), "only a club bids");
+        require!(price.0 > 0, "an offer is more than zero");
+        let owner = self
+            .players
+            .get(&token)
+            .map(|p| p.owner.clone())
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        require!(owner != buyer, "you already own that player");
+        let id = self.next_offer;
+        self.next_offer += 1;
+        self.offers.insert(
+            id,
+            Offer {
+                id,
+                token_id: token.clone(),
+                buyer,
+                price,
+                state: OfferState::Open,
+                match_day: self.match_day,
+            },
+        );
+        self.offers_by_token.entry(token).or_default().push(id);
+        id
+    }
+
     /// Mints the eleven academy players of a new club.
     fn sign_academy(&mut self, club: &AccountId) {
         let mut stream = ByteStream::new(derive_seed(
@@ -1505,6 +1764,25 @@ fn credit_treasuries(
             c.treasury = U128(c.treasury.0 + part);
         }
     }
+}
+
+/// What each account gets from a sale: the payout, never more than the price
+/// in total. Amounts are added in a fixed order (sorted by account) so the
+/// result does not depend on map order.
+fn settle_payout(payout: &Payout, price: u128, _league: &AccountId) -> Vec<(AccountId, u128)> {
+    let mut shares: Vec<(AccountId, u128)> = payout
+        .payout
+        .iter()
+        .map(|(k, v)| (k.clone(), v.0))
+        .collect();
+    shares.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut left = price;
+    for (_, amount) in shares.iter_mut() {
+        *amount = (*amount).min(left);
+        left -= *amount;
+    }
+    shares.retain(|(_, a)| *a > 0);
+    shares
 }
 
 /// Adds up amounts per account, keeping first-seen order.

@@ -766,7 +766,7 @@ fn nobody_trains_someone_elses_player() {
 }
 
 #[test]
-#[should_panic(expected = "only goalars pays for training")]
+#[should_panic(expected = "only goalars is accepted")]
 fn training_is_paid_in_goalars_only() {
     let mut l = league_with(1, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
@@ -776,4 +776,148 @@ fn training_is_paid_in_goalars_only() {
         the_rules().training_cost,
         format!("{{\"train\":\"{token}\"}}"),
     );
+}
+
+// ---- Transfer market ----
+
+fn bid(l: &mut League, from: &str, token: &str, amount: u128) {
+    as_caller("goalars.testnet");
+    let _ = l.ft_on_transfer(acc(from), U128(amount), format!("{{\"bid\":\"{token}\"}}"));
+}
+
+#[test]
+fn a_club_bids_and_the_price_is_held() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 800);
+    let offers = l.offers_for(token);
+    assert_eq!(offers.len(), 1);
+    assert_eq!(
+        (offers[0].price, offers[0].state),
+        (U128(800), OfferState::Open)
+    );
+    assert_eq!(offers[0].buyer, acc("c1.testnet"));
+}
+
+#[test]
+#[should_panic(expected = "only a club bids")]
+fn only_clubs_bid() {
+    let mut l = league_with(1, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "someone.testnet", &token, 800);
+}
+
+#[test]
+#[should_panic(expected = "you already own that player")]
+fn no_bid_on_your_own_player() {
+    let mut l = league_with(1, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c0.testnet", &token, 800);
+}
+
+#[test]
+fn a_cancelled_offer_can_be_collected() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 800);
+    as_caller("c1.testnet");
+    l.cancel_offer(0);
+    assert_eq!(l.owed_of(acc("c1.testnet")), U128(800));
+    assert!(l.offers_for(token).is_empty());
+    l.collect();
+    assert_eq!(l.owed_of(acc("c1.testnet")), U128(0));
+}
+
+#[test]
+#[should_panic(expected = "only the bidder cancels")]
+fn only_the_bidder_cancels() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 800);
+    as_caller("c0.testnet");
+    l.cancel_offer(0);
+}
+
+#[test]
+#[should_panic(expected = "only the players contract approves sales")]
+fn sales_are_approved_through_the_players_contract() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 800);
+    as_caller("c0.testnet");
+    let _ = l.nft_on_approve(token, acc("c0.testnet"), 1, "{\"accept\":0}".into());
+}
+
+#[test]
+#[should_panic(expected = "does not see you as the owner")]
+fn only_the_owner_can_accept() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 800);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(token, acc("thief.testnet"), 1, "{\"accept\":0}".into());
+}
+
+#[test]
+#[should_panic(expected = "that offer is for another player")]
+fn an_offer_sells_only_its_player() {
+    let mut l = league_with(2, 0);
+    let squad = ids(&l, "c0.testnet");
+    bid(&mut l, "c1.testnet", &squad[10], 800);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(
+        squad[9].clone(),
+        acc("c0.testnet"),
+        1,
+        "{\"accept\":0}".into(),
+    );
+}
+
+#[test]
+fn a_sale_shares_the_price_as_the_payout_says_and_burns_the_tax() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 1_000);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(token.clone(), acc("c0.testnet"), 1, "{\"accept\":0}".into());
+    assert_eq!(l.get_offer(0).unwrap().state, OfferState::Accepting);
+    // A second acceptance of the same offer is refused while in flight.
+    as_caller("league.testnet");
+    let payout = Payout {
+        payout: [
+            (acc("c0.testnet"), U128(970)),
+            (acc("league.testnet"), U128(30)),
+        ]
+        .into_iter()
+        .collect(),
+    };
+    assert_eq!(l.on_sale(0, Ok(payout)), "sold");
+    assert_eq!(l.get_offer(0).unwrap().state, OfferState::Sold);
+    assert_eq!(l.owed_of(acc("c0.testnet")), U128(970));
+    assert_eq!(l.owed_of(acc("league.testnet")), U128(0)); // burned, not owed
+}
+
+#[test]
+fn a_failed_transfer_reopens_the_offer() {
+    let mut l = league_with(2, 0);
+    let token = ids(&l, "c0.testnet")[10].clone();
+    bid(&mut l, "c1.testnet", &token, 1_000);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(token.clone(), acc("c0.testnet"), 1, "{\"accept\":0}".into());
+    as_caller("league.testnet");
+    l.on_sale(0, Err(near_sdk::PromiseError::Failed));
+    assert_eq!(l.get_offer(0).unwrap().state, OfferState::Open);
+    assert_eq!(l.offers_for(token).len(), 1);
+}
+
+#[test]
+fn a_payout_never_pays_more_than_the_price() {
+    let payout = Payout {
+        payout: [(acc("a.testnet"), U128(700)), (acc("b.testnet"), U128(700))]
+            .into_iter()
+            .collect(),
+    };
+    let shares = settle_payout(&payout, 1_000, &acc("league.testnet"));
+    let total: u128 = shares.iter().map(|(_, a)| a).sum();
+    assert_eq!(total, 1_000);
 }

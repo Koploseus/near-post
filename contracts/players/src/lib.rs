@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 
+use near_contract_standards::non_fungible_token::approval::NonFungibleTokenApproval;
 use near_contract_standards::non_fungible_token::core::{
     NonFungibleTokenCore, NonFungibleTokenResolver,
 };
@@ -24,8 +25,8 @@ use near_contract_standards::non_fungible_token::{NonFungibleToken, Token, Token
 use near_sdk::json_types::U128;
 use near_sdk::store::LookupMap;
 use near_sdk::{
-    AccountId, BorshStorageKey, Gas, PanicOnDefault, PromiseOrValue, env, ext_contract, near,
-    require,
+    AccountId, BorshStorageKey, Gas, PanicOnDefault, Promise, PromiseOrValue, env, ext_contract,
+    near, require,
 };
 
 #[ext_contract(ext_league)]
@@ -364,6 +365,42 @@ impl NonFungibleTokenResolver for Players {
     }
 }
 
+/// NEP-178: an owner can approve an account (a market, the league) to
+/// transfer a player. Approving the league with `{"accept": <offer id>}` as
+/// `msg` sells to that offer.
+#[near]
+impl NonFungibleTokenApproval for Players {
+    #[payable]
+    fn nft_approve(
+        &mut self,
+        token_id: TokenId,
+        account_id: AccountId,
+        msg: Option<String>,
+    ) -> Option<Promise> {
+        self.tokens.nft_approve(token_id, account_id, msg)
+    }
+
+    #[payable]
+    fn nft_revoke(&mut self, token_id: TokenId, account_id: AccountId) {
+        self.tokens.nft_revoke(token_id, account_id);
+    }
+
+    #[payable]
+    fn nft_revoke_all(&mut self, token_id: TokenId) {
+        self.tokens.nft_revoke_all(token_id);
+    }
+
+    fn nft_is_approved(
+        &self,
+        token_id: TokenId,
+        approved_account_id: AccountId,
+        approval_id: Option<u64>,
+    ) -> bool {
+        self.tokens
+            .nft_is_approved(token_id, approved_account_id, approval_id)
+    }
+}
+
 #[near]
 impl NonFungibleTokenEnumeration for Players {
     fn nft_total_supply(&self) -> U128 {
@@ -567,5 +604,45 @@ mod tests {
         assert_eq!(out[&acc("koplo.testnet")], U128(150));
         assert_eq!(out[&acc("league.testnet")], U128(30));
         assert_eq!(out[&acc("rive-nord.testnet")], U128(820));
+    }
+
+    #[test]
+    fn an_approved_market_sells_with_the_payout() {
+        let mut p = setup();
+        testing_env!(
+            VMContextBuilder::new()
+                .predecessor_account_id(acc("rive-nord.testnet"))
+                .attached_deposit(NearToken::from_millinear(10))
+                .build()
+        );
+        p.nft_approve("duval".into(), acc("league.testnet"), None);
+        assert!(p.nft_is_approved("duval".into(), acc("league.testnet"), None));
+        as_caller("league.testnet");
+        let out = p
+            .nft_transfer_payout(
+                acc("cite-phare.testnet"),
+                "duval".into(),
+                Some(1),
+                None,
+                U128(1_000),
+                Some(10),
+            )
+            .payout;
+        assert_eq!(
+            p.nft_token("duval".into()).unwrap().owner_id,
+            acc("cite-phare.testnet")
+        );
+        let total: u128 = out.values().map(|v| v.0).sum();
+        assert_eq!(total, 1_000);
+        // The approval is consumed by the transfer.
+        assert!(!p.nft_is_approved("duval".into(), acc("league.testnet"), None));
+    }
+
+    #[test]
+    #[should_panic(expected = "Sender not approved")]
+    fn an_unapproved_market_cannot_sell() {
+        let mut p = setup();
+        as_caller("league.testnet");
+        p.nft_transfer_payout(acc("x.testnet"), "duval".into(), None, None, U128(1), None);
     }
 }
