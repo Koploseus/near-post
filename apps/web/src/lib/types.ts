@@ -21,7 +21,7 @@ export interface Star {
 export type Role = "Gk" | "Lb" | "Cb" | "Rb" | "Dm" | "Cm" | "Lm" | "Rm" | "Am" | "Lw" | "Rw" | "St";
 export type Formation = "4-4-2" | "4-3-3" | "3-5-2" | "4-2-3-1";
 export type Strategy = "defend" | "balanced" | "attack";
-export type EventKind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow";
+export type EventKind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow" | "red" | "free_kick" | "penalty";
 
 export interface MatchEvent {
   second: number;
@@ -49,6 +49,10 @@ export interface MatchStats {
   away_corners: number;
   home_fouls: number;
   away_fouls: number;
+  home_yellows: number;
+  away_yellows: number;
+  home_reds: number;
+  away_reds: number;
   man_of_the_match: Star | null;
 }
 
@@ -153,3 +157,12 @@ export interface Captain {
   week: number;
   votes: number;
 }
+
+/** Set-piece takers a captain named (token ids). */
+export interface Takers {
+  free_kick: string | null;
+  penalty: string | null;
+}
+
+/** Stands in for a missing player in a match's elevens. */
+export const BOT = "academy";

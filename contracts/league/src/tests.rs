@@ -594,7 +594,7 @@ fn a_free_agent_cannot_report() {
 }
 
 #[test]
-fn a_person_plays_only_when_he_reports() {
+fn a_person_plays_by_default_unless_suspended() {
     let mut l = league_with(2, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
     l.players.get_mut(&token).unwrap().skills = all_99(); // the best player of the squad
@@ -603,14 +603,117 @@ fn a_person_plays_only_when_he_reports() {
             .iter()
             .any(|p| p.token_id == token)
     };
-    assert!(!plays(&l), "absent: an academy player takes his place");
+    assert!(plays(&l), "everyone in the squad plays by default");
     assert_eq!(l.starting_eleven(acc("c0.testnet")).len(), 11);
-    as_caller("koplo.testnet");
-    l.report_for_match();
-    assert!(plays(&l));
-    // Next match day he must report again.
+    // Sent off on match day 1: out on match day 2, back on day 3.
+    l.suspended.insert((token.clone(), 2));
     kick_off(&mut l, 1);
+    assert!(l.is_suspended(token.clone(), 2));
     assert!(!plays(&l));
+    kick_off(&mut l, 2);
+    assert!(plays(&l));
+}
+
+#[test]
+fn squads_hold_twelve_and_the_weakest_academy_player_makes_room() {
+    let mut l = league_with(1, 0);
+    let academy = l.squad(acc("c0.testnet"));
+    assert_eq!(academy.len(), 11);
+    let weakest = academy
+        .iter()
+        .min_by_key(|p| (p.overall, std::cmp::Reverse(p.token_id.clone())))
+        .unwrap()
+        .token_id
+        .clone();
+    sign_person(&mut l, "p0.testnet", "c0.testnet");
+    assert_eq!(l.squad(acc("c0.testnet")).len(), 12);
+    sign_person(&mut l, "p1.testnet", "c0.testnet");
+    let squad = l.squad(acc("c0.testnet"));
+    assert_eq!(squad.len(), 12);
+    assert!(
+        !squad.iter().any(|p| p.token_id == weakest),
+        "the weakest academy player left"
+    );
+    for n in 2..12 {
+        sign_person(&mut l, &format!("p{n}.testnet"), "c0.testnet");
+    }
+    let squad = l.squad(acc("c0.testnet"));
+    assert_eq!(squad.len(), 12);
+    assert!(
+        squad.iter().all(|p| p.controller.is_some()),
+        "twelve people"
+    );
+    // A thirteenth person sits on the bench: nobody else is pushed out.
+    sign_person(&mut l, "p12.testnet", "c0.testnet");
+    assert_eq!(l.squad(acc("c0.testnet")).len(), 13);
+}
+
+#[test]
+fn a_short_squad_plays_with_academy_kids() {
+    let mut l = league_with(2, 0);
+    let squad = l.squads.get(&acc("c1.testnet")).unwrap().clone();
+    l.squads.insert(acc("c1.testnet"), squad[..8].to_vec());
+    let results = kick_off(&mut l, 3);
+    let m = results
+        .iter()
+        .find(|m| m.away == acc("c1.testnet") || m.home == acc("c1.testnet"))
+        .unwrap();
+    let side = usize::from(m.away == acc("c1.testnet"));
+    assert_eq!(
+        m.elevens[side].iter().filter(|t| t.as_str() == BOT).count(),
+        3
+    );
+}
+
+#[test]
+fn the_captain_names_the_takers_and_a_red_card_leaves_ten() {
+    let mut l = league_with(2, 0);
+    let squad = l.squads.get(&acc("c0.testnet")).unwrap().clone();
+    as_caller("c0.testnet");
+    l.set_takers(
+        acc("c0.testnet"),
+        Some(squad[9].clone()),
+        Some(squad[10].clone()),
+    );
+    assert_eq!(l.takers(acc("c0.testnet")).penalty, Some(squad[10].clone()));
+    // Over many match days: kicks come from the named takers when they play,
+    // a man sent off leaves an empty slot after the break and is suspended.
+    let mut checked = 0;
+    for seed in 1..60u8 {
+        let results = kick_off(&mut l, seed);
+        for m in &results {
+            for (n, e) in m.events.iter().enumerate() {
+                let h = usize::from(n as u32 >= m.first_half_events);
+                let side = usize::from(!e.home);
+                let club = if e.home { &m.home } else { &m.away };
+                let token = m.elevens[2 * h + side][e.player as usize].clone();
+                if e.kind == EventKind::Red && h == 0 {
+                    // Nobody takes his slot in the second half.
+                    assert!(!m.elevens[2 + side].contains(&token));
+                    assert_eq!(m.elevens[2 + side][e.player as usize], "");
+                    checked += 1;
+                }
+                if e.kind == EventKind::Red && token != BOT {
+                    assert!(l.is_suspended(token.clone(), l.match_day));
+                }
+                if e.kind == EventKind::Penalty
+                    && club == &acc("c0.testnet")
+                    && m.elevens[2 * h + side].contains(&squad[10])
+                {
+                    assert_eq!(token, squad[10]);
+                }
+            }
+        }
+    }
+    assert!(checked > 0, "no first-half red in 59 match days");
+}
+
+#[test]
+#[should_panic(expected = "only the captain (or the manager, without one) names the takers")]
+fn only_the_captain_names_the_takers() {
+    let mut l = league_with(1, 0);
+    as_caller("c1.testnet");
+    l.set_takers(acc("c0.testnet"), None, None);
 }
 
 #[test]

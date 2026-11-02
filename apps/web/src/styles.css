@@ -360,3 +360,9 @@ a.result:hover, a.result:focus-visible { background: rgba(242,183,5,.18); }
 .pen-dots i.in { background: #45d483; }
 .pen-dots i.out { background: var(--red); }
 .pen-help { color: var(--muted-on-ink) !important; margin-top: 8px; }
+
+/* ---- v6: set pieces, red cards ---- */
+.set-pieces { margin-top: 14px; padding-top: 12px; border-top: 2px dashed rgba(27,35,64,.25); display: grid; gap: 8px; }
+.taker { display: grid; gap: 4px; font-weight: 700; font-size: 14px; }
+.taker select { font: inherit; font-weight: 600; padding: 6px 8px; border: 2px solid var(--ink); border-radius: 4px; background: var(--paper); color: var(--ink); }
+.moment.card.red strong { color: var(--red); text-shadow: 0 6px 0 var(--ink); }

@@ -15,6 +15,7 @@ export function allowedMethods(contracts: { league: string; goalars: string; pla
         "report_for_match",
         "vote_captain",
         "set_formation",
+        "set_takers",
         "take_slot",
         "vote_strategy",
         "follow",

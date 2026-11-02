@@ -3,7 +3,7 @@ import { useData, useGame } from "../lib/game.js";
 import { type Clock, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
 import { SPOTS } from "../lib/pitch.js";
 import { league } from "../lib/near.js";
-import type { Club, MatchEvent, MatchResult, Player } from "../lib/types.js";
+import { BOT, type Club, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
 
 const ICON: Record<MatchEvent["kind"], string> = {
   goal: "⚽",
@@ -13,6 +13,9 @@ const ICON: Record<MatchEvent["kind"], string> = {
   corner: "⚑",
   foul: "✋",
   yellow: "🟨",
+  red: "🟥",
+  free_kick: "◠",
+  penalty: "◉",
 };
 
 function useNow(ms = 1000) {
@@ -130,7 +133,10 @@ export function MatchView({
   const c = final || !schedule ? FINAL : clock(m, kickoff, schedule, now);
   const shown = visible(m, c);
   const [hs, as] = scoreOf(shown);
-  const name = (e: MatchEvent & { half: 0 | 1 }) => who.get(eleven(m, e)[e.player] ?? "") ?? "a player";
+  const name = (e: MatchEvent & { half: 0 | 1 }) => {
+    const t = eleven(m, e)[e.player] ?? "";
+    return t === BOT ? "an academy kid" : (who.get(t) ?? "a player");
+  };
   const line = (e: MatchEvent & { half: 0 | 1 }) => {
     const n = name(e);
     switch (e.kind) {
@@ -148,6 +154,14 @@ export function MatchView({
         return `Foul by ${n}`;
       case "yellow":
         return `Yellow card for ${n}`;
+      case "red": {
+        const second = shown.some((x) => x !== e && x.kind === "yellow" && x.home === e.home && eleven(m, x)[x.player] === eleven(m, e)[e.player] && x.second <= e.second);
+        return second ? `Second yellow: ${n} is sent off` : `RED CARD! ${n} is sent off`;
+      }
+      case "free_kick":
+        return `Free kick on goal: ${n} steps up`;
+      case "penalty":
+        return `PENALTY! ${n} takes it`;
     }
   };
   const count = (home: boolean, kinds: MatchEvent["kind"][]) => shown.filter((e) => e.home === home && kinds.includes(e.kind)).length;
@@ -158,6 +172,8 @@ export function MatchView({
     ["On target", count(true, ["goal", "saved"]), count(false, ["goal", "saved"])],
     ["Corners", count(true, ["corner"]), count(false, ["corner"])],
     ["Fouls", count(true, ["foul"]), count(false, ["foul"])],
+    ["Yellow cards", count(true, ["yellow"]), count(false, ["yellow"])],
+    ["Red cards", count(true, ["red"]), count(false, ["red"])],
   ];
   const phaseLabel = {
     before: "Kick-off soon",
@@ -288,10 +304,17 @@ function Pitch({ m, shown, c }: { m: MatchResult; shown: (MatchEvent & { half: 0
     else if (last.kind === "saved") [x, y] = [at(43), 46 + (s % 9)];
     else if (last.kind === "missed") [x, y] = [at(46), (s % 2 ? 30 : 70)];
     else if (last.kind === "corner") [x, y] = [at(48), s % 2 ? 3 : 97];
+    else if (last.kind === "penalty") [x, y] = [at(39), 50];
+    else if (last.kind === "free_kick") [x, y] = [at(31), 35 + (s % 30)];
     else [x, y] = [at(5 + (s % 20)), 20 + (s % 60)];
   }
   const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time";
   if (stopped) [x, y] = [50, 50];
+  // Sent off: his dot leaves the pitch (and his slot stays empty after the break).
+  const half = second ? 1 : 0;
+  const gone = (side: number, k: number) =>
+    (second && m.elevens[2 + side]?.[k] === "") ||
+    shown.some((e) => e.kind === "red" && e.half === half && Number(!e.home) === side && e.player === k);
   const spot = (side: 0 | 1, k: number) => {
     const [sx, sy] = SPOTS[f[side]!][k]!;
     const depth = (100 - sy) * 0.46 + 3; // own goal line to halfway
@@ -305,7 +328,9 @@ function Pitch({ m, shown, c }: { m: MatchResult; shown: (MatchEvent & { half: 0
       <span className="mp-goal mp-left" />
       <span className="mp-goal mp-right" />
       {[0, 1].map((side) =>
-        Array.from({ length: 11 }, (_, k) => <span key={`${side}-${k}`} className={`mp-dot ${side ? "away" : "home"}`} style={spot(side as 0 | 1, k)} />),
+        Array.from({ length: 11 }, (_, k) =>
+          gone(side, k) ? null : <span key={`${side}-${k}`} className={`mp-dot ${side ? "away" : "home"}`} style={spot(side as 0 | 1, k)} />,
+        ),
       )}
       <span className="mp-ball" style={{ left: `${Math.min(98, Math.max(2, x))}%`, top: `${Math.min(96, Math.max(4, y))}%` }} />
     </div>
@@ -327,7 +352,7 @@ function Moment({
   const seen = useRef<number | null>(null);
   const [moment, setMoment] = useState<(MatchEvent & { half: 0 | 1 }) | null>(null);
   useEffect(() => {
-    const big = shown.filter((e) => e.kind === "goal" || e.kind === "own_goal" || e.kind === "yellow");
+    const big = shown.filter((e) => ["goal", "own_goal", "yellow", "red", "penalty"].includes(e.kind));
     if (seen.current === null) {
       seen.current = big.length; // no fanfare for what happened before we arrived
       return;
@@ -340,11 +365,12 @@ function Moment({
     }
   }, [shown]);
   if (!moment) return null;
-  const goal = moment.kind !== "yellow";
+  const goal = moment.kind === "goal" || moment.kind === "own_goal";
   const team = names.get((moment.home !== (moment.kind === "own_goal")) ? m.home : m.away) ?? "";
+  const title = { goal: "GOAL!", own_goal: "OWN GOAL!", yellow: "🟨 BOOKED", red: "🟥 SENT OFF", penalty: "PENALTY!" }[moment.kind as string] ?? "";
   return (
-    <div className={`moment ${goal ? "goal" : "card"}`} role="status">
-      <strong>{goal ? (moment.kind === "own_goal" ? "OWN GOAL!" : "GOAL!") : "🟨 BOOKED"}</strong>
+    <div className={`moment ${goal ? "goal" : moment.kind === "red" ? "card red" : moment.kind === "penalty" ? "goal" : "card"}`} role="status">
+      <strong>{title}</strong>
       <span>
         {name(moment)} · {team}
       </span>

@@ -8,6 +8,11 @@
 //! counted as it goes. Only what a match sheet shows is kept: shots, saves,
 //! goals, corners, fouls and cards, each with its second.
 //!
+//! v6 adds what makes a match tell a story: a second yellow or a straight
+//! red sends a man off and his side plays on with ten; a foul in the
+//! attacking third can give a direct free kick or a penalty, taken by the
+//! players the captain named (or the best shooter on the pitch).
+//!
 //! A half is played in one transaction, so its events are known when it is
 //! played; the app reveals them over ten real minutes, like the old site did.
 
@@ -115,6 +120,12 @@ pub enum EventKind {
     Corner,
     Foul,
     Yellow,
+    /// Sent off (a straight red, or right after a second yellow).
+    Red,
+    /// A direct free kick on goal; the shot follows (goal, saved, missed).
+    FreeKick,
+    /// A penalty; the kick follows (goal, saved, missed).
+    Penalty,
 }
 
 /// One moment of a match. `second` runs from 0 (kick-off) to the end of the
@@ -134,10 +145,30 @@ pub struct Event {
 #[derive(Clone, Debug)]
 pub struct Side {
     pub roles: [Role; 11],
-    /// One entry per slot; `None` is an empty slot (a short squad).
+    /// One entry per slot; `None` is an empty slot (a man sent off).
     pub skills: [Option<Skills>; 11],
     pub strategy: Strategy,
+    /// Booked in the first half: a second yellow sends him off.
+    pub booked: [bool; 11],
+    /// Slots of the free-kick and penalty takers, if the captain named them.
+    pub takers: [Option<usize>; 2],
 }
+
+impl Side {
+    pub fn new(roles: [Role; 11], skills: [Option<Skills>; 11], strategy: Strategy) -> Self {
+        Self {
+            roles,
+            skills,
+            strategy,
+            booked: [false; 11],
+            takers: [None; 2],
+        }
+    }
+}
+
+/// Free kicks, penalties: index in `Side::takers`.
+pub const FREE_KICK: usize = 0;
+pub const PENALTY: usize = 1;
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Half {
@@ -193,6 +224,8 @@ impl Rng {
 struct Pitch<'a> {
     sides: [&'a Side; 2],
     s: Rng,
+    booked: [[bool; 11]; 2],
+    off: [[bool; 11]; 2],
 }
 
 impl Pitch<'_> {
@@ -224,7 +257,7 @@ impl Pitch<'_> {
     fn pick(&mut self, side: usize, roles: &[Role], not: Option<usize>) -> Option<usize> {
         let pool = |strict: bool| -> Vec<usize> {
             (1..11)
-                .filter(|&k| Some(k) != not && self.sides[side].skills[k].is_some())
+                .filter(|&k| Some(k) != not && self.on(side, k))
                 .filter(|&k| !strict || roles.contains(&self.sides[side].roles[k]))
                 .collect()
         };
@@ -239,8 +272,28 @@ impl Pitch<'_> {
         Some(found[i])
     }
 
+    /// Whether slot `k` of `side` is on the pitch.
+    fn on(&self, side: usize, k: usize) -> bool {
+        self.sides[side].skills[k].is_some() && !self.off[side][k]
+    }
+
     fn keeper(&self, side: usize) -> Option<usize> {
-        self.sides[side].skills[0].map(|_| 0)
+        self.on(side, 0).then_some(0)
+    }
+
+    /// Who takes a set piece: the named taker if he is on the pitch, else the
+    /// best shooter among the outfield players.
+    fn taker(&self, side: usize, kind: usize) -> Option<usize> {
+        if let Some(k) = self.sides[side].takers[kind]
+            && k > 0
+            && k < 11
+            && self.on(side, k)
+        {
+            return Some(k);
+        }
+        (1..11)
+            .filter(|&k| self.on(side, k))
+            .max_by_key(|&k| (self.skills(side, k).shooting, std::cmp::Reverse(k)))
     }
 
     fn strategy_factor(&self, side: usize, attack: bool) -> i32 {
@@ -271,6 +324,8 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
     let mut p = Pitch {
         sides: [home, away],
         s: Rng::new(seed),
+        booked: [home.booked, away.booked],
+        off: [[false; 11]; 2],
     };
     let base = if half == 1 { 0 } else { HALF_SECONDS };
     let mut out = Half::default();
@@ -283,7 +338,7 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
         out.end = (base + HALF_SECONDS) as u16;
         return out;
     };
-    if p.sides[side].skills[holder].is_none() {
+    if !p.on(side, holder) {
         side = 1 - side;
     }
     let mut t: u32 = 0;
@@ -310,7 +365,14 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
         let other = 1 - side;
         let me = p.skills(side, holder);
         let role = p.sides[side].roles[holder];
-        let marker = p.pick(other, group(2 - zone), None);
+        // A side a man down leaves more space: sometimes nobody marks.
+        let short = |p: &Pitch, k: usize| (1..11).filter(|&j| !p.on(k, j)).count() as i32;
+        let (mine_short, theirs_short) = (short(&p, side), short(&p, other));
+        let marker = if p.chance(12 * theirs_short) {
+            None
+        } else {
+            p.pick(other, group(2 - zone), None)
+        };
         let mk = marker.map(|m| p.skills(other, m));
         let mk_def = mk.map(|m| m.defending as i32).unwrap_or(0);
         let mk_phy = mk.map(|m| m.physical as i32).unwrap_or(0);
@@ -330,7 +392,7 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
         let total = (w_shot + w_pass + w_dribble + w_foul) as u32;
         let r = p.roll(total) as i32;
 
-        let elapsed;
+        let mut elapsed;
         if r < w_shot {
             // A shot: on target, then past the keeper?
             let long = zone < 2;
@@ -391,7 +453,7 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
                     elapsed = p.between(20, 35);
                 }
             }
-            if p.sides[next_side].skills[holder].is_none() {
+            if !p.on(next_side, holder) {
                 next_side = side;
             }
             out.possession[side] += elapsed;
@@ -405,7 +467,8 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
                 && (marker.is_none()
                     || p.chance(
                         (70 + (me.passing as i32 - mk_def) / 3
-                            - (p.strategy_factor(other, false) - 100) / 6)
+                            - (p.strategy_factor(other, false) - 100) / 6
+                            - 6 * mine_short)
                             .clamp(35, 92),
                     ));
             elapsed = if ok {
@@ -439,19 +502,79 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
                 zone = 2 - zone;
             }
         } else {
-            // Fouled: maybe a card, maybe a free kick on goal.
-            let m = marker.unwrap_or(0);
-            push(&mut out, t, other == 0, EventKind::Foul, m);
-            if p.chance(20) {
-                push(&mut out, t + 1, other == 0, EventKind::Yellow, m);
-            }
+            // Fouled: maybe a card, maybe a set piece.
+            let m = marker.unwrap_or(1);
+            let them = other == 0;
+            push(&mut out, t, them, EventKind::Foul, m);
             fouls += 1;
+            if p.roll(1_000) < 12 {
+                push(&mut out, t + 1, them, EventKind::Red, m);
+                p.off[other][m] = true;
+            } else if p.chance(20) {
+                push(&mut out, t + 1, them, EventKind::Yellow, m);
+                if p.booked[other][m] {
+                    push(&mut out, t + 1, them, EventKind::Red, m);
+                    p.off[other][m] = true;
+                }
+                p.booked[other][m] = true;
+            }
             elapsed = p.between(25, 45);
             out.possession[side] += elapsed / 2;
+            let piece = if zone == 2 { p.roll(100) } else { 100 };
+            let kind = if piece < 6 {
+                Some(PENALTY)
+            } else if piece < 30 {
+                Some(FREE_KICK)
+            } else {
+                None
+            };
+            if let (Some(kind), Some(taker)) = (kind, kind.and_then(|k| p.taker(side, k))) {
+                // The kick, `elapsed` seconds after the foul.
+                let us = side == 0;
+                let sh = p.skills(side, taker).shooting as i32;
+                let gk = p.keeper(other);
+                let gk_def = gk.map(|g| p.skills(other, g).defending as i32).unwrap_or(1);
+                let at = t + elapsed;
+                let (on_target, goal) = if kind == PENALTY {
+                    push(&mut out, at, us, EventKind::Penalty, taker);
+                    (
+                        p.chance(88),
+                        p.chance((78 + (sh - gk_def) / 4).clamp(60, 92)),
+                    )
+                } else {
+                    push(&mut out, at, us, EventKind::FreeKick, taker);
+                    (
+                        p.chance((25 + sh / 3).clamp(20, 60)),
+                        p.chance((22 + (sh - gk_def) / 3).clamp(8, 45)),
+                    )
+                };
+                let shot = at + 2;
+                if !on_target {
+                    push(&mut out, shot, us, EventKind::Missed, taker);
+                    holder = gk.unwrap_or(0);
+                    zone = 0;
+                } else if goal || gk.is_none() {
+                    push(&mut out, shot, us, EventKind::Goal, taker);
+                    holder = p.pick(other, &[Role::St, Role::Cm], None).unwrap_or(0);
+                    zone = 1;
+                } else {
+                    push(&mut out, shot, us, EventKind::Saved, taker);
+                    holder = gk.unwrap_or(0);
+                    zone = 0;
+                }
+                if p.on(other, holder) {
+                    side = other;
+                } else {
+                    holder = taker;
+                }
+                elapsed += p.between(30, 50);
+            }
         }
         t += elapsed;
     }
-    out.end = (base + end.unwrap_or(HALF_SECONDS)) as u16;
+    // A last set piece can run a few seconds past the whistle.
+    let last = out.events.last().map_or(0, |e| e.second as u32);
+    out.end = (base + end.unwrap_or(HALF_SECONDS)).max(last) as u16;
     out
 }
 
@@ -487,11 +610,7 @@ mod tests {
     }
 
     fn side(v: u8, f: Formation, strategy: Strategy) -> Side {
-        Side {
-            roles: f.roles(),
-            skills: [Some(skills(v)); 11],
-            strategy,
-        }
+        Side::new(f.roles(), [Some(skills(v)); 11], strategy)
     }
 
     fn matches(n: u64, home: &Side, away: &Side) -> Vec<(Half, Half)> {
@@ -697,11 +816,7 @@ mod tests {
             play_half(seed, 1, &s, &s, true),
             play_half(seed, 1, &s, &s, true)
         );
-        let empty = Side {
-            roles: Formation::F442.roles(),
-            skills: [None; 11],
-            strategy: Strategy::Balanced,
-        };
+        let empty = Side::new(Formation::F442.roles(), [None; 11], Strategy::Balanced);
         let h = play_half(seed, 1, &s, &empty, true);
         assert!(h.events.iter().all(|e| e.home));
         let (_, conceded) = score(&play_half(seed, 2, &empty, &s, true).events);
@@ -724,5 +839,113 @@ mod tests {
             assert_eq!(r[0], Role::Gk);
             assert_eq!(r.iter().filter(|x| **x == Role::Gk).count(), 1);
         }
+    }
+
+    #[test]
+    fn set_pieces_and_cards_happen_at_believable_rates() {
+        let s = side(55, Formation::F442, Strategy::Balanced);
+        let ms = matches(2_000, &s, &s);
+        let pens = stat(&ms, |e| e.kind == EventKind::Penalty);
+        let fks = stat(&ms, |e| e.kind == EventKind::FreeKick);
+        let reds = stat(&ms, |e| e.kind == EventKind::Red);
+        let yellows = stat(&ms, |e| e.kind == EventKind::Yellow);
+        assert!((0.1..0.6).contains(&pens), "{pens} penalties a match");
+        assert!((0.8..4.0).contains(&fks), "{fks} free kicks a match");
+        assert!((0.05..0.5).contains(&reds), "{reds} reds a match");
+        assert!((1.0..5.0).contains(&yellows), "{yellows} yellows a match");
+        // Every set piece is followed by the taker's kick, and most penalties go in.
+        let (mut scored, mut taken) = (0, 0);
+        for (a, b) in &ms {
+            for half in [a, b] {
+                for w in half.events.windows(2) {
+                    if matches!(w[0].kind, EventKind::Penalty | EventKind::FreeKick) {
+                        assert!(matches!(
+                            w[1].kind,
+                            EventKind::Goal | EventKind::Saved | EventKind::Missed
+                        ));
+                        assert_eq!((w[0].home, w[0].player), (w[1].home, w[1].player));
+                        if w[0].kind == EventKind::Penalty {
+                            taken += 1;
+                            scored += i32::from(w[1].kind == EventKind::Goal);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            scored * 100 > taken * 60,
+            "{scored} of {taken} penalties scored"
+        );
+    }
+
+    #[test]
+    fn a_man_sent_off_does_nothing_more_and_a_second_yellow_is_a_red() {
+        let s = side(55, Formation::F442, Strategy::Balanced);
+        for (a, b) in matches(2_000, &s, &s) {
+            for half in [&a, &b] {
+                for (n, e) in half.events.iter().enumerate() {
+                    if e.kind != EventKind::Red {
+                        continue;
+                    }
+                    assert!(
+                        half.events[n + 1..].iter().all(|x| !(x.home == e.home
+                            && x.player == e.player
+                            && x.kind != EventKind::OwnGoal)),
+                        "a man sent off played on"
+                    );
+                }
+            }
+        }
+        // Booked in the first half: his next yellow comes with a red.
+        let mut booked = side(55, Formation::F442, Strategy::Balanced);
+        booked.booked = [true; 11];
+        let mut seconds = 0;
+        for i in 0..400 {
+            let h = play_half(derive_seed([5; 32], &[i]), 2, &booked, &s, true);
+            for w in h.events.windows(2) {
+                if w[0].kind == EventKind::Yellow && w[0].home {
+                    assert_eq!(w[1].kind, EventKind::Red);
+                    seconds += 1;
+                }
+            }
+        }
+        assert!(seconds > 0);
+    }
+
+    #[test]
+    fn ten_men_suffer_and_named_takers_take_the_kicks() {
+        let full = side(55, Formation::F442, Strategy::Balanced);
+        let mut ten = full.clone();
+        ten.skills[6] = None;
+        let goals = |h: &Side, a: &Side| {
+            matches(1_500, h, a)
+                .iter()
+                .map(|(x, y)| {
+                    let ev: Vec<Event> = x.events.iter().chain(&y.events).copied().collect();
+                    let (g, c) = score(&ev);
+                    g as i32 - c as i32
+                })
+                .sum::<i32>()
+        };
+        assert!(goals(&ten, &full) < goals(&full, &full) - 100);
+        let mut named = full.clone();
+        named.takers = [Some(3), Some(4)];
+        // The named man takes them, unless he was sent off.
+        let (mut kicks, mut theirs) = (0, 0);
+        for (a, b) in matches(600, &named, &full) {
+            for e in a.events.iter().chain(&b.events).filter(|e| e.home) {
+                let want = match e.kind {
+                    EventKind::FreeKick => 3,
+                    EventKind::Penalty => 4,
+                    _ => continue,
+                };
+                kicks += 1;
+                theirs += i32::from(e.player == want);
+            }
+        }
+        assert!(
+            kicks > 100 && theirs * 100 >= kicks * 95,
+            "{theirs} of {kicks}"
+        );
     }
 }

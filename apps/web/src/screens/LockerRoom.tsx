@@ -52,22 +52,35 @@ function CreateFootballer() {
 
 function PickClub({ me }: { me: Player }) {
   const { session, refresh } = useGame();
-  const { data: table } = useData(() => league<Club[]>("table"), []);
+  const { data } = useData(async () => {
+    const table = await league<Club[]>("table");
+    const squads = await Promise.all(table.map((c) => league<Player[]>("squad", { account_id: c.manager })));
+    return table.map((c, i) => ({ c, people: squads[i]!.filter((p) => p.controller).length }));
+  }, []);
+  const table = data?.map((d) => d.c);
   return (
     <section className="paper panel" aria-labelledby="pick-title">
       <span className="k">STEP 2 OF 2</span>
       <h2 id="pick-title">Sign for a club</h2>
       <p className="note">
         {me.name} is a free agent. Give a club his registration (his NFT) and he joins its squad. You keep playing him,
-        and his wallet stays yours, wherever he goes.
+        and his wallet stays yours, wherever he goes. A squad is eleven and one more: you take the place of its weakest
+        academy player, and a club with twelve people is full.
       </p>
       <div className="clubs">
-        {(table ?? []).map((c) => (
+        {(data ?? []).map(({ c, people }) => (
           <div className="club-row" key={c.manager}>
             <span>
-              <strong>{c.name}</strong> <span className="note">Division {c.division} · {c.points} pts · {c.fans} fans</span>
+              <strong>{c.name}</strong>{" "}
+              <span className="note">
+                Division {c.division} · {c.points} pts · {c.fans} fans · {people} of 12 people
+              </span>
             </span>
-            <Action label={`SIGN FOR ${c.name.toUpperCase()}`} className="cta small" run={() => transferRegistration(session!, me.token_id, c.manager)} done={() => setTimeout(refresh, 2500)} />
+            {people >= 12 ? (
+              <span className="chip">FULL</span>
+            ) : (
+              <Action label={`SIGN FOR ${c.name.toUpperCase()}`} className="cta small" run={() => transferRegistration(session!, me.token_id, c.manager)} done={() => setTimeout(refresh, 2500)} />
+            )}
           </div>
         ))}
         {table?.length === 0 && <p className="note">No club yet.</p>}
@@ -79,7 +92,7 @@ function PickClub({ me }: { me: Player }) {
 function MyPlayer({ me, club }: { me: Player; club: Club }) {
   const { session, schedule, balance, refresh } = useGame();
   const day = schedule?.match_day ?? 0;
-  const { data: reported, reload } = useData(() => league<boolean>("is_reported", { token_id: me.token_id, match_day: day }), [me.token_id, day]);
+  const { data: suspended } = useData(() => league<boolean>("is_suspended", { token_id: me.token_id, match_day: day }), [me.token_id, day]);
   const owed = BigInt(me.wallet) + BigInt(me.salary);
   return (
     <div className="locker">
@@ -108,14 +121,12 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
       <div className="actions">
         <div className="paper panel">
           <h3>Match day {day}</h3>
-          {reported ? (
-            <p className="ok">You reported. If the captain picks you, you play.</p>
+          {suspended ? (
+            <p className="err">Suspended for this match day after a red card.</p>
           ) : (
-            <>
-              <p className="note">Report before kick-off or an academy player takes your place.</p>
-              <Action label="I'M FIT TO PLAY" run={() => leagueCall(session!, "report_for_match", {}, 30)} done={reload} />
-            </>
+            <p className="ok">You are in the squad: everyone plays by default, eleven and one more.</p>
           )}
+          <p className="note">Pick your slot on the team sheet, or the best free slot for your role is yours. A red card suspends you for the next match day.</p>
         </div>
         <Training me={me} />
         <div className="paper panel">
