@@ -56,7 +56,21 @@ export interface MatchStats {
   man_of_the_match: Star | null;
 }
 
+export interface Look {
+  hair: string | null;
+  boots: string | null;
+  band: string | null;
+}
+
+export interface CatalogItem {
+  id: string;
+  kind: "hair" | "boots" | "band";
+  style: string;
+  rarity: "common" | "rare" | "epic" | "legendary";
+}
+
 export interface Player {
+  look?: Look;
   token_id: string;
   name: string;
   position: Position;

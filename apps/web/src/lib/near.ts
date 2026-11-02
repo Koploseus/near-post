@@ -1,5 +1,5 @@
 import { Account, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
-import { GOALARS, LEAGUE, PLAYERS, RELAY, RPC } from "./config.js";
+import { GOALARS, ITEMS, LEAGUE, PLAYERS, RELAY, RPC } from "./config.js";
 
 export const provider = new JsonRpcProvider({ url: RPC });
 
@@ -138,3 +138,19 @@ export const finishTraining = (s: Session, tokenId: string, points: number, sign
   leagueCall<import("./types.js").Player>(s, "finish_training", { token_id: tokenId, points, signature }, 30);
 
 export const goalars = (accountId: string) => view<string>(GOALARS, "ft_balance_of", { account_id: accountId });
+
+// ---- Wardrobe ----
+
+/** A pack of three items, paid in G (burned). */
+export const buyPack = (s: Session, amount: string) =>
+  call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount, msg: JSON.stringify({ pack: {} }) }, { deposit: 1n, tgas: 150 });
+
+/** How many of each catalog item an account holds. */
+export async function itemsOf(accountId: string, ids: string[]): Promise<Map<string, number>> {
+  const counts = await view<string[]>(ITEMS, "mt_batch_balance_of", { account_id: accountId, token_ids: ids });
+  return new Map(ids.map((id, i) => [id, Number(counts[i] ?? 0)]).filter(([, n]) => (n as number) > 0) as [string, number][]);
+}
+
+export const fuse = (s: Session, items: string[]) => leagueCall(s, "fuse", { items }, 120);
+export const equip = (s: Session, tokenId: string, item: string) => leagueCall(s, "equip", { token_id: tokenId, item }, 120);
+export const unequip = (s: Session, tokenId: string, kind: string) => leagueCall(s, "unequip", { token_id: tokenId, kind }, 60);

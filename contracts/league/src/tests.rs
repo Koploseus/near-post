@@ -169,6 +169,14 @@ fn one_division_per_call_and_the_day_closes_after_the_last() {
 fn a_season_ends_with_promotion_and_relegation() {
     let mut l = league_with(26, 0);
     for d in 0..SEASON_DAYS {
+        if d == SEASON_DAYS - 1 {
+            for c in 0..26 {
+                l.clubs
+                    .get_mut(&acc(&format!("c{c}.testnet")))
+                    .unwrap()
+                    .treasury = U128(1_000_000);
+            }
+        }
         play_day(&mut l, d as u8 + 1);
     }
     assert_eq!(l.season(), 2);
@@ -176,8 +184,11 @@ fn a_season_ends_with_promotion_and_relegation() {
     let below = l.final_table(1, 2);
     assert_eq!((top.len(), below.len()), (20, 6));
     for c in &top[17..] {
-        assert_eq!(l.get_club(c.clone()).unwrap().division, 2, "relegated");
+        let club = l.get_club(c.clone()).unwrap();
+        assert_eq!(club.division, 2, "relegated");
+        assert!(club.treasury.0 <= 900_000, "a relegated club burns a tenth");
     }
+    assert!(l.get_club(top[0].clone()).unwrap().treasury.0 > 950_000);
     for c in &below[..3] {
         assert_eq!(l.get_club(c.clone()).unwrap().division, 1, "promoted");
     }
@@ -1348,4 +1359,143 @@ fn fixtures_are_known_before_kick_off() {
         .map(|m| (m.home, m.away))
         .collect();
     assert_eq!(planned, played);
+}
+
+// ---- Wardrobe ----
+
+#[test]
+fn a_pack_burns_its_price_and_holds_three_items() {
+    let mut l = league_with(1, 0);
+    as_caller("goalars.testnet");
+    let _ = l.ft_on_transfer(
+        acc("fan.testnet"),
+        the_rules().pack_price,
+        "{\"pack\":{}}".into(),
+    );
+    let got = l.last_unboxed(acc("fan.testnet"));
+    assert_eq!(got.len(), 3);
+    assert!(got.iter().all(|i| l.catalog().iter().any(|c| &c.id == i)));
+}
+
+#[test]
+#[should_panic(expected = "a pack costs exactly pack_price")]
+fn a_pack_has_one_price() {
+    let mut l = league_with(1, 0);
+    as_caller("goalars.testnet");
+    let _ = l.ft_on_transfer(acc("fan.testnet"), U128(1), "{\"pack\":{}}".into());
+}
+
+#[test]
+fn fusing_mints_one_rarity_up_only_after_the_burn() {
+    let mut l = league_with(1, 0);
+    as_caller("fan.testnet");
+    let _ = l.fuse(vec![
+        "boots.black".into(),
+        "boots.white".into(),
+        "boots.navy".into(),
+    ]);
+    as_caller("league.testnet");
+    l.on_fused(acc("fan.testnet"), "boots.red".into(), Ok(()));
+    assert_eq!(
+        l.last_unboxed(acc("fan.testnet")),
+        vec!["boots.red".to_string()]
+    );
+}
+
+#[test]
+#[should_panic(expected = "you do not hold those three items")]
+fn no_fusion_without_the_items() {
+    let mut l = league_with(1, 0);
+    as_caller("league.testnet");
+    l.on_fused(
+        acc("fan.testnet"),
+        "boots.red".into(),
+        Err(near_sdk::PromiseError::Failed),
+    );
+}
+
+#[test]
+#[should_panic(expected = "fuse three items of the same kind and rarity")]
+fn fusing_mixed_items_fails_before_any_burn() {
+    let mut l = league_with(1, 0);
+    as_caller("fan.testnet");
+    let _ = l.fuse(vec![
+        "boots.black".into(),
+        "hair.buzz".into(),
+        "boots.navy".into(),
+    ]);
+}
+
+#[test]
+fn the_person_dresses_his_footballer_and_gets_the_old_item_back() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    let _ = l.equip(token.clone(), "hair.mohawk".into());
+    as_caller("league.testnet");
+    l.on_taken(
+        token.clone(),
+        "hair.mohawk".into(),
+        acc("koplo.testnet"),
+        Ok(()),
+    );
+    assert_eq!(
+        l.get_player(token.clone()).unwrap().look.hair,
+        Some("hair.mohawk".into())
+    );
+    // A new haircut replaces the old one (which goes back to him).
+    l.on_taken(
+        token.clone(),
+        "hair.afro".into(),
+        acc("koplo.testnet"),
+        Ok(()),
+    );
+    assert_eq!(
+        l.get_player(token.clone()).unwrap().look.hair,
+        Some("hair.afro".into())
+    );
+    // Not holding the item: nothing changes.
+    let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        l.on_taken(
+            token.clone(),
+            "hair.fire".into(),
+            acc("koplo.testnet"),
+            Err(near_sdk::PromiseError::Failed),
+        )
+    }));
+    assert!(failed.is_err());
+    as_caller("koplo.testnet");
+    l.unequip(token.clone(), "hair".into());
+    assert_eq!(l.get_player(token.clone()).unwrap().look.hair, None);
+    // If sending it back failed, he wears it again: never lost.
+    as_caller("league.testnet");
+    l.on_given_back(
+        token.clone(),
+        "hair.afro".into(),
+        Err(near_sdk::PromiseError::Failed),
+    );
+    assert_eq!(
+        l.get_player(token).unwrap().look.hair,
+        Some("hair.afro".into())
+    );
+}
+
+#[test]
+#[should_panic(expected = "only the person who plays him dresses him")]
+fn nobody_else_dresses_him() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("c0.testnet");
+    let _ = l.equip(token, "hair.mohawk".into());
+}
+
+#[test]
+fn old_match_sheets_are_deleted() {
+    let mut l = league_with(2, 0);
+    for d in 0..=KEEP_RESULTS {
+        play_day(&mut l, (d % 250) as u8 + 1);
+    }
+    assert!(l.results(1).is_empty(), "the oldest sheet is gone");
+    assert_eq!(l.results(2).len(), 1);
+    assert_eq!(l.results(KEEP_RESULTS + 1).len(), 1);
 }

@@ -370,3 +370,28 @@ a.result:hover, a.result:focus-visible { background: rgba(242,183,5,.18); }
 .table tr.down td { background: rgba(200,32,47,.12); }
 .table .zone { font-size: 11px; color: var(--muted, #6b6b6b); }
 .div-head { margin: 18px 0 6px; font-family: var(--display); font-weight: 400; }
+
+/* ---- v6: wardrobe ---- */
+.wardrobe { grid-column: 1 / -1; }
+.wardrobe-grid { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: start; }
+.wardrobe-me { display: grid; justify-items: center; gap: 10px; background: #e9dfc6; border-radius: 6px; padding: 12px; }
+.worn { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 6px; }
+.worn li { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; }
+.pack-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.items { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.item, .unbox { position: relative; display: grid; justify-items: center; gap: 2px; padding: 8px 4px 6px; border: 3px solid; border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; }
+.item b, .unbox b { font-size: 12px; }
+.item i, .unbox i { font-style: normal; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+.item.on { box-shadow: 0 0 0 3px var(--ink); transform: translateY(-2px); }
+.item .count { position: absolute; top: 3px; right: 5px; font-size: 11px; font-weight: 800; }
+.item .sel { position: absolute; top: -9px; left: -9px; width: 22px; height: 22px; border-radius: 50%; background: var(--red); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+.wardrobe-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.unboxed { display: flex; gap: 10px; margin-bottom: 14px; }
+.unbox { cursor: default; width: 104px; animation: unbox .6s cubic-bezier(.2,1.6,.4,1) both; }
+.unbox.legendary { background: linear-gradient(135deg, #fff6c9, #F2B705); }
+.unbox.epic { background: #efe2fb; }
+@keyframes unbox { 0% { transform: rotateY(90deg) scale(.6); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@media (max-width: 700px) { .wardrobe-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .unbox { animation: none; } }
+.worn .chip { padding: 2px 8px; font-size: 11px; min-height: 0; }
+.wardrobe-items > .k { display: block; margin: 4px 0 6px; }

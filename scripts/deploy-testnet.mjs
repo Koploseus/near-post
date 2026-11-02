@@ -22,7 +22,7 @@ const plan = [
   ["league", 20.0],
   ["goalars", 5.0],
   ["players", 8.0],
-  ["items", 1.8],
+  ["items", 4.0],
 ];
 const manifest = { network: "testnet", version, deployed_at: new Date().toISOString(), contracts: {} };
 for (const [name, fund] of plan) {

@@ -31,6 +31,25 @@ const CLUBS = [
   ["saint-cendre", "Union Saint-Cendre", 2, "cote-rouge"],
   ["cote-rouge", "FC Cote-Rouge", 3, "saint-cendre"],
 ];
+/** More fictional clubs, no crowd: enough for a second division (DIVISIONS=1 skips them). */
+const MORE = [
+  ["val-ombre", "Sporting Val-d'Ombre"],
+  ["pierrefeu", "AC Pierrefeu"],
+  ["docks", "Etoile des Docks"],
+  ["clairbois", "FC Clairbois"],
+  ["mont-gris", "Olympique Mont-Gris"],
+  ["bellerive", "US Bellerive"],
+  ["lavandier", "Stade Lavandier"],
+  ["bois-joli", "Racing Bois-Joli"],
+  ["fontaine-rouge", "AS Fontaine-Rouge"],
+  ["quais", "Union des Quais"],
+  ["hautes-herbes", "FC Hautes-Herbes"],
+  ["rocheblanche", "Entente Rocheblanche"],
+  ["grand-pre", "SC Grand-Pre"],
+  ["tour-neuve", "Athletic Tour-Neuve"],
+  ["maree-basse", "AS Maree-Basse"],
+  ["lune-rousse", "FC Lune-Rousse"],
+];
 
 async function sub(prefix, publicKey, fund) {
   const id = `${prefix}.${PARENT}`;
@@ -56,7 +75,7 @@ for (const [prefix, fund] of [[`league-${version}`, 15], [`players-${version}`, 
 if (!existsSync(`${keys}/crowd.json`)) save("crowd", KeyPair.fromRandom("ed25519"));
 const crowd = load("crowd");
 
-for (const [prefix, name] of CLUBS) {
+for (const [prefix, name] of [...CLUBS, ...(process.env.DIVISIONS === "1" ? [] : MORE)]) {
   const id = `${prefix}.${PARENT}`;
   if (!existsSync(`${keys}/${id}.json`)) save(id, KeyPair.fromRandom("ed25519"));
   await sub(prefix, load(id).public_key, 0.5);
