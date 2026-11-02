@@ -1,4 +1,4 @@
-import { Account, JsonRpcProvider, nearToYocto } from "near-api-js";
+import { Account, JsonRpcProvider, type SignedDelegate, actions, nearToYocto } from "near-api-js";
 
 /** What the relay needs from NEAR. Swappable in tests. */
 export interface Chain {
@@ -12,6 +12,8 @@ export interface Chain {
   createAccount(accountId: string, publicKey: string, yocto: bigint): Promise<string>;
   transfer(receiverId: string, yocto: bigint): Promise<string>;
   call(contractId: string, method: string, args: Record<string, unknown>, tgas: number): Promise<string>;
+  /** Sends a player's signed delegate action, the parent paying the gas. */
+  relay(signed: SignedDelegate): Promise<{ hash: string; value: string | null; error: string | null }>;
 }
 
 export const near = (amount: string): bigint => BigInt(nearToYocto(amount as `${number}`));
@@ -57,6 +59,24 @@ export function rpcChain(url: string, signer?: { accountId: string; privateKey: 
     async transfer(receiverId, yocto) {
       const r = await parent().transfer({ receiverId, amount: yocto });
       return r.transaction.hash;
+    },
+    async relay(signed) {
+      const r = await parent().signAndSendTransaction({
+        receiverId: signed.delegateAction.senderId,
+        actions: [actions.signedDelegate(signed)],
+        throwOnFailure: false,
+      });
+      const failed = [r.status, ...r.receipts_outcome.map((o) => o.outcome.status)].find(
+        (s) => typeof s === "object" && s !== null && "Failure" in s,
+      );
+      const text = failed ? JSON.stringify(failed) : "";
+      const panic = text.match(/Smart contract panicked: ([^"\\]+)/)?.[1];
+      const status = r.status as { SuccessValue?: string };
+      return {
+        hash: r.transaction.hash,
+        value: failed ? null : (status.SuccessValue ?? null),
+        error: failed ? (panic ?? "the transaction failed") : null,
+      };
     },
     async call(contractId, methodName, args, tgas) {
       const r = await parent().callFunctionRaw({ contractId, methodName, args, gas: BigInt(tgas) * 10n ** 12n });

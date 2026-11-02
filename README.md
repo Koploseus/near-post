@@ -19,8 +19,14 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 - **Sign in with email.** No wallet, no seed phrase, no gas prompt. The browser
   makes a key pair and keeps the private key; after a six-digit email code, the
   relay creates your NEAR account (`u<hash>.near-post.testnet`, derived from
-  your email, which never goes on chain) with that public key and 0.3 NEAR for
-  gas. The relay never holds your key: it can fund you, never act for you.
+  your email, which never goes on chain) with that public key and 0.3 NEAR.
+  The relay never holds your key: it can fund you, never act for you.
+- **You never pay gas.** Every call from the app is a NEP-366 meta
+  transaction: your browser signs a delegate action with your key, the relay
+  wraps it in a transaction and pays the gas. It relays only player accounts,
+  only our three contracts and the game's methods, up to 300 Tgas, a few
+  hundred calls a day. Match days kick off on their own: the relay plays them
+  when due (anyone still can).
 - **Your club starts in Division 3.** Every new account gets 1M G, then 1M more
   on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **You are a footballer.** `create_footballer(name, position)` mints your

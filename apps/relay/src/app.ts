@@ -5,6 +5,7 @@ import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount, normalizeEm
 import { type Chain, near } from "./chain.js";
 import type { Config } from "./config.js";
 import { drill, duration, hits, implausible, points } from "./drill.js";
+import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
 
 const AccountId = z
   .string()
@@ -108,6 +109,38 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!topups.allow(id.data)) return c.json({ error: "too_many_topups" }, 429);
     const tx = await chain.transfer(id.data, funding);
     return c.json({ account_id: id.data, tx });
+  });
+
+  // ---- Gas: the relay pays (NEP-366 meta transactions) ----
+
+  const relayedByAccount = new Limiter(config.RELAYED_PER_DAY, 24 * 60 * 60_000, now);
+  const relayedByIp = new Limiter(config.RELAYED_PER_DAY * 3, 24 * 60 * 60_000, now);
+  const version = config.LEAGUE_ID?.match(/^league-(v\d+)\./)?.[1];
+  const parentOf = config.PARENT_ACCOUNT_ID;
+  const allowed = config.LEAGUE_ID
+    ? allowedMethods({
+        league: config.LEAGUE_ID,
+        goalars: config.GOALARS_ID ?? `goalars-${version}.${parentOf}`,
+        players: config.PLAYERS_ID ?? `players-${version}.${parentOf}`,
+      })
+    : new Map<string, Set<string>>();
+
+  app.post("/v1/relay", async (c) => {
+    const body = z.object({ signed_delegate: z.string().min(1).max(20_000) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    let signed;
+    try {
+      signed = decodeSignedDelegate(body.data.signed_delegate);
+    } catch {
+      return c.json({ error: "invalid_signed_delegate" }, 400);
+    }
+    const no = refuse(signed, allowed, (id) => isPlayerAccount(id, config.PARENT_ACCOUNT_ID));
+    if (no) return c.json({ error: no }, 403);
+    if (!relayedByIp.allow(ip(c)) || !relayedByAccount.allow(signed.delegateAction.senderId)) {
+      return c.json({ error: "too_many_requests" }, 429);
+    }
+    const r = await chain.relay(signed);
+    return c.json(r, r.error ? 422 : 200);
   });
 
   // ---- Training drill ----

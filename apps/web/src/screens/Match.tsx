@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { Action } from "../lib/Action.js";
 import { minute, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
-import { league, leagueCall } from "../lib/near.js";
+import { league } from "../lib/near.js";
 import type { Club, MatchResult } from "../lib/types.js";
 
 function useNow(everyMs = 1000) {
@@ -15,7 +14,7 @@ function useNow(everyMs = 1000) {
 }
 
 export function Match() {
-  const { session, schedule, refresh, clubId } = useGame();
+  const { schedule, clubId } = useGame();
   const now = useNow();
   const day = schedule?.match_day ?? 1;
   const last = day - 1;
@@ -34,10 +33,10 @@ export function Match() {
       <section className="panel ink" aria-label="Next match day">
         <span className="eyebrow">MATCH DAY {day}</span>
         <h2>{left > 0 ? `Kick-off in ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "Kick-off now"}</h2>
-        <p className="sub">Anyone can play a match day once it is due. The score comes from the block's random seed and the elevens' ratings.</p>
-        {session && left === 0 && (
-          <Action label="PLAY THE MATCH DAY" run={() => leagueCall(session, "play_match_day", {}, 300)} done={() => setTimeout(refresh, 3000)} />
-        )}
+        <p className="sub">
+          Kick-off is automatic: the relay plays each match day on chain when it is due (anyone could). The score comes from the
+          block's random seed and the elevens' skills.
+        </p>
       </section>
 
       <section className="paper panel" aria-label={`Results of match day ${last}`}>
