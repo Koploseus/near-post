@@ -4,6 +4,11 @@
 //! batch transfer, with `mt_mint` events. `mt_transfer_call` and the approval
 //! extension are not implemented yet. Only the league mints; holders burn
 //! their own items when they use them.
+//!
+//! The league also burns or takes a holder's items, only when that holder
+//! asks it to: three items fused into one (`league_burn`), an item worn by
+//! his footballer, which the league keeps while he wears it and sends back
+//! after (`league_take`). The league has no other power here.
 
 use near_sdk::json_types::U128;
 use near_sdk::store::LookupMap;
@@ -60,6 +65,78 @@ impl Items {
         emit(
             "mt_mint",
             serde_json::json!({ "owner_id": owner_id, "token_ids": [token_id], "amounts": [amount] }),
+        );
+    }
+
+    /// League only: several items at once (a pack).
+    pub fn mt_batch_mint(
+        &mut self,
+        owner_id: AccountId,
+        token_ids: Vec<TokenId>,
+        amounts: Vec<U128>,
+    ) {
+        require!(
+            env::predecessor_account_id() == self.league_id,
+            "only the league mints items"
+        );
+        require!(
+            token_ids.len() == amounts.len(),
+            "token_ids and amounts differ in length"
+        );
+        for (t, a) in token_ids.iter().zip(&amounts) {
+            require!(a.0 > 0, "amount must be positive");
+            self.add(t, &owner_id, a.0);
+            *self.supply.entry(t.clone()).or_insert(0) += a.0;
+        }
+        emit(
+            "mt_mint",
+            serde_json::json!({ "owner_id": owner_id, "token_ids": token_ids, "amounts": amounts }),
+        );
+    }
+
+    /// League only, when the holder fuses items: burns them.
+    pub fn league_burn(
+        &mut self,
+        owner_id: AccountId,
+        token_ids: Vec<TokenId>,
+        amounts: Vec<U128>,
+    ) {
+        require!(
+            env::predecessor_account_id() == self.league_id,
+            "only the league burns for a holder"
+        );
+        require!(
+            token_ids.len() == amounts.len(),
+            "token_ids and amounts differ in length"
+        );
+        for (t, a) in token_ids.iter().zip(&amounts) {
+            self.sub(t, &owner_id, a.0);
+            if let Some(s) = self.supply.get_mut(t) {
+                *s -= a.0;
+            }
+        }
+        emit(
+            "mt_burn",
+            serde_json::json!({ "owner_id": owner_id, "token_ids": token_ids, "amounts": amounts, "memo": "fused" }),
+        );
+    }
+
+    /// League only, when the holder dresses his footballer: the league keeps
+    /// the item while he wears it.
+    pub fn league_take(&mut self, owner_id: AccountId, token_id: TokenId) {
+        let league = env::predecessor_account_id();
+        require!(
+            league == self.league_id,
+            "only the league takes for a holder"
+        );
+        self.sub(&token_id, &owner_id, 1);
+        self.add(&token_id, &league, 1);
+        emit(
+            "mt_transfer",
+            serde_json::json!({
+                "old_owner_id": owner_id, "new_owner_id": league,
+                "token_ids": [token_id], "amounts": ["1"], "memo": "worn"
+            }),
         );
     }
 
@@ -203,6 +280,53 @@ mod tests {
             U128(1)
         );
         assert_eq!(i.mt_supply("boots".into()), Some(U128(1)));
+    }
+
+    #[test]
+    fn the_league_mints_packs_burns_fusions_and_keeps_what_is_worn() {
+        as_caller("league.testnet");
+        let mut i = Items::new(acc("league.testnet"));
+        i.mt_batch_mint(
+            acc("fan.testnet"),
+            vec!["hair.buzz".into(), "boots.red".into()],
+            vec![U128(3), U128(1)],
+        );
+        i.league_burn(
+            acc("fan.testnet"),
+            vec!["hair.buzz".into(); 3],
+            vec![U128(1); 3],
+        );
+        assert_eq!(i.mt_supply("hair.buzz".into()), Some(U128(0)));
+        i.league_take(acc("fan.testnet"), "boots.red".into());
+        assert_eq!(
+            i.mt_balance_of(acc("fan.testnet"), "boots.red".into()),
+            U128(0)
+        );
+        assert_eq!(
+            i.mt_balance_of(acc("league.testnet"), "boots.red".into()),
+            U128(1)
+        );
+        assert_eq!(i.mt_supply("boots.red".into()), Some(U128(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "only the league burns for a holder")]
+    fn nobody_else_burns_for_a_holder() {
+        as_caller("league.testnet");
+        let mut i = Items::new(acc("league.testnet"));
+        i.mt_mint(acc("fan.testnet"), "boots".into(), U128(1));
+        as_caller("attacker.testnet");
+        i.league_burn(acc("fan.testnet"), vec!["boots".into()], vec![U128(1)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "only the league takes for a holder")]
+    fn nobody_else_takes() {
+        as_caller("league.testnet");
+        let mut i = Items::new(acc("league.testnet"));
+        i.mt_mint(acc("fan.testnet"), "boots".into(), U128(1));
+        as_caller("attacker.testnet");
+        i.league_take(acc("fan.testnet"), "boots".into());
     }
 
     #[test]

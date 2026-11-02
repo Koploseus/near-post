@@ -2,6 +2,7 @@
 export const LEAGUE = import.meta.env.VITE_LEAGUE_ID ?? "league-v5.near-post.testnet";
 export const GOALARS = import.meta.env.VITE_GOALARS_ID ?? "goalars-v5.near-post.testnet";
 export const PLAYERS = import.meta.env.VITE_PLAYERS_ID ?? "players-v5.near-post.testnet";
+export const ITEMS = import.meta.env.VITE_ITEMS_ID ?? "items-v5.near-post.testnet";
 export const RPC = import.meta.env.VITE_NEAR_RPC_URL ?? "https://test.rpc.fastnear.com";
 /** The relay; the dev server proxies /v1 to it. */
 export const RELAY = import.meta.env.VITE_RELAY_URL ?? "";

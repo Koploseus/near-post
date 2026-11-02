@@ -1,8 +1,6 @@
 import { SKILLS, positionLabel, tier } from "../lib/format.js";
 import type { Player } from "../lib/types.js";
-
-const SKIN = ["#C68B5E", "#E9B98F", "#B37650", "#F0C6A0", "#8A5A3B", "#DDA77C"];
-const HAIR = ["#2A1A10", "#7A4B23", "#111111", "#C9A15A", "#1A1210", "#3B2416"];
+import { HairBack, HairFront, LookDefs, SKIN } from "./Look.js";
 
 /**
  * A player card: rating out of 100 and position, a portrait, the name, and
@@ -16,12 +14,14 @@ export function Sticker({ p, onClick, selected, badge }: { p: Player; onClick?: 
       <span className="sticker-face">
         {t === "gold" && <span className="foil" aria-hidden="true" />}
         <svg viewBox="0 0 60 64" aria-hidden="true">
+          <LookDefs />
           <path d="M8 64 C10 48 19 43 30 43 C41 43 50 48 52 64 Z" fill="#000" opacity=".18" transform="translate(2 1)" />
           <path d="M8 64 C10 48 19 43 30 43 C41 43 50 48 52 64 Z" fill="#2F5DA8" />
           <path d="M24 44 L36 44 L34 64 L26 64 Z" fill="#F2B705" />
           <rect x="26" y="34" width="8" height="10" fill={SKIN[n % SKIN.length]} />
+          <HairBack look={p.look} n={n} />
           <ellipse cx="30" cy="25" rx="11" ry="13" fill={SKIN[n % SKIN.length]} />
-          <path d="M19 24 C18 10 42 10 41 24 C38 17 23 17 19 24 Z" fill={HAIR[(n >> 1) % HAIR.length]} />
+          <HairFront look={p.look} n={n} />
           <rect x="25" y="25" width="3" height="3" fill="#1B2340" />
           <rect x="32" y="25" width="3" height="3" fill="#1B2340" />
         </svg>

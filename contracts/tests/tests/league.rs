@@ -29,6 +29,7 @@ struct Game {
     league: Contract,
     goalars: Contract,
     players: Contract,
+    items: Contract,
 }
 
 async fn deploy() -> Result<Game> {
@@ -65,6 +66,7 @@ async fn deploy() -> Result<Game> {
         league,
         goalars,
         players,
+        items,
     })
 }
 
@@ -681,4 +683,121 @@ fn base64_encode(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+#[tokio::test]
+async fn a_person_opens_a_pack_and_dresses_his_footballer() -> Result<()> {
+    let game = deploy().await?;
+    let club = game.account().await?;
+    game.call(&club, "create_club", json!({ "name": "Rive Nord" }))
+        .await?
+        .into_result()?;
+    let koplo = game.account().await?;
+    let me = game
+        .call(
+            &koplo,
+            "create_footballer",
+            json!({ "name": "Koplo", "position": "Fw" }),
+        )
+        .await?
+        .into_result()?
+        .json::<Value>()?;
+    let token = me["token_id"].as_str().unwrap().to_string();
+    let held = |items: Vec<String>, who: String| {
+        let c = game.items.clone();
+        async move {
+            let v: Vec<String> = c
+                .view("mt_batch_balance_of")
+                .args_json(json!({ "account_id": who, "token_ids": items }))
+                .await?
+                .json()?;
+            Ok::<Vec<String>, anyhow::Error>(v)
+        }
+    };
+
+    // A pack: 500k G burned, three items minted to him.
+    let supply = game.supply().await?;
+    let r = koplo
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": (500_000 * ONE_G).to_string(),
+            "msg": json!({ "pack": {} }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?;
+    println!("pack: {} Tgas", r.total_gas_burnt.as_tgas());
+    r.into_result()?;
+    assert_eq!(game.supply().await?, supply - 500_000 * ONE_G);
+    let got: Vec<String> = serde_json::from_value(
+        game.view("last_unboxed", json!({ "account_id": koplo.id() }))
+            .await?,
+    )?;
+    assert_eq!(got.len(), 3);
+    let first = got[0].clone();
+    let mine = held(vec![first.clone()], koplo.id().to_string()).await?;
+    assert_ne!(mine[0], "0");
+
+    // He wears the first one: the league keeps it while he does.
+    let r = game
+        .call(&koplo, "equip", json!({ "token_id": token, "item": first }))
+        .await?;
+    println!("equip: {} Tgas", r.total_gas_burnt.as_tgas());
+    r.into_result()?;
+    let kind = first.split('.').next().unwrap().to_string();
+    let p = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(p["look"][&kind], json!(first));
+    let league_holds = held(vec![first.clone()], game.league.id().to_string()).await?;
+    assert_eq!(league_holds[0], "1");
+
+    // Taken off: it comes back to him.
+    game.call(
+        &koplo,
+        "unequip",
+        json!({ "token_id": token, "kind": kind }),
+    )
+    .await?
+    .into_result()?;
+    let p = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(p["look"][&kind], Value::Null);
+    assert_eq!(
+        held(vec![first.clone()], game.league.id().to_string()).await?[0],
+        "0"
+    );
+    assert_eq!(
+        held(vec![first.clone()], koplo.id().to_string()).await?,
+        mine
+    );
+
+    // Fusing items he does not hold burns nothing and mints nothing.
+    let r = game
+        .call(
+            &koplo,
+            "fuse",
+            json!({ "items": ["hair.fire", "hair.fire", "hair.fire"] }),
+        )
+        .await?;
+    assert!(r.into_result().is_err(), "legendary items do not fuse");
+    let triple = if got.iter().filter(|i| *i == "boots.black").count() == 3 {
+        "hair.short"
+    } else {
+        "boots.black"
+    };
+    let before = held(got.clone(), koplo.id().to_string()).await?;
+    let _ = game
+        .call(&koplo, "fuse", json!({ "items": [triple, triple, triple] }))
+        .await?;
+    assert_eq!(held(got.clone(), koplo.id().to_string()).await?, before);
+    let after: Vec<String> = serde_json::from_value(
+        game.view("last_unboxed", json!({ "account_id": koplo.id() }))
+            .await?,
+    )?;
+    assert_eq!(after, got, "no fusion was recorded");
+    Ok(())
 }

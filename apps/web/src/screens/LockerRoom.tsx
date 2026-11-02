@@ -7,6 +7,7 @@ import type { Club, Player, Position } from "../lib/types.js";
 import { SignIn } from "./SignIn.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 import { Training } from "./Training.js";
+import { Wardrobe } from "./Wardrobe.js";
 
 
 export function LockerRoom() {
@@ -129,6 +130,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
           <p className="note">Pick your slot on the team sheet, or the best free slot for your role is yours. A red card suspends you for the next match day.</p>
         </div>
         <Training me={me} />
+        <Wardrobe me={me} />
         <div className="paper panel">
           <h3>Collect</h3>
           <p className="note">Your goals are minted, your salary is paid from the club treasury.</p>

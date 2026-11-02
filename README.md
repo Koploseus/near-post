@@ -35,6 +35,14 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   (`final_table`) and every club starts again on zero. `play_match_day`
   plays one division per call, so the gas of a call never grows with the
   league (107 Tgas at most for a 20-club division in the sandbox).
+- **A wardrobe of NFT items.** Haircuts, boots and headbands are NEP-245
+  items in four rarities. A pack of three costs 500k G, burned
+  (`ft_transfer_call` with `{"pack":{}}`; common 70%, rare 22%, epic 7%,
+  legendary 1%). Three items of a kind and rarity fuse into one of the next
+  rarity (`fuse`). The person who plays a footballer dresses him (`equip`,
+  `unequip`): the league holds a worn item and sends it back when it comes
+  off. Only the league mints items, and it burns or takes them only when
+  their holder asks.
 - **Signing up pays.** Every new account gets 1M G, then 1M more
   on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **You are a footballer.** `create_footballer(name, position)` mints your

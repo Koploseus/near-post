@@ -31,6 +31,8 @@
 
 mod live;
 mod play;
+mod wardrobe;
+pub use wardrobe::Look;
 
 pub use live::{Event, EventKind, FORMATIONS, Formation, Role, Strategy};
 use play::{ByteStream, ELEVEN, FORMATION, derive_seed, training_gain};
@@ -77,6 +79,8 @@ pub struct Rules {
     pub welcome_bonus: U128,
     pub welcome_visits: u8,
     pub training_cost: U128,
+    /// A pack of three wardrobe items, burned.
+    pub pack_price: U128,
     pub sale_tax_bps: u32,
     /// Hard cap, enforced by the goalars contract: every mint is scaled by
     /// (cap - supply) / cap.
@@ -113,6 +117,7 @@ pub fn the_rules() -> Rules {
         welcome_bonus: U128(1_000_000 * ONE_G),
         welcome_visits: 4,
         training_cost: U128(400_000 * ONE_G),
+        pack_price: U128(500_000 * ONE_G),
         sale_tax_bps: 300,
         max_supply: U128(10_000_000_000 * ONE_G),
         trainer_bps: 1_000,
@@ -202,6 +207,8 @@ pub struct Player {
     /// Salaries earned: real G the league holds for him until he claims.
     pub salary: U128,
     pub last_trained_day: u32,
+    /// What he wears (items held by the league while he does).
+    pub look: Look,
 }
 
 /// `msg` of a payment to the league.
@@ -210,7 +217,12 @@ pub struct Player {
 pub enum Order {
     Train(TrainOrder),
     Bid(String),
+    /// A pack of three items: `{"pack":{}}`.
+    Pack(PackOrder),
 }
+
+#[near(serializers = [json])]
+pub struct PackOrder {}
 
 #[near(serializers = [json])]
 pub struct TrainOrder {
@@ -407,6 +419,7 @@ enum StorageKey {
     Divisions,
     DayResults,
     FinalTables,
+    Unboxed,
 }
 
 #[near(serializers = [json, borsh])]
@@ -585,6 +598,9 @@ pub struct League {
     takers: LookupMap<AccountId, Takers>,
     /// (player, match day): suspended after a red card the day before.
     suspended: LookupSet<(String, u32)>,
+    /// What each account got from its last pack or fusion.
+    unboxed: LookupMap<AccountId, Vec<String>>,
+    next_unbox: u64,
 }
 
 /// A squad holds at most this many players: eleven and one more.
@@ -685,6 +701,8 @@ impl League {
             next_ticket: 0,
             takers: LookupMap::new(StorageKey::Takers),
             suspended: LookupSet::new(StorageKey::Suspended),
+            unboxed: LookupMap::new(StorageKey::Unboxed),
+            next_unbox: 0,
         }
     }
 
@@ -1057,7 +1075,7 @@ impl League {
         );
         let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
             env::panic_str(
-                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}} or {\"bid\":\"<token_id>\"}",
+                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"} or {\"pack\":{}}",
             )
         });
         match order {
@@ -1065,6 +1083,7 @@ impl League {
             Order::Bid(token) => {
                 self.bid(sender_id, amount, token);
             }
+            Order::Pack(_) => self.open_pack_for(sender_id, amount),
         }
         PromiseOrValue::Value(U128(0))
     }
@@ -1965,10 +1984,12 @@ impl League {
     }
 
     /// Final tables are kept; the bottom three of a division swap with the
-    /// top three of the one below (fewer when a division is small); every
-    /// club starts the new season on zero.
+    /// top three of the one below (fewer when a division is small), and a
+    /// relegated club burns a tenth of its treasury; every club starts the
+    /// new season on zero.
     fn end_season(&mut self) {
         let n = self.divisions.len();
+        let mut burned: u128 = 0;
         let mut tables: Vec<Vec<AccountId>> = (0..n)
             .map(|d| {
                 self.division_table(d as u8 + 1)
@@ -1986,6 +2007,12 @@ impl League {
             let keep = tables[d].len() - k;
             let down: Vec<AccountId> = tables[d].split_off(keep);
             let up: Vec<AccountId> = tables[d + 1].drain(..k).collect();
+            // Going down costs a tenth of the treasury, burned.
+            for id in &down {
+                let t = self.clubs.get(id).map_or(0, |c| c.treasury.0);
+                burned += self
+                    .take_from_treasury(id, t * the_rules().relegation_burn_bps as u128 / 10_000);
+            }
             tables[d].extend(up);
             tables[d + 1].splice(0..0, down);
         }
@@ -2005,6 +2032,15 @@ impl League {
             self.divisions.replace(d as u32, t);
         }
         self.season += 1;
+        if burned > 0 {
+            ext_goalars::ext(self.goalars_id.clone())
+                .with_static_gas(BURN_GAS)
+                .burn(
+                    U128(burned),
+                    Some(format!("relegation, season {}", self.season - 1)),
+                )
+                .detach();
+        }
     }
 
     /// A new club goes to the lowest division with room, or opens one below.
@@ -2202,6 +2238,7 @@ impl League {
             controller,
             salary: U128(0),
             last_trained_day: 0,
+            look: Look::default(),
         };
         self.players.insert(token_id, player.clone());
         player
