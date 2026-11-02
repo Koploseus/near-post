@@ -484,3 +484,9 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 .scorers { margin: 4px 0 0; font-size: 14px; color: var(--muted-on-paper); }
 .result { padding-top: 10px; padding-bottom: 10px; }
 .next-card .cta { display: inline-block; min-height: 0; padding: 14px 24px; line-height: 1; }
+
+/* ---- v7: passkeys ---- */
+.signin .lead { font-size: 17px; font-weight: 600; color: var(--ink); max-width: 46ch; }
+.passkey-cta { display: inline-flex; align-items: center; gap: 10px; }
+.passkey-icon { flex: none; vertical-align: -5px; }
+.account .ok { display: flex; gap: 8px; align-items: flex-start; }

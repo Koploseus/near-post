@@ -21,6 +21,13 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   relay creates your NEAR account (`u<hash>.near-post.testnet`, derived from
   your email, which never goes on chain) with that public key and 0.3 NEAR.
   The relay never holds your key: it can fund you, never act for you.
+- **Your account on any device, with a passkey.** After sign-up, one touch
+  (Face ID, fingerprint) saves your account: the passkey derives a secret
+  (WebAuthn PRF) that encrypts your key in the browser, and only the
+  ciphertext goes to the relay. On another device: email, code, one touch,
+  and the passkey decrypts it there. Passkeys sync through iCloud Keychain or
+  Google Password Manager; on a computer without yours, the browser shows a QR
+  code for your phone. The relay can never open a backup.
 - **You never pay gas.** Every call from the app is a NEP-366 meta
   transaction: your browser signs a delegate action with your key, the relay
   wraps it in a transaction and pays the gas. It relays only player accounts,
@@ -211,8 +218,10 @@ cd contracts && cargo test -p tests -- --test-threads=1 --nocapture
 One Fly app runs the relay and serves the built web app on the same origin
 (`Dockerfile`, `fly.toml` at the root). It stays one machine, always on:
 email codes and rate limits are in memory, and the scheduler plays match days.
+Passkey backups live on a volume, to create once:
 
 ```bash
+fly volumes create near_post_data --region cdg --size 1
 fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
 fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
 fly secrets set ATTESTER_PRIVATE_KEY=ed25519:...      # signs drill scores (public key set in the league)
@@ -284,7 +293,11 @@ because a contract cannot check an email or pay gas for a player.
   public key his browser made, give it NEAR for gas (0.3 at creation, then a
   top-up when below 0.15, twice a day at most), and call `play_match_day` when
   it is due (anyone else can call it too).
-- It cannot: sign for a player (it never sees his private key), mint G, change
+- It keeps: passkey backups, encrypted in the browser by a secret only the
+  player's passkey produces, stored only when signed by a key of that account,
+  handed back only after the email code.
+- It cannot: sign for a player (it never sees his private key, nor can it
+  open a backup), mint G, change
   a result, move a player's NFT or G, or change a rule.
 - If it goes down, every NFT and every G stays on chain, and players keep
   playing with their keys through any RPC.
@@ -293,6 +306,8 @@ because a contract cannot check an email or pay gas for a player.
 | --- | --- |
 | `POST /v1/auth/start {email}` | Sends a six-digit code (10 minutes, single use, 5 tries). Rate limited per IP and per email. |
 | `POST /v1/auth/verify {email, code, public_key}` | Creates `u<hash>.near-post.testnet` with that key and 0.3 NEAR, or says the account exists and whether this key is on it. |
+| `POST /v1/vault {account_id, public_key, ts, signature, credential_id, salt, iv, ciphertext}` | Stores a passkey backup, signed by a key of that account (5 minutes, 5 passkeys at most). The verify call returns the backups to a device whose key is not on the account. |
+| `GET /v1/time`, `GET /v1/kickoffs/:day` | The relay's clock and the real kick-off of each half, so every viewer sees the live match in step. |
 | `POST /v1/accounts/:id/topup` | Gas for a player account below 0.15 NEAR, twice a day at most. |
 | `GET /v1/rules`, `GET /v1/clubs/:id/stand` | League reads. |
 

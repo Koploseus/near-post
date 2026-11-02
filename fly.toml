@@ -28,6 +28,12 @@ primary_region = 'cdg'
   # The parent tops up the contracts' storage balance when it runs low.
   KEEP_FUNDED = "league-v6.near-post.testnet,players-v6.near-post.testnet,goalars-v6.near-post.testnet,items-v6.near-post.testnet"
 
+# Passkey backups (encrypted in the browser) live on a volume. Create it once:
+#   fly volumes create near_post_data --region cdg --size 1
+[mounts]
+  source = "near_post_data"
+  destination = "/data"
+
 [http_service]
   internal_port = 8080
   force_https = true

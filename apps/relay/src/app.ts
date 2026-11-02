@@ -7,6 +7,7 @@ import type { Config } from "./config.js";
 import { MAX_CLICKS, drill, drillEnd, hits, implausible, points, rounds } from "./drill.js";
 import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
 import type { Kickoffs } from "./schedule.js";
+import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
 
 const AccountId = z
   .string()
@@ -33,6 +34,8 @@ const Verify = z.object({
 });
 
 export interface Deps {
+  /** Passkey backups of players' keys (encrypted in the browser). */
+  vaults?: Vaults;
   /** When each half really kicked off (the scheduler records it). */
   kickoffs?: Kickoffs;
   mailer: Mailer;
@@ -52,6 +55,7 @@ export interface Deps {
 export function createApp(config: Config, chain: Chain, deps: Deps) {
   const app = new Hono();
   const now = deps.now ?? Date.now;
+  const vaults = deps.vaults ?? new Vaults(null);
   const codes = deps.codes ?? new Codes(config.CODE_TTL_SECONDS * 1000, 5, now);
   const startByIp = new Limiter(10, 60 * 60_000, now);
   const startByEmail = new Limiter(3, 15 * 60_000, now);
@@ -92,12 +96,49 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!codes.verify(body.data.email, body.data.code)) return c.json({ error: "wrong_or_expired_code" }, 401);
     const account_id = accountIdFor(body.data.email, config.PARENT_ACCOUNT_ID);
     if ((await chain.balance(account_id)) !== null) {
-      // A returning player: the account exists; his key is in his browser.
+      // A returning player: the account exists; his key is in his browser,
+      // or in a passkey backup that only his passkey can open.
       const key_on_account = await chain.hasKey(account_id, body.data.public_key);
-      return c.json({ account_id, created: false, key_on_account });
+      const backups = vaults.get(account_id).map(({ credential_id, salt, iv, ciphertext }) => ({ credential_id, salt, iv, ciphertext }));
+      return c.json({ account_id, created: false, key_on_account, vaults: key_on_account ? [] : backups, passkeys: backups.length });
     }
     const tx = await chain.createAccount(account_id, body.data.public_key, funding);
     return c.json({ account_id, created: true, tx });
+  });
+
+  // ---- Passkey backups ----
+  //
+  // Stored only when signed with a key of that account (so nobody can plant
+  // a backup for someone else), handed back only after the email code.
+
+  const backupsByIp = new Limiter(20, 60 * 60_000, now);
+  app.post("/v1/vault", async (c) => {
+    const body = VaultEntry.extend({
+      account_id: AccountId,
+      public_key: z.string().startsWith("ed25519:"),
+      ts: z.number().int(),
+      signature: z.string().min(40).max(200),
+    }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    if (!backupsByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    const { account_id, public_key, ts, signature, ...entry } = body.data;
+    if (!isPlayerAccount(account_id, config.PARENT_ACCOUNT_ID)) return c.json({ error: "not_a_player_account" }, 400);
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    let ok = false;
+    try {
+      ok = PublicKey.fromString(public_key).verify(new TextEncoder().encode(vaultMessage(account_id, ts, entry)), Buffer.from(signature, "base64"));
+    } catch {
+      ok = false;
+    }
+    if (!ok || !(await chain.hasKey(account_id, public_key))) return c.json({ error: "bad_signature" }, 401);
+    vaults.put(account_id, { ...entry, created_ms: now() });
+    return c.json({ account_id, passkeys: vaults.get(account_id).length });
+  });
+
+  app.get("/v1/vault/:accountId", (c) => {
+    const id = AccountId.safeParse(c.req.param("accountId"));
+    if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
+    return c.json({ passkeys: vaults.get(id.data).length });
   });
 
   /** Gas top-up for a player's account that is nearly empty, a few times a day. */
