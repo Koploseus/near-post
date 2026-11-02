@@ -113,6 +113,17 @@ export class Agents {
   async tick(): Promise<void> {
     const s = await this.league<Schedule>("schedule");
     const day = s.match_day;
+    const keys = s.first_half_played
+      ? [...this.coaches.map((c) => `tactic:${day}:2:${c.account}`), ...this.footballers.map((f) => `half:${day}:${f.account}`)]
+      : [
+          ...this.coaches.flatMap((c) => [`market:${day}:${c.account}`, `tactic:${day}:1:${c.account}`]),
+          ...this.footballers.map((f) => `day:${day}:${f.account}`),
+        ];
+    const settled = [...this.coaches, ...this.footballers].every((a) => this.ready.has(a.account) || this.cantSign.has(a.account));
+    if (settled && keys.every((k) => this.d.journal.isDone(k) || this.cantSign.has(k.slice(k.lastIndexOf(":") + 1)))) {
+      await this.sign();
+      return; // nothing due until the next half
+    }
     await this.setup();
     const table = await this.league<Club[]>("table");
     const clubs = new Map(table.map((c) => [c.manager, c]));
@@ -122,7 +133,7 @@ export class Agents {
     const ctx: Ctx = { day, clubs, table, opponent, squads: new Map(), lineups: new Map(), results: null };
 
     if (!s.first_half_played) {
-      await this.scanOffers();
+      if (this.coaches.some((c) => clubs.has(c.account) && !this.d.journal.isDone(`market:${day}:${c.account}`))) await this.scanOffers();
       const coaches = this.coaches.filter((c) => clubs.has(c.account) && !this.cantSign.has(c.account));
       await this.pool(coaches, (c) => this.once(`market:${day}:${c.account}`, () => this.market(c, ctx)));
       await this.pool(coaches, (c) => this.once(`tactic:${day}:1:${c.account}`, () => this.tactic(c, ctx, 1)));
