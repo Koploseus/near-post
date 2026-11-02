@@ -3,14 +3,20 @@ import { g, short } from "./lib/format.js";
 import { GameProvider, useGame } from "./lib/game.js";
 import { signOut } from "./lib/near.js";
 import { Album } from "./screens/Album.js";
+import { Dashboard } from "./screens/Dashboard.js";
+import { Lineup } from "./screens/Lineup.js";
+import { Live } from "./screens/Live.js";
 import { LockerRoom } from "./screens/LockerRoom.js";
 import { Market } from "./screens/Market.js";
 import { Match } from "./screens/Match.js";
 import { Stands } from "./screens/Stands.js";
 
 const ROUTES = {
+  home: { label: "Home", view: Dashboard },
+  live: { label: "Live", view: Live },
+  team: { label: "Team", view: Lineup },
   stands: { label: "Stands", view: Stands },
-  match: { label: "Match day", view: Match },
+  match: { label: "Results", view: Match },
   locker: { label: "Locker room", view: LockerRoom },
   album: { label: "Album", view: Album },
   market: { label: "Market", view: Market },
@@ -19,7 +25,7 @@ type Route = keyof typeof ROUTES;
 
 const route = (): Route => {
   const h = location.hash.replace(/^#\/?/, "") as Route;
-  return h in ROUTES ? h : "stands";
+  return h in ROUTES ? h : "home";
 };
 
 function useRoute() {
@@ -36,7 +42,7 @@ function Header({ current }: { current: Route }) {
   const { session, setSession, balance } = useGame();
   return (
     <header className="wrap top">
-      <a className="brand" href="#/stands">
+      <a className="brand" href="#/home">
         NEAR POST
       </a>
       <nav className="nav" aria-label="Main">

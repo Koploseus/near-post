@@ -1,0 +1,118 @@
+import { Action } from "../lib/Action.js";
+import { short } from "../lib/format.js";
+import { useData, useGame } from "../lib/game.js";
+import { league, leagueCall } from "../lib/near.js";
+import { FORMATIONS, ROLE_LABEL, ROLE_NAME, SPOTS } from "../lib/pitch.js";
+import type { Captain, Lineup as LineupT, Strategy } from "../lib/types.js";
+
+const STRATEGIES: [Strategy, string][] = [
+  ["defend", "Defend"],
+  ["balanced", "Balanced"],
+  ["attack", "Attack"],
+];
+
+/** The team sheet: the formation on a pitch, slots to take, the strategy vote. */
+export function Lineup() {
+  const { session, me, club, clubId, schedule } = useGame();
+  const { data: lineup, reload } = useData(
+    () => (clubId ? league<LineupT>("lineup", { club_id: clubId }) : Promise.resolve(null)),
+    [clubId, schedule?.match_day, schedule?.first_half_played],
+  );
+  const { data: captain } = useData(
+    () => (clubId ? league<Captain | null>("captain", { club_id: clubId }) : Promise.resolve(null)),
+    [clubId],
+  );
+  if (!club || !clubId || !lineup) return <p className="sub">Join a club to see its team sheet.</p>;
+  const half = schedule?.first_half_played ? "second half" : "kick-off";
+  const isCaptain = captain ? me?.token_id === captain.token_id : session?.accountId === clubId;
+  const mine = lineup.players.findIndex((p) => p?.token_id === me?.token_id);
+  return (
+    <div className="lineup-page">
+      <section className="paper panel">
+        <span className="k">TEAM SHEET · {half.toUpperCase()}</span>
+        <h2>{club.name}</h2>
+        <p className="note">
+          {mine >= 0
+            ? `You play ${ROLE_NAME[lineup.roles[mine]!].toLowerCase()} (slot ${mine + 1}). Tap another free slot to move.`
+            : me
+              ? "Tap a slot to take it: that also reports you fit. Free slots go to the best academy player for the role."
+              : "Create your footballer in the locker room to take a slot."}
+        </p>
+        <div className="formations" role="group" aria-label="Formation">
+          {FORMATIONS.map((f) =>
+            isCaptain && session ? (
+              <Action
+                key={f}
+                className={`chip${lineup.formation === f ? " on" : ""}`}
+                label={f}
+                run={() => leagueCall(session, "set_formation", { club_id: clubId, formation: f }, 30)}
+                done={reload}
+              />
+            ) : (
+              <span key={f} className={`chip${lineup.formation === f ? " on" : ""}`}>
+                {f}
+              </span>
+            ),
+          )}
+          <span className="note">{isCaptain ? "You pick the formation." : `The ${captain ? `captain (${captain.name})` : "manager"} picks the formation.`}</span>
+        </div>
+      </section>
+      <div className="pitch-wrap">
+        <div className="pitch-v" role="group" aria-label={`${lineup.formation} on the pitch`}>
+          <span className="pitch-line half" aria-hidden="true" />
+          <span className="pitch-line circle" aria-hidden="true" />
+          <span className="pitch-line box top" aria-hidden="true" />
+          <span className="pitch-line box bottom" aria-hidden="true" />
+          {lineup.roles.map((role, k) => {
+            const p = lineup.players[k];
+            const [x, y] = SPOTS[lineup.formation][k]!;
+            const you = p && p.token_id === me?.token_id;
+            const takenByPerson = lineup.chosen[k] && !you;
+            const label = `${ROLE_NAME[role]}: ${p ? `${p.name}, rated ${p.overall}` : "empty"}${lineup.chosen[k] ? ", chosen by a player" : ""}`;
+            const body = (
+              <>
+                <span className="spot-role">{ROLE_LABEL[role]}</span>
+                <span className="spot-rating">{p?.overall ?? "–"}</span>
+                <span className="spot-name">{you ? "YOU" : p ? p.name.split(" ").slice(-1)[0] : "free"}</span>
+              </>
+            );
+            const cls = `spot${you ? " you" : ""}${p?.controller ? " person" : ""}`;
+            return me && session && !takenByPerson && !you ? (
+              <span key={k} className="spot-pos" style={{ left: `${x}%`, top: `${y}%` }}>
+                <Action className={cls} label={body} run={() => leagueCall(session, "take_slot", { slot: k }, 30)} done={reload} aria={label} />
+              </span>
+            ) : (
+              <span key={k} className="spot-pos" style={{ left: `${x}%`, top: `${y}%` }}>
+                <span className={cls} aria-label={label} role="img">
+                  {body}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+        <aside className="paper panel strategy">
+          <span className="k">STRATEGY FOR THE {half.toUpperCase()}</span>
+          <p className="note">Players vote; most votes wins, a tie plays balanced. Attack shoots more and leaves gaps at the back.</p>
+          <div className="formations">
+            {STRATEGIES.map(([s, label]) =>
+              me && session ? (
+                <Action
+                  key={s}
+                  className={`chip${lineup.strategy === s ? " on" : ""}`}
+                  label={label}
+                  run={() => leagueCall(session, "vote_strategy", { strategy: s }, 30)}
+                  done={reload}
+                />
+              ) : (
+                <span key={s} className={`chip${lineup.strategy === s ? " on" : ""}`}>
+                  {label}
+                </span>
+              ),
+            )}
+          </div>
+          <p className="note">Now: {lineup.strategy}. Players in slots: {lineup.chosen.filter(Boolean).length} of 11 · {short(clubId)}</p>
+        </aside>
+      </div>
+    </div>
+  );
+}

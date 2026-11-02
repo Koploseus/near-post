@@ -10,7 +10,7 @@ empty one burns the club's treasury.
 Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
 > **Status, 2 November 2026.** The four contracts compile reproducibly, are
-> unit-tested and sandbox-tested, and run on **testnet** (v4, below). The relay
+> unit-tested and sandbox-tested, and run on **testnet** (v5, below). The relay
 > signs players in by email and plays match days. The web app plays the whole
 > game on testnet: stands and tifo, match day, locker room, album, market.
 
@@ -45,18 +45,24 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 - **Teammates elect a captain every week, on chain.** Each person in the squad
   has one vote (`vote_captain`), changeable until the week ends; the last match
   day of the week counts it (ties go to the better-rated player) and keeps the
-  result as history. The captain picks the eleven (`set_lineup`); without a
-  captain the club's manager does, and without either the best available
-  4-4-2 plays.
-- **The players decide the score.** Each side gets six chances; each becomes a
-  goal with a probability set by its attack against the other side's defence
-  (position-weighted ratings, home advantage 10%). A stronger eleven usually
-  wins, an upset stays possible. The scorer is drawn among the eleven, more
-  often a good forward, and his shooting goes up by one. Each match also keeps
-  shots, shots on target and the man of the match.
-- **Match days are played on chain.** Every club meets every other once per
-  cycle. Anyone can call `play_match_day` when it is due; the score comes from
-  the block's random seed. Win 3 points, draw 1.
+  result as history. The captain (or, without one, the manager) picks the
+  formation: 4-4-2, 4-3-3, 3-5-2 or 4-2-3-1 (`set_formation`).
+- **You take your place on the pitch.** Before kick-off and at half-time, each
+  person picks his slot in the formation (`take_slot`, which also reports him
+  fit) and votes the strategy: defend, balanced or attack (`vote_strategy`,
+  most votes wins). Free slots go to the best squad player for the role:
+  every role (keeper, full-back, centre-back, holding, central, wide or
+  attacking midfielder, winger, striker) weighs the six skills its own way.
+- **Matches are live: two halves of ten real minutes.** A match day kicks off
+  every 30 minutes on testnet. At kick-off `play_match_day` plays the first
+  half of every fixture with the action engine of the original Star du Foot:
+  the ball is at one player's feet, who passes, takes a man on, is fouled or
+  shoots, with odds from his role, his skills, the opponent marking him and
+  the strategy; time and possession run as it goes. After five minutes of
+  half-time, the same call plays the second half and settles the day. The app
+  replays each half over ten real minutes, its clock running at 45 minutes a
+  half: score, shots, saves, corners, fouls, cards, possession, then the man
+  of the match. A goal adds one point of shooting. Win 3 points, draw 1.
 - **Goals mint G:** 6M G per goal, 4.2M to the scorer's own wallet and 1.8M to
   the club. A goal after the 90th minute counts double; an own goal burns 6M G.
 - **What a player earns:** his goals; a 200k salary from the club treasury for
@@ -101,33 +107,30 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   them. The drill attester above only signs training scores. No presale, no team allocation. (On testnet the contract accounts still
   hold their deploy keys while we iterate; see Limits.)
 
-## Live on testnet (v4)
+## Live on testnet (v5)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v4.near-post.testnet`](https://testnet.nearblocks.io/address/league-v4.near-post.testnet) |
-| Goalars | [`goalars-v4.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v4.near-post.testnet) |
-| Players | [`players-v4.near-post.testnet`](https://testnet.nearblocks.io/address/players-v4.near-post.testnet) |
-| Items | [`items-v4.near-post.testnet`](https://testnet.nearblocks.io/address/items-v4.near-post.testnet) |
+| League | [`league-v5.near-post.testnet`](https://testnet.nearblocks.io/address/league-v5.near-post.testnet) |
+| Goalars | [`goalars-v5.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v5.near-post.testnet) |
+| Players | [`players-v5.near-post.testnet`](https://testnet.nearblocks.io/address/players-v5.near-post.testnet) |
+| Items | [`items-v5.near-post.testnet`](https://testnet.nearblocks.io/address/items-v5.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
-attester's public key). A match day is due every 10 minutes and anyone can
-play it. The league has 8 fictional clubs in 4 derbies and a demo crowd.
+attester's public key). A match day kicks off every 30 minutes: two halves of
+ten minutes and five minutes of half-time. The relay plays each half when it
+is due (anyone can). The league has 8 fictional clubs in 4 derbies and a demo
+crowd.
 
-First training on v4, 2 November 2026, in a browser: an email account
-(`u18a8faac560b9c9b.near-post.testnet`) created Lucas Drill, a forward, signed
-for AS Pont-Levant, paid 400k G for a shooting session, hit 12 targets of 12
-and submitted the relay's signature: shooting 60 to 63, rating 52 to 53.
-
-v1 to v3 (1 and 2 November) stay on `*-v1` to `*-v3.near-post.testnet`;
+v1 to v4 (1 and 2 November) stay on `*-v1` to `*-v4.near-post.testnet`;
 they are no longer used.
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v4.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v4.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v5.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v5.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -141,7 +144,7 @@ pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
-The web app reads the v4 contracts on testnet. Email sign-in goes through the
+The web app reads the v5 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
@@ -168,7 +171,7 @@ docker run --rm --user 0 -v "$PWD":/__w/near-post/near-post -w /__w/near-post/ne
 
 Sandbox tests deploy the four checked-in wasm together on a local nearcore
 2.14.0 (`NEAR_SANDBOX_BIN_PATH` points at the binary): a full match day with
-fans, claims and the cap curve, and a 64-club match day for gas.
+fans, claims and the cap curve, and a 32-club week of live match days for gas.
 
 ```bash
 cd contracts && cargo test -p tests -- --test-threads=1 --nocapture
@@ -297,11 +300,15 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   report, which arrives a block after the transfer.
 - Personal rewards are credits: the account calls `claim` to mint them, and
   like every mint they are scaled under the 10B cap at that moment.
-- At most 64 clubs, so a match day fits in one transaction. Measured in the
-  sandbox: over a full week of 64 clubs (720 players, 16 of them people), the
-  worst match day, the one that also elects 64 captains, burns 146 Tgas in the
-  league call (163 Tgas in total), under the 300 Tgas limit; creating a club
-  and minting its eleven players costs 34 Tgas.
+- At most 32 clubs, so each half of a match day fits in one transaction
+  (64 did not with the live engine). Measured in the sandbox over a full
+  week of 32 clubs (360 players, 8 of them people): a first half burns 100
+  Tgas in the league call, the worst second half and settlement (which also
+  elects 32 captains) 136 Tgas, under the 300 Tgas limit; creating a club and
+  minting its eleven players costs 35 Tgas.
+- A half is played in one transaction, so its events are on chain (and
+  readable) as soon as it is played; the app only reveals them over ten
+  minutes, as the original site did.
 - No seasons yet: no promotion, no relegation burn.
 
 - Match randomness comes from NEAR's block random seed. A block producer
