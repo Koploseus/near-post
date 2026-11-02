@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useState } from "react";
 import { clubName, minute, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
+import { serverNow } from "../lib/time.js";
 import { league } from "../lib/near.js";
 import type { Club, MatchResult } from "../lib/types.js";
 
 function useNow(everyMs = 1000) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(serverNow());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), everyMs);
+    const t = setInterval(() => setNow(serverNow()), everyMs);
     return () => clearInterval(t);
   }, [everyMs]);
   return now;

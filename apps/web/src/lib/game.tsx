@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { goalars, league, loadSession, type Session } from "./near.js";
+import { liveDay } from "./live.js";
+import { type Kickoffs, kickoffsOf, serverNow, syncClock } from "./time.js";
 import type { Club, Player, Schedule } from "./types.js";
 
 interface Game {
@@ -12,6 +14,8 @@ interface Game {
   balance: string;
   refresh(): void;
   loading: boolean;
+  /** When the halves of a match day really kicked off, by day (from the relay). */
+  kickoffs: Record<number, Kickoffs>;
 }
 
 const Ctx = createContext<Game | null>(null);
@@ -48,18 +52,50 @@ export function GameProvider({ children }: { children: ReactNode }) {
     };
   }, [session, tick]);
 
-  // The schedule moves on its own (kick-off, half-time, full time): poll it.
+  // One clock for every viewer: the relay's.
   useEffect(() => {
-    const t = setInterval(async () => {
-      const s = await league<Schedule>("schedule").catch(() => null);
-      if (s) setSchedule((prev) => (JSON.stringify(prev) === JSON.stringify(s) ? prev : s));
-    }, 10_000);
+    void syncClock();
+    const t = setInterval(() => void syncClock(), 10 * 60_000);
     return () => clearInterval(t);
+  }, []);
+
+  // When the halves of the match day in play really reached the chain:
+  // every 3 s around a match, so a late half starts in step for everyone.
+  const [kickoffs, setKickoffs] = useState<Record<number, Kickoffs>>({});
+  useEffect(() => {
+    if (!schedule) return;
+    const look = async () => {
+      const ld = liveDay(schedule, serverNow());
+      if (ld.state !== "live" && ld.kickoff - serverNow() > 60_000) return;
+      const k = await kickoffsOf(ld.day);
+      setKickoffs((prev) => (JSON.stringify(prev[ld.day]) === JSON.stringify(k) ? prev : { ...prev, [ld.day]: k }));
+    };
+    void look();
+    const t = setInterval(() => void look(), 3_000);
+    return () => clearInterval(t);
+  }, [schedule]);
+
+  // The schedule moves on its own (kick-off, half-time, full time): poll it,
+  // every 3 s when a half is due within a minute (or overdue), else 15 s.
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    let last: Schedule | null = null;
+    const poll = async () => {
+      const s = await league<Schedule>("schedule").catch(() => null);
+      if (s) {
+        last = s;
+        setSchedule((prev) => (JSON.stringify(prev) === JSON.stringify(s) ? prev : s));
+      }
+      const due = last ? Number(last.next_match_at_ms) - serverNow() : 0;
+      t = setTimeout(() => void poll(), due < 60_000 ? 3_000 : 15_000);
+    };
+    t = setTimeout(() => void poll(), 3_000);
+    return () => clearTimeout(t);
   }, []);
 
   return (
     <Ctx.Provider
-      value={{ session, setSession, me, club, clubId: club ? me!.owner : null, schedule, balance, refresh, loading }}
+      value={{ session, setSession, me, club, clubId: club ? me!.owner : null, schedule, balance, refresh, loading, kickoffs }}
     >
       {children}
     </Ctx.Provider>

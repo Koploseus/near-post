@@ -6,6 +6,7 @@ import { type Chain, near } from "./chain.js";
 import type { Config } from "./config.js";
 import { MAX_CLICKS, drill, drillEnd, hits, implausible, points, rounds } from "./drill.js";
 import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
+import type { Kickoffs } from "./schedule.js";
 
 const AccountId = z
   .string()
@@ -32,6 +33,8 @@ const Verify = z.object({
 });
 
 export interface Deps {
+  /** When each half really kicked off (the scheduler records it). */
+  kickoffs?: Kickoffs;
   mailer: Mailer;
   codes?: Codes;
   now?: () => number;
@@ -215,6 +218,21 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   });
 
   app.get("/v1/rules", async (c) => c.json(await chain.view(config.LEAGUE_ID!, "rules")));
+
+  // ---- Live clock ----
+  //
+  // Every viewer reveals a half from the same instant: the relay's clock
+  // (the app measures its offset) and the moment the half reached the chain.
+  app.get("/v1/time", (c) => {
+    c.header("cache-control", "no-store");
+    return c.json({ now: now() });
+  });
+  app.get("/v1/kickoffs/:day", (c) => {
+    const day = Number(c.req.param("day"));
+    if (!Number.isInteger(day) || day < 1) return c.json({ error: "invalid_day" }, 400);
+    c.header("cache-control", "no-store");
+    return c.json(deps.kickoffs?.get(day) ?? { first: null, second: null });
+  });
 
   app.get("/v1/clubs/:clubId/stand", async (c) => {
     const clubId = AccountId.safeParse(c.req.param("clubId"));

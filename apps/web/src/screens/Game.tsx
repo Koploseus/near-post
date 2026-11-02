@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
+import { serverNow } from "../lib/time.js";
 import { liveDay } from "../lib/live.js";
 import { league } from "../lib/near.js";
 import { ROLE_LABEL } from "../lib/pitch.js";
@@ -19,9 +20,9 @@ export function Game() {
   const [, , dayS, idxS] = location.hash.split("/");
   const day = Number(dayS) || 1;
   const idx = Number(idxS) || 0;
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(serverNow());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const t = setInterval(() => setNow(serverNow()), 1000);
     return () => clearInterval(t);
   }, []);
   const ld = schedule ? liveDay(schedule, now) : null;

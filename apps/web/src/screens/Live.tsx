@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
+import { serverNow } from "../lib/time.js";
 import { type Clock, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
 import { SPOTS } from "../lib/pitch.js";
 import { league } from "../lib/near.js";
@@ -26,9 +27,9 @@ const ICON: Record<MatchEvent["kind"], string> = {
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 function useNow(ms = 1000) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(serverNow());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms);
+    const t = setInterval(() => setNow(serverNow()), ms);
     return () => clearInterval(t);
   }, [ms]);
   return now;
@@ -40,7 +41,7 @@ export function Live() {
   const now = useNow();
   const ld = schedule ? liveDay(schedule, now) : null;
   const waiting = ld?.state === "live" && schedule?.first_half_played && now > Number(schedule.next_match_at_ms);
-  const tick = Math.floor(now / 15_000);
+  const tick = Math.floor(now / 3_000);
   const { data } = useData(async () => {
     if (!ld) return null;
     const [results, table, fixtures] = await Promise.all([
@@ -51,7 +52,7 @@ export function Live() {
     return { results, table, fixtures };
   }, [ld?.day, ld?.state, waiting ? tick : 0]);
   useEffect(() => {
-    if (waiting) refresh();
+    if (waiting && tick % 5 === 0) refresh();
   }, [waiting, tick, refresh]);
 
   const names = new Map((data?.table ?? []).map((c) => [c.manager, c.name]));
@@ -131,13 +132,15 @@ export function MatchView({
   day: number;
   final?: boolean;
 }) {
-  const { schedule } = useGame();
+  const { schedule, kickoffs } = useGame();
   const { data: squads } = useData(
     () => Promise.all([league<Player[]>("squad", { account_id: m.home }), league<Player[]>("squad", { account_id: m.away })]),
     [m.home, m.away],
   );
   const who = useMemo(() => new Map((squads ?? []).flat().map((p) => [p.token_id, p.name])), [squads]);
-  const c = final || !schedule ? FINAL : clock(m, kickoff, schedule, now);
+  const c = final || !schedule ? FINAL : clock(m, kickoff, schedule, now, kickoffs[day]);
+  // Until the real kick-off times are in (a few seconds), nothing replays.
+  const syncing = !final && kickoffs[day] === undefined;
   const shown = visible(m, c);
   const [hs, as] = scoreOf(shown);
   const name = (e: MatchEvent & { half: 0 | 1 }) => {
@@ -174,8 +177,11 @@ export function MatchView({
   // Big moments replay as a short animation, as they are revealed.
   const [replay, setReplay] = useState<HighlightMoment | null>(null);
   const seenEvents = useRef<number | null>(null);
+  const wasSyncing = useRef(true);
   useEffect(() => {
-    if (seenEvents.current === null || final || REDUCED) {
+    const justSynced = wasSyncing.current && !syncing;
+    wasSyncing.current = syncing;
+    if (seenEvents.current === null || final || REDUCED || syncing || justSynced) {
       seenEvents.current = shown.length; // nothing replays for what happened before we arrived
       return;
     }
@@ -197,7 +203,7 @@ export function MatchView({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown.length]);
+  }, [shown.length, syncing]);
   const count = (home: boolean, kinds: MatchEvent["kind"][]) => shown.filter((e) => e.home === home && kinds.includes(e.kind)).length;
   const half1 = m.possession.slice(0, 2);
   const poss = c.phase === "full_time" ? [m.stats.home_possession, m.stats.away_possession] : half1.length === 2 && c.phase !== "first_half" ? half1.map((v) => Math.round((100 * v) / (half1[0]! + half1[1]! || 1))) : null;
@@ -304,7 +310,7 @@ export function MatchView({
           <h3>Other matches</h3>
           <ul className="others">
             {all.map((o, i) => {
-              const [h, a] = final || !schedule ? [o.home_goals, o.away_goals] : scoreOf(visible(o, clock(o, kickoff, schedule, now)));
+              const [h, a] = final || !schedule ? [o.home_goals, o.away_goals] : scoreOf(visible(o, clock(o, kickoff, schedule, now, kickoffs[day])));
               return (
                 <li key={o.home}>
                   {pick ? (
