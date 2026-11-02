@@ -44,9 +44,9 @@ export function SignIn() {
 
   return (
     <section className="paper panel signin" aria-labelledby="signin-title">
-      <span className="k">NO WALLET · NO SEED PHRASE · NO GAS</span>
       {step.k === "email" && (
         <>
+          <span className="k">NO WALLET · NO SEED PHRASE · NO GAS</span>
           <h2 id="signin-title">Play with your email</h2>
           <form
             className="form"
@@ -103,7 +103,6 @@ export function SignIn() {
       {step.k === "unlock" && (
         <>
           <h2 id="signin-title">Welcome back</h2>
-          <p className="lead">Confirm it's you.</p>
           <button
             type="button"
             className="cta passkey-cta"
@@ -125,8 +124,7 @@ export function SignIn() {
 
       {step.k === "secure" && (
         <>
-          <h2 id="signin-title">Play on all your devices</h2>
-          <p className="lead">Add a passkey to sign in on your phone or another computer.</p>
+          <h2 id="signin-title">Add a passkey</h2>
           <button
             type="button"
             className="cta passkey-cta"
