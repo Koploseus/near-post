@@ -1,9 +1,14 @@
 //! Players: each footballer is a NEP-171 token (a sticker in the album).
 //!
+//! The NFT is a player's registration: whoever owns it fields him. A player can
+//! also have a controller, the person who plays him; the controller keeps him
+//! when his registration is sold.
+//!
 //! The sell-on clause is written here as a NEP-199 payout, so any market that
 //! honours NEP-199 pays it: on every sale, 10% goes to the club that trained the
-//! player, 2% to each of his last 3 clubs, 3% to the league (which burns it),
-//! and the rest to the seller. Only the league mints; there is no owner key.
+//! player, 2% to each of his last 3 clubs, 5% to the person who plays him,
+//! 3% to the league (which burns it), and the rest to the seller. Only the
+//! league mints; there is no owner key.
 
 use std::collections::HashMap;
 
@@ -40,6 +45,8 @@ const NOTIFY_GAS: Gas = Gas::from_tgas(10);
 #[derive(Clone, Debug)]
 pub struct MintArgs {
     pub token_id: TokenId,
+    /// The person who plays him, if any (academy players have none).
+    pub controller: Option<AccountId>,
     pub owner_id: AccountId,
     pub trained_by: AccountId,
     pub metadata: TokenMetadata,
@@ -49,6 +56,7 @@ pub struct MintArgs {
 pub const TRAINER_BPS: u128 = 1_000;
 pub const PAST_CLUB_BPS: u128 = 200;
 pub const SALE_TAX_BPS: u128 = 300;
+pub const PLAYER_BPS: u128 = 500;
 pub const PAST_CLUBS_PAID: usize = 3;
 
 #[near]
@@ -69,6 +77,8 @@ pub struct Career {
     pub trained_by: AccountId,
     /// Previous owners, most recent last, at most `PAST_CLUBS_PAID`.
     pub past_clubs: Vec<AccountId>,
+    /// The person who plays him; gets a share of every sale.
+    pub controller: Option<AccountId>,
 }
 
 /// NEP-199 payout.
@@ -117,14 +127,20 @@ impl Players {
         metadata: TokenMetadata,
     ) -> Token {
         self.assert_league();
-        self.mint_one(token_id, owner_id, trained_by, metadata)
+        self.mint_one(token_id, owner_id, trained_by, None, metadata)
     }
 
     /// Creates several players at once (a new club's academy). League only.
     pub fn nft_mint_batch(&mut self, mints: Vec<MintArgs>) {
         self.assert_league();
         for m in mints {
-            self.mint_one(m.token_id, m.owner_id, m.trained_by, m.metadata);
+            self.mint_one(
+                m.token_id,
+                m.owner_id,
+                m.trained_by,
+                m.controller,
+                m.metadata,
+            );
         }
     }
 
@@ -146,6 +162,7 @@ impl Players {
         token_id: TokenId,
         owner_id: AccountId,
         trained_by: AccountId,
+        controller: Option<AccountId>,
         metadata: TokenMetadata,
     ) -> Token {
         let token =
@@ -156,6 +173,7 @@ impl Players {
             Career {
                 trained_by,
                 past_clubs: Vec::new(),
+                controller,
             },
         );
         NftMint {
@@ -270,6 +288,9 @@ pub fn split_sale(
     pay(&career.trained_by, TRAINER_BPS, &mut out);
     for club in career.past_clubs.iter().rev().take(PAST_CLUBS_PAID) {
         pay(club, PAST_CLUB_BPS, &mut out);
+    }
+    if let Some(controller) = &career.controller {
+        pay(controller, PLAYER_BPS, &mut out);
     }
     pay(league_id, SALE_TAX_BPS, &mut out);
     *out.entry(seller.clone()).or_default() += balance - paid;
@@ -508,6 +529,7 @@ mod tests {
         let mints = (0..11)
             .map(|i| MintArgs {
                 token_id: format!("p{i}"),
+                controller: None,
                 owner_id: acc("club.testnet"),
                 trained_by: acc("club.testnet"),
                 metadata: meta(&format!("Player {i}")),
@@ -528,5 +550,22 @@ mod tests {
         let mut p = setup();
         as_caller("attacker.testnet");
         p.nft_mint_batch(vec![]);
+    }
+
+    #[test]
+    fn the_person_who_plays_him_gets_five_percent_of_a_sale() {
+        let mut p = setup();
+        p.nft_mint_batch(vec![MintArgs {
+            token_id: "kop".into(),
+            controller: Some(acc("koplo.testnet")),
+            owner_id: acc("rive-nord.testnet"),
+            trained_by: acc("koplo.testnet"),
+            metadata: meta("Koplo"),
+        }]);
+        let out = p.nft_payout("kop".into(), U128(1_000), None).payout;
+        // Trainer and controller are the same person: 10% + 5%.
+        assert_eq!(out[&acc("koplo.testnet")], U128(150));
+        assert_eq!(out[&acc("league.testnet")], U128(30));
+        assert_eq!(out[&acc("rive-nord.testnet")], U128(820));
     }
 }

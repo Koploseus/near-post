@@ -370,7 +370,7 @@ fn a_manager_sets_his_eleven() {
     as_caller("c0.testnet");
     let mut lineup = squad.clone();
     lineup.reverse();
-    l.set_lineup(lineup.clone());
+    l.set_lineup(acc("c0.testnet"), lineup.clone());
     let xi: Vec<String> = l
         .starting_eleven(acc("c0.testnet"))
         .into_iter()
@@ -386,17 +386,17 @@ fn a_lineup_has_eleven() {
     let mut squad = ids(&l, "c0.testnet");
     squad.pop();
     as_caller("c0.testnet");
-    l.set_lineup(squad);
+    l.set_lineup(acc("c0.testnet"), squad);
 }
 
 #[test]
-#[should_panic(expected = "you do not own that player")]
+#[should_panic(expected = "that player is not in the squad")]
 fn no_lineup_with_someone_elses_player() {
     let mut l = league_with(2, 0);
     let mut squad = ids(&l, "c0.testnet");
     squad[10] = ids(&l, "c1.testnet")[10].clone();
     as_caller("c0.testnet");
-    l.set_lineup(squad);
+    l.set_lineup(acc("c0.testnet"), squad);
 }
 
 #[test]
@@ -406,7 +406,7 @@ fn no_player_twice() {
     let mut squad = ids(&l, "c0.testnet");
     squad[10] = squad[9].clone();
     as_caller("c0.testnet");
-    l.set_lineup(squad);
+    l.set_lineup(acc("c0.testnet"), squad);
 }
 
 #[test]
@@ -423,7 +423,7 @@ fn a_sold_player_changes_squad_keeps_his_wallet_and_leaves_the_eleven() {
     let mut l = league_with(2, 0);
     let squad = ids(&l, "c0.testnet");
     as_caller("c0.testnet");
-    l.set_lineup(squad.clone());
+    l.set_lineup(acc("c0.testnet"), squad.clone());
     let star = squad[10].clone(); // a forward
     l.players.get_mut(&star).unwrap().wallet = U128(42);
     as_caller("players.testnet");
@@ -514,7 +514,7 @@ fn own_goals_burn_from_the_club_at_fault() {
 }
 
 #[test]
-#[should_panic(expected = "you do not own that player")]
+#[should_panic(expected = "that player's wallet is not yours")]
 fn only_the_owner_claims_a_players_wallet() {
     let mut l = league_with(1, 0);
     let token = ids(&l, "c0.testnet")[10].clone();
@@ -531,4 +531,249 @@ fn the_owner_claims_and_the_wallet_empties() {
     as_caller("c0.testnet");
     l.claim_player(token.clone());
     assert_eq!(l.get_player(token).unwrap().wallet, U128(0));
+}
+
+// ---- People who play ----
+
+/// `person` creates a forward and gives his registration to `club`.
+fn sign_person(l: &mut League, person: &str, club: &str) -> String {
+    as_caller(person);
+    let p = l.create_footballer(format!("{person} Star"), Position::Fw);
+    as_caller("players.testnet");
+    l.on_player_transferred(p.token_id.clone(), acc(person), acc(club));
+    p.token_id
+}
+
+#[test]
+fn a_person_creates_one_footballer_and_signs_for_a_club() {
+    let mut l = league_with(1, 0);
+    as_caller("koplo.testnet");
+    let p = l.create_footballer("Koplo".into(), Position::Fw);
+    assert_eq!(p.controller, Some(acc("koplo.testnet")));
+    assert_eq!(p.owner, acc("koplo.testnet"));
+    assert_eq!(l.welcome_status(acc("koplo.testnet")), Some(0));
+    as_caller("players.testnet");
+    l.on_player_transferred(p.token_id.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    assert_eq!(l.squad(acc("c0.testnet")).len(), 12);
+    assert_eq!(
+        l.footballer_of(acc("koplo.testnet")).unwrap().owner,
+        acc("c0.testnet")
+    );
+}
+
+#[test]
+#[should_panic(expected = "you already play a footballer")]
+fn one_footballer_per_person() {
+    let mut l = league();
+    as_caller("koplo.testnet");
+    l.create_footballer("Koplo".into(), Position::Fw);
+    l.create_footballer("Koplo 2".into(), Position::Df);
+}
+
+#[test]
+#[should_panic(expected = "join a club first")]
+fn a_free_agent_cannot_report() {
+    let mut l = league();
+    as_caller("koplo.testnet");
+    l.create_footballer("Koplo".into(), Position::Fw);
+    l.report_for_match();
+}
+
+#[test]
+fn a_person_plays_only_when_he_reports() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().attack = 99; // the best forward of the squad
+    let plays = |l: &League| {
+        l.starting_eleven(acc("c0.testnet"))
+            .iter()
+            .any(|p| p.token_id == token)
+    };
+    assert!(!plays(&l), "absent: an academy player takes his place");
+    assert_eq!(l.starting_eleven(acc("c0.testnet")).len(), 11);
+    as_caller("koplo.testnet");
+    l.report_for_match();
+    assert!(plays(&l));
+    // Next match day he must report again.
+    at("anyone.testnet", due(&l), 1);
+    l.play_match_day();
+    assert!(!plays(&l));
+}
+
+#[test]
+fn starters_who_are_people_get_a_salary_from_the_treasury() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().attack = 99;
+    let salary = the_rules().salary.0;
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(salary + 5);
+    as_caller("koplo.testnet");
+    l.report_for_match();
+    at("anyone.testnet", due(&l), 1);
+    l.play_match_day();
+    assert_eq!(l.get_player(token.clone()).unwrap().salary, U128(salary));
+    // The treasury only lost the salary (and gained nothing yet: mints settle by callback).
+    assert_eq!(l.get_club(acc("c0.testnet")).unwrap().treasury, U128(5));
+    // An empty treasury pays nothing.
+    as_caller("koplo.testnet");
+    l.report_for_match();
+    at("anyone.testnet", due(&l), 2);
+    l.play_match_day();
+    assert_eq!(l.get_player(token).unwrap().salary, U128(salary));
+}
+
+#[test]
+fn the_person_not_the_club_collects_the_wallet() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().wallet = U128(7);
+    l.players.get_mut(&token).unwrap().salary = U128(3);
+    as_caller("koplo.testnet");
+    l.claim_player(token.clone());
+    let p = l.get_player(token).unwrap();
+    assert_eq!((p.wallet, p.salary), (U128(0), U128(0)));
+}
+
+#[test]
+#[should_panic(expected = "that player's wallet is not yours")]
+fn the_club_cannot_collect_a_persons_wallet() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().wallet = U128(7);
+    as_caller("c0.testnet");
+    l.claim_player(token);
+}
+
+fn play_days(l: &mut League, n: u32) {
+    for i in 0..n {
+        at("anyone.testnet", due(l), (i % 200) as u8 + 1);
+        l.play_match_day();
+    }
+}
+
+#[test]
+fn teammates_elect_a_captain_for_the_next_week() {
+    let mut l = league_with(2, 0);
+    let a = sign_person(&mut l, "ana.testnet", "c0.testnet");
+    let b = sign_person(&mut l, "ben.testnet", "c0.testnet");
+    let c = sign_person(&mut l, "cleo.testnet", "c0.testnet");
+    for (who, pick) in [
+        ("ana.testnet", &b),
+        ("ben.testnet", &b),
+        ("cleo.testnet", &a),
+    ] {
+        as_caller(who);
+        l.vote_captain(pick.clone());
+    }
+    // Cleo changes her mind: still one vote each.
+    as_caller("cleo.testnet");
+    l.vote_captain(b.clone());
+    assert_eq!(l.ballots(acc("c0.testnet"), 0).len(), 3);
+    assert!(l.captain(acc("c0.testnet")).is_none());
+    play_days(&mut l, 7); // week 0 ends; day 8 opens week 1
+    let captain = l.captain(acc("c0.testnet")).unwrap();
+    assert_eq!(
+        (captain.token_id, captain.votes, captain.week),
+        (b.clone(), 3, 1)
+    );
+    let _ = c;
+}
+
+#[test]
+fn the_captain_picks_the_eleven_and_the_manager_no_longer_can() {
+    let mut l = league_with(2, 0);
+    let b = sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ben.testnet");
+    l.vote_captain(b.clone());
+    play_days(&mut l, 7);
+    let mut xi: Vec<String> = ids(&l, "c0.testnet").into_iter().take(10).collect();
+    xi.push(b);
+    as_caller("ben.testnet");
+    l.set_lineup(acc("c0.testnet"), xi.clone());
+}
+
+#[test]
+#[should_panic(expected = "only the captain")]
+fn a_manager_cannot_override_the_captain() {
+    let mut l = league_with(2, 0);
+    let b = sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ben.testnet");
+    l.vote_captain(b);
+    play_days(&mut l, 7);
+    let squad: Vec<String> = ids(&l, "c0.testnet").into_iter().take(11).collect();
+    as_caller("c0.testnet");
+    l.set_lineup(acc("c0.testnet"), squad);
+}
+
+#[test]
+#[should_panic(expected = "vote for a teammate")]
+fn no_vote_for_another_clubs_player() {
+    let mut l = league_with(2, 0);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    let other = sign_person(&mut l, "ben.testnet", "c1.testnet");
+    as_caller("ana.testnet");
+    l.vote_captain(other);
+}
+
+#[test]
+#[should_panic(expected = "a captain is a person")]
+fn no_academy_captain() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    let bot = ids(&l, "c0.testnet")[0].clone();
+    as_caller("ana.testnet");
+    l.vote_captain(bot);
+}
+
+fn train(l: &mut League, from: &str, token: &str, amount: u128) -> PromiseOrValue<U128> {
+    as_caller("goalars.testnet");
+    l.ft_on_transfer(
+        acc(from),
+        U128(amount),
+        format!("{{\"train\":\"{token}\"}}"),
+    )
+}
+
+#[test]
+fn training_burns_its_cost_and_adds_a_point_once_per_day() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let before = l.get_player(token.clone()).unwrap().attack;
+    let cost = the_rules().training_cost.0;
+    match train(&mut l, "koplo.testnet", &token, cost) {
+        PromiseOrValue::Value(unused) => assert_eq!(unused, U128(0)),
+        _ => panic!("expected a value"),
+    }
+    assert_eq!(l.get_player(token).unwrap().attack, before + 1);
+}
+
+#[test]
+#[should_panic(expected = "already trained this match day")]
+fn one_training_per_match_day() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let cost = the_rules().training_cost.0;
+    let _ = train(&mut l, "koplo.testnet", &token, cost);
+    let _ = train(&mut l, "koplo.testnet", &token, cost);
+}
+
+#[test]
+#[should_panic(expected = "you cannot train that player")]
+fn nobody_trains_someone_elses_player() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let _ = train(&mut l, "c0.testnet", &token, the_rules().training_cost.0);
+}
+
+#[test]
+#[should_panic(expected = "only goalars pays for training")]
+fn training_is_paid_in_goalars_only() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("fake-token.testnet");
+    let _ = l.ft_on_transfer(
+        acc("koplo.testnet"),
+        the_rules().training_cost,
+        format!("{{\"train\":\"{token}\"}}"),
+    );
 }

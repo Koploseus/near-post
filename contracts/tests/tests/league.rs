@@ -318,9 +318,42 @@ async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
         if i % 2 == 0 {
             game.call(&f, "check_in", json!({})).await?.into_result()?;
         }
+        // One club in four also has a person in its squad, who votes for himself.
+        if i % 4 == 0 {
+            let person = game.account().await?;
+            let player = game
+                .call(
+                    &person,
+                    "create_footballer",
+                    json!({ "name": format!("Person {i}"), "position": "Fw" }),
+                )
+                .await?
+                .into_result()?
+                .json::<Value>()?;
+            person
+                .call(game.players.id(), "nft_transfer")
+                .args_json(json!({ "receiver_id": m.id(), "token_id": player["token_id"] }))
+                .deposit(NearToken::from_yoctonear(1))
+                .gas(Gas::from_tgas(100))
+                .transact()
+                .await?
+                .into_result()?;
+            game.call(
+                &person,
+                "vote_captain",
+                json!({ "candidate": player["token_id"] }),
+            )
+            .await?
+            .into_result()?;
+            game.call(&person, "report_for_match", json!({}))
+                .await?
+                .into_result()?;
+        }
         managers.push(m);
     }
-    for day in 1..=2 {
+    // A full week: the last day also elects 64 captains.
+    let mut worst = 0;
+    for day in 1..=7 {
         game.wait_for_match_day().await?;
         let played = game.call(&managers[0], "play_match_day", json!({})).await?;
         let gas = played.total_gas_burnt.as_tgas();
@@ -333,11 +366,120 @@ async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
             .unwrap_or(0);
         println!("64-club match day {day}: {gas} Tgas in total, {own} Tgas in the call itself");
         played.into_result()?;
-        assert!(own < 250, "match day too close to the 300 Tgas limit");
+        worst = worst.max(own);
     }
+    println!("worst 64-club match day: {worst} Tgas in the league call");
+    assert!(worst < 250, "match day too close to the 300 Tgas limit");
+    let captain = game
+        .view("captain", json!({ "club_id": managers[0].id() }))
+        .await?;
+    assert_eq!(captain["votes"], 1);
     let table = game.view("table", json!({})).await?;
     assert_eq!(table.as_array().unwrap().len(), 64);
     let total: String = game.players.view("nft_total_supply").await?.json()?;
-    assert_eq!(total, "704");
+    assert_eq!(total, "720");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_person_signs_trains_and_plays() -> Result<()> {
+    let game = deploy().await?;
+    let club = game.account().await?;
+    let rival = game.account().await?;
+    for (c, name) in [(&club, "Rive Nord"), (&rival, "Port-Lune")] {
+        game.call(c, "create_club", json!({ "name": name }))
+            .await?
+            .into_result()?;
+    }
+    // Koplo creates his footballer: a free agent, NFT in his own name.
+    let koplo = game.account().await?;
+    let me = game
+        .call(
+            &koplo,
+            "create_footballer",
+            json!({ "name": "Koplo", "position": "Fw" }),
+        )
+        .await?
+        .into_result()?
+        .json::<Value>()?;
+    let token = me["token_id"].as_str().unwrap().to_string();
+    let owner: Value = game
+        .players
+        .view("nft_token")
+        .args_json(json!({ "token_id": token }))
+        .await?
+        .json()?;
+    assert_eq!(owner["owner_id"], json!(koplo.id()));
+
+    // He signs for Rive Nord by giving it his registration.
+    koplo
+        .call(game.players.id(), "nft_transfer")
+        .args_json(json!({ "receiver_id": club.id(), "token_id": token }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(100))
+        .transact()
+        .await?
+        .into_result()?;
+    let squad = game
+        .view("squad", json!({ "account_id": club.id() }))
+        .await?;
+    assert_eq!(squad.as_array().unwrap().len(), 12);
+
+    // He trains: 400k G sent to the league, burned, +1 attack.
+    let before = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    let supply = game.supply().await?;
+    koplo
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": (400_000 * ONE_G).to_string(),
+            "msg": json!({ "train": token }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?
+        .into_result()?;
+    let after = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(
+        after["attack"].as_u64().unwrap(),
+        before["attack"].as_u64().unwrap() + 1
+    );
+    assert_eq!(supply - game.supply().await?, 400_000 * ONE_G);
+
+    // The manager (no captain yet) puts him in the eleven; he reports; he plays.
+    let mut xi: Vec<Value> = squad.as_array().unwrap()[..10]
+        .iter()
+        .map(|p| p["token_id"].clone())
+        .collect();
+    xi.push(json!(token));
+    game.call(
+        &club,
+        "set_lineup",
+        json!({ "club_id": club.id(), "token_ids": xi }),
+    )
+    .await?
+    .into_result()?;
+    game.call(&koplo, "report_for_match", json!({}))
+        .await?
+        .into_result()?;
+    let eleven = game
+        .view("starting_eleven", json!({ "club_id": club.id() }))
+        .await?;
+    assert!(
+        eleven
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["token_id"] == json!(token))
+    );
+    game.wait_for_match_day().await?;
+    game.call(&koplo, "play_match_day", json!({}))
+        .await?
+        .into_result()?;
     Ok(())
 }
