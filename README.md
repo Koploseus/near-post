@@ -167,6 +167,25 @@ cd contracts && cargo test -p tests -- --test-threads=1 --nocapture
 `build.sh` prints the sha256 of each wasm. They must equal the files in
 `contracts/res/`, which is what the CI checks on every pull request.
 
+## Deploy on Fly.io
+
+One Fly app runs the relay and serves the built web app on the same origin
+(`Dockerfile`, `fly.toml` at the root). It stays one machine, always on:
+email codes and rate limits are in memory, and the scheduler plays match days.
+
+```bash
+fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
+fly deploy
+```
+
+For the hackathon, `fly.toml` turns the email check off
+(`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.
+For real players, set it to `"false"`, and `EMAIL_MODE=resend` with a
+`RESEND_API_KEY` secret and a verified sending domain.
+
+Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
+`X-Forwarded-For` entry, which a client can write.
+
 ## The supply, simulated
 
 `pnpm sim` replays 60 match days with the contract's rules (seeded, reproducible;

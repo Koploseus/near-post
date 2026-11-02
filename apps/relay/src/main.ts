@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app.js";
 import { consoleMailer, resendMailer } from "./auth.js";
 import { rpcChain } from "./chain.js";
@@ -12,6 +13,16 @@ const signer = config.PARENT_PRIVATE_KEY
 const chain = rpcChain(config.NEAR_RPC_URL, signer);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
 const app = createApp(config, chain, { mailer });
+if (config.WEB_DIST) {
+  // The web app uses hash routes: only files, and index.html for "/".
+  app.use("/*", async (c, next) => {
+    await next();
+    c.header("x-content-type-options", "nosniff");
+    c.header("referrer-policy", "no-referrer");
+    c.header("x-frame-options", "DENY");
+  });
+  app.get("/*", serveStatic({ root: config.WEB_DIST }));
+}
 
 if (config.INSECURE_DEV_RETURN_CODE) console.warn("INSECURE_DEV_RETURN_CODE is on: codes are returned in responses");
 if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) startScheduler(chain, config.LEAGUE_ID);

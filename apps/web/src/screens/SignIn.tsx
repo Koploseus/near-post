@@ -32,8 +32,12 @@ export function SignIn() {
           onSubmit={(e) => {
             e.preventDefault();
             void go(async () => {
-              await startSignIn(email);
-              setStep("code");
+              const started = await startSignIn(email);
+              if (started.code) {
+                // Demo relay (no email check): the code comes back, sign in at once.
+                setSession(await finishSignIn(email, started.code));
+                refresh();
+              } else setStep("code");
             });
           }}
         >
