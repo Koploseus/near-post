@@ -7,6 +7,7 @@ import { loadConfig } from "./config.js";
 import { near } from "./chain.js";
 import { parseCrowd } from "./crowd.js";
 import { Kickoffs, startScheduler } from "./schedule.js";
+import { Vaults } from "./vault.js";
 
 const config = loadConfig();
 const signer = config.PARENT_PRIVATE_KEY
@@ -15,7 +16,8 @@ const signer = config.PARENT_PRIVATE_KEY
 const chain = rpcChain(config.NEAR_RPC_URL, signer);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
 const kickoffs = new Kickoffs();
-const app = createApp(config, chain, { mailer, kickoffs });
+const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
+const app = createApp(config, chain, { mailer, kickoffs, vaults });
 if (config.WEB_DIST) {
   // The web app uses hash routes: only files, and index.html for "/".
   app.use("/*", async (c, next) => {

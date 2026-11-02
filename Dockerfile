@@ -12,10 +12,13 @@ RUN pnpm --filter @near-post/web build && pnpm --filter @near-post/relay build \
  && pnpm --filter @near-post/relay deploy --prod /out
 
 FROM node:26.13.0-alpine
-ENV NODE_ENV=production PORT=8080 WEB_DIST=/app/web
+# su-exec: start as root only to hand the volume to the node user, then drop.
+RUN apk add --no-cache su-exec
+ENV NODE_ENV=production PORT=8080 WEB_DIST=/app/web DATA_DIR=/data
 WORKDIR /app
 COPY --from=build /out ./
 COPY --from=build /app/apps/web/dist ./web
-USER node
+RUN mkdir -p /data && chown node:node /data
 EXPOSE 8080
-CMD ["node", "dist/main.js"]
+# Fly mounts the volume as root: give /data to node, then run as node.
+CMD ["sh", "-c", "chown node:node /data && exec su-exec node node dist/main.js"]

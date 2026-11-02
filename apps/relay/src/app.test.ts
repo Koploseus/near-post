@@ -6,6 +6,7 @@ import { type Chain, near } from "./chain.js";
 import { loadConfig } from "./config.js";
 import { parseCrowd, seatedBy } from "./crowd.js";
 import { Kickoffs, crowdTick, keepFunded, playDue, tick } from "./schedule.js";
+import { Vaults, vaultMessage } from "./vault.js";
 
 const PARENT = "near-post.testnet";
 
@@ -332,5 +333,67 @@ describe("league reads", () => {
     expect([l.allow("k"), l.allow("k")]).toEqual([true, false]);
     t = 10;
     expect(l.allow("k")).toBe(true);
+  });
+});
+
+describe("passkey backups", () => {
+  const b64url = (n: number) => Buffer.from(Array.from({ length: n }, (_, i) => (i * 7 + n) % 256)).toString("base64url");
+  const entry = { credential_id: b64url(32), salt: b64url(32), iv: b64url(12), ciphertext: b64url(120) };
+
+  async function signedUp() {
+    const chain = new FakeChain();
+    const box = mailbox();
+    const vaults = new Vaults(null);
+    let t = 1_000_000;
+    const app = createApp(config, chain, { mailer: box.mailer, vaults, now: () => t });
+    const kp = KeyPair.fromRandom("ed25519");
+    await post(app, "/v1/auth/start", { email: "k@example.com" });
+    const r = (await (await post(app, "/v1/auth/verify", { email: "k@example.com", code: box.lastCode(), public_key: kp.getPublicKey().toString() })).json()) as { account_id: string };
+    const sign = (e: typeof entry, ts = t, key = kp) =>
+      Buffer.from(key.sign(new TextEncoder().encode(vaultMessage(r.account_id, ts, e))).signature).toString("base64");
+    return { chain, box, app, kp, account: r.account_id, sign, vaults, wait: (ms: number) => (t += ms), now: () => t };
+  }
+
+  it("stores a backup signed by a key of the account, and hands it back after the email code", async () => {
+    const { app, kp, account, sign, box, now } = await signedUp();
+    const r = await post(app, "/v1/vault", { ...entry, account_id: account, public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(entry) });
+    expect(r.status).toBe(200);
+    expect(await (await app.request(`/v1/vault/${account}`)).json()).toEqual({ passkeys: 1 });
+    // A new device: its own key is not on the account, so it gets the backups.
+    await post(app, "/v1/auth/start", { email: "k@example.com" });
+    const v = (await (await post(app, "/v1/auth/verify", { email: "k@example.com", code: box.lastCode(), public_key: newKey() })).json()) as { vaults: unknown[]; key_on_account: boolean };
+    expect(v.key_on_account).toBe(false);
+    expect(v.vaults).toEqual([entry]);
+    // Without the code, nothing.
+    const w = await post(app, "/v1/auth/verify", { email: "k@example.com", code: "000000", public_key: newKey() });
+    expect(w.status).toBe(401);
+  });
+
+  it("refuses a backup not signed by a key of that account, or stale", async () => {
+    const { app, kp, account, sign, now, wait } = await signedUp();
+    const stranger = KeyPair.fromRandom("ed25519");
+    const forged = await post(app, "/v1/vault", { ...entry, account_id: account, public_key: stranger.getPublicKey().toString(), ts: now(), signature: sign(entry, now(), stranger) });
+    expect(forged.status).toBe(401);
+    const tampered = await post(app, "/v1/vault", { ...entry, ciphertext: b64url(121), account_id: account, public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(entry) });
+    expect(tampered.status).toBe(401);
+    const ts = now();
+    wait(6 * 60_000);
+    const stale = await post(app, "/v1/vault", { ...entry, account_id: account, public_key: kp.getPublicKey().toString(), ts, signature: sign(entry, ts) });
+    expect(stale.status).toBe(401);
+    const notPlayer = await post(app, "/v1/vault", { ...entry, account_id: "near-post.testnet", public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(entry) });
+    expect(notPlayer.status).toBe(400);
+  });
+
+  it("survives a restart (the file on the volume)", async () => {
+    const dir = await import("node:fs").then((fs) => fs.mkdtempSync(`${(process.env.TMPDIR ?? "/tmp").replace(/\/$/, "")}/np-vault-`));
+    const file = `${dir}/data/vaults.json`;
+    new Vaults(file).put("u2.near-post.testnet", { ...entry, created_ms: 1 });
+    expect(new Vaults(file).get("u2.near-post.testnet")).toHaveLength(1);
+  });
+
+  it("keeps five passkeys at most, the newest", async () => {
+    const vaults = new Vaults(null);
+    for (let i = 0; i < 7; i++) vaults.put("u1.near-post.testnet", { ...entry, credential_id: b64url(20 + i), created_ms: i });
+    expect(vaults.get("u1.near-post.testnet").map((e) => e.created_ms)).toEqual([2, 3, 4, 5, 6]);
   });
 });

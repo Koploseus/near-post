@@ -4,7 +4,8 @@ import { g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { isGasless, league, leagueCall, signOut, topUp, transferRegistration } from "../lib/near.js";
 import type { Club, Player, Position } from "../lib/types.js";
-import { SignIn } from "./SignIn.js";
+import { PasskeyIcon, SignIn } from "./SignIn.js";
+import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 import { Training } from "./Training.js";
 import { Wardrobe } from "./Wardrobe.js";
@@ -150,13 +151,31 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
   );
 }
 
-/** The account behind the game, and signing out. */
+/** The account behind the game: its passkey backup, and signing out. */
 function Account() {
-  const { session, setSession } = useGame();
+  const { session, setSession, me } = useGame();
+  const { data: passkeys, reload } = useData(() => (session ? passkeysOf(session.accountId) : Promise.resolve(0)), [session?.accountId]);
   if (!session) return null;
   return (
     <div className="paper panel account">
       <span className="k">ACCOUNT</span>
+      {passkeys ? (
+        <p className="ok">
+          <PasskeyIcon /> Passkey on
+        </p>
+      ) : (
+        <>
+          {passkeysAvailable() && (
+            <Action
+              className="cta small"
+              label="ADD A PASSKEY"
+              run={() => saveWithPasskey(session, me ? `${me.name} · NEAR Post` : session.accountId)}
+              done={reload}
+              success="Passkey added"
+            />
+          )}
+        </>
+      )}
       <p className="note">
         {isGasless(session.accountId) ? "Opened with your email: the game pays your gas. " : ""}
         <span title={session.accountId}>{short(session.accountId)}</span>

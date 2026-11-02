@@ -59,6 +59,8 @@ const Env = z.object({
   KEEP_FUNDED: z.string().optional(),
   KEEP_MIN_FREE_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("2"),
   KEEP_TOPUP_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("5"),
+  /** Where the relay keeps passkey backups (a Fly volume in production). Unset: in memory only. */
+  DATA_DIR: z.string().optional(),
   /** Serves the built web app from this folder (one origin for app and API). */
   WEB_DIST: z.string().optional(),
 });

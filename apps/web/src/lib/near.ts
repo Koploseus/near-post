@@ -25,7 +25,7 @@ export function loadSession(): Session | null {
     return memory;
   }
 }
-function saveSession(s: Session | null) {
+export function saveSession(s: Session | null) {
   memory = s;
   try {
     if (s) localStorage.setItem(KEY, JSON.stringify(s));
@@ -49,24 +49,33 @@ async function relay<T>(path: string, body: unknown): Promise<T> {
 
 export const startSignIn = (email: string) => relay<{ sent: boolean; account_id: string; code?: string }>("/v1/auth/start", { email });
 
+/** After the code: signed in, or a key to unlock with a passkey (another device made the account). */
+export type SignInResult =
+  | { session: Session; created: boolean }
+  | { unlock: { accountId: string; backups: import("./passkey.js").Backup[] } };
+
 /**
  * Finishes sign-in: a new key pair is made here; the relay creates the account
- * with its public key. A returning player needs the key this browser kept.
+ * with its public key. A returning player needs his key: the one this browser
+ * kept, or his passkey backup.
  */
-export async function finishSignIn(email: string, code: string): Promise<Session> {
+export async function finishSignIn(email: string, code: string): Promise<SignInResult> {
   const existing = loadSession();
   const kp = existing ? KeyPair.fromString(existing.privateKey as `ed25519:${string}`) : KeyPair.fromRandom("ed25519");
-  const r = await relay<{ account_id: string; created: boolean; key_on_account?: boolean }>("/v1/auth/verify", {
+  const r = await relay<{ account_id: string; created: boolean; key_on_account?: boolean; vaults?: import("./passkey.js").Backup[] }>("/v1/auth/verify", {
     email,
     code,
     public_key: kp.getPublicKey().toString(),
   });
   if (!r.created && !r.key_on_account) {
-    throw new Error("This account was opened on another device. Its key lives there: sign in from that browser.");
+    if (r.vaults?.length) return { unlock: { accountId: r.account_id, backups: r.vaults } };
+    throw new Error(
+      "Sign in on the device you signed up with first, and add a passkey in the Locker room.",
+    );
   }
   const s = { accountId: r.account_id, privateKey: kp.toString() };
   saveSession(s);
-  return s;
+  return { session: s, created: r.created };
 }
 
 export const topUp = (accountId: string) => relay(`/v1/accounts/${accountId}/topup`, {});
