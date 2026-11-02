@@ -80,7 +80,7 @@ export function Lineup() {
             const cls = `spot${you ? " you" : ""}${p?.controller ? " person" : ""}`;
             return me && session && !takenByPerson && !you ? (
               <span key={k} className="spot-pos" style={{ left: `${x}%`, top: `${y}%` }}>
-                <Action className={cls} label={body} run={() => leagueCall(session, "take_slot", { slot: k }, 30)} done={reload} aria={label} />
+                <Action className={cls} label={body} run={() => leagueCall(session, "take_slot", { slot: k }, 30)} done={reload} aria={label} success={`You play ${ROLE_NAME[role].toLowerCase()}`} />
               </span>
             ) : (
               <span key={k} className="spot-pos" style={{ left: `${x}%`, top: `${y}%` }}>
@@ -161,7 +161,7 @@ function SetPieces({ clubId, leader }: { clubId: string; leader: boolean }) {
         ),
       )}
       {leader && session && (pick.free_kick !== takers.free_kick || pick.penalty !== takers.penalty) && (
-        <Action className="cta small" label="SAVE TAKERS" run={() => leagueCall(session, "set_takers", { club_id: clubId, free_kick: pick.free_kick, penalty: pick.penalty }, 30)} done={reload} />
+        <Action className="cta small" label="SAVE TAKERS" run={() => leagueCall(session, "set_takers", { club_id: clubId, free_kick: pick.free_kick, penalty: pick.penalty }, 30)} done={reload} success="Set-piece takers named" />
       )}
     </div>
   );

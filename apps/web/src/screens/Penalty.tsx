@@ -189,7 +189,7 @@ function draw(
   }
 }
 
-function pitch(g: CanvasRenderingContext2D) {
+export function pitch(g: CanvasRenderingContext2D) {
   // Mowing stripes in perspective: bands grow towards the viewer.
   let y = 182;
   for (let n = 0; y < H; n++) {
@@ -226,7 +226,7 @@ function pitch(g: CanvasRenderingContext2D) {
 
 const BACK = { left: 322, right: 678, top: 190, bottom: 318 };
 
-function goalBack(g: CanvasRenderingContext2D) {
+export function goalBack(g: CanvasRenderingContext2D) {
   // The inside of the goal: dark, then the net.
   g.fillStyle = "rgba(14,20,40,.55)";
   g.beginPath();
@@ -266,7 +266,7 @@ function goalBack(g: CanvasRenderingContext2D) {
   }
 }
 
-function goalFront(g: CanvasRenderingContext2D, bulge: number, shot: Kick["shot"]) {
+export function goalFront(g: CanvasRenderingContext2D, bulge: number, shot: { target: { x: number; y: number } } | null) {
   if (bulge > 0 && shot) {
     // The net bulges where the ball went in.
     const p = toScreen(shot.target.x, shot.target.y);
@@ -291,7 +291,7 @@ function goalFront(g: CanvasRenderingContext2D, bulge: number, shot: Kick["shot"
 }
 
 /** The keeper, `x` metres from the centre of his line; `dive` -1..1 leans him over; `lift` metres up. */
-function keeper(g: CanvasRenderingContext2D, x: number, dive: number, lift: number, t: number) {
+export function keeper(g: CanvasRenderingContext2D, x: number, dive: number, lift: number, t: number) {
   const base = toScreen(x, 0);
   const s = (GOAL_SCREEN.bottom - GOAL_SCREEN.top) / GOAL_M.height; // px per metre
   const bounce = dive === 0 ? Math.abs(Math.sin(t / 260)) * 3 : 0;
@@ -349,7 +349,7 @@ function keeper(g: CanvasRenderingContext2D, x: number, dive: number, lift: numb
 }
 
 /** The penalty taker, seen from behind at the bottom left; `kick` 0..1 swings his leg. */
-function taker(g: CanvasRenderingContext2D, kick: number) {
+export function taker(g: CanvasRenderingContext2D, kick: number) {
   const k = Math.max(0, Math.min(1, kick));
   g.save();
   g.translate(390 + 40 * k, 640 - 10 * k);

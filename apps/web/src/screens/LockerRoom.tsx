@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
-import { league, leagueCall, topUp, transferRegistration } from "../lib/near.js";
+import { isGasless, league, leagueCall, signOut, topUp, transferRegistration } from "../lib/near.js";
 import type { Club, Player, Position } from "../lib/types.js";
 import { SignIn } from "./SignIn.js";
 import { SkillBars, Sticker } from "./Sticker.js";
@@ -45,6 +45,7 @@ function CreateFootballer() {
           disabled={name.trim().length < 2}
           run={() => leagueCall(session!, "create_footballer", { name: name.trim(), position })}
           done={refresh}
+          success={`${name.trim()} is born`}
         />
       </div>
     </section>
@@ -80,7 +81,7 @@ function PickClub({ me }: { me: Player }) {
             {people >= 12 ? (
               <span className="chip">FULL</span>
             ) : (
-              <Action label={`SIGN FOR ${c.name.toUpperCase()}`} className="cta small" run={() => transferRegistration(session!, me.token_id, c.manager)} done={() => setTimeout(refresh, 2500)} />
+              <Action label={`SIGN FOR ${c.name.toUpperCase()}`} className="cta small" run={() => transferRegistration(session!, me.token_id, c.manager)} done={() => setTimeout(refresh, 2500)} success={`Welcome to ${c.name}!`} />
             )}
           </div>
         ))}
@@ -134,14 +135,42 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
         <div className="paper panel">
           <h3>Collect</h3>
           <p className="note">Your goals are minted, your salary is paid from the club treasury.</p>
-          <Action label={`COLLECT ${g(owed)}`} disabled={owed === 0n} run={() => leagueCall(session!, "claim_player", { token_id: me.token_id })} done={() => setTimeout(refresh, 2500)} />
+          <Action label={`COLLECT ${g(owed)}`} disabled={owed === 0n} run={() => leagueCall(session!, "claim_player", { token_id: me.token_id })} done={() => setTimeout(refresh, 2500)} success={`${g(owed)} on its way`} />
         </div>
-        <div className="paper panel">
-          <h3>Gas</h3>
-          <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
-          <Action className="cta small" label="TOP UP MY GAS" run={() => topUp(session!.accountId)} />
-        </div>
+        {!isGasless(session!.accountId) && (
+          <div className="paper panel">
+            <h3>Gas</h3>
+            <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
+            <Action className="cta small" label="TOP UP MY GAS" run={() => topUp(session!.accountId)} />
+          </div>
+        )}
+        <Account />
       </div>
+    </div>
+  );
+}
+
+/** The account behind the game, and signing out. */
+function Account() {
+  const { session, setSession } = useGame();
+  if (!session) return null;
+  return (
+    <div className="paper panel account">
+      <span className="k">ACCOUNT</span>
+      <p className="note">
+        {isGasless(session.accountId) ? "Opened with your email: the game pays your gas. " : ""}
+        <span title={session.accountId}>{short(session.accountId)}</span>
+      </p>
+      <button
+        type="button"
+        className="link"
+        onClick={() => {
+          signOut();
+          setSession(null);
+        }}
+      >
+        Sign out
+      </button>
     </div>
   );
 }

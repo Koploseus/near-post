@@ -4,6 +4,10 @@ import { type Clock, clock, eleven, liveDay, minuteLabel, scoreOf, visible } fro
 import { SPOTS } from "../lib/pitch.js";
 import { league } from "../lib/near.js";
 import { BOT, type Club, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
+import { clubName } from "../lib/format.js";
+import { Highlight, type HighlightKind, type HighlightMoment } from "./Highlight.js";
+
+const REDUCED = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const ICON: Record<MatchEvent["kind"], string> = {
   goal: "⚽",
@@ -17,6 +21,9 @@ const ICON: Record<MatchEvent["kind"], string> = {
   free_kick: "◠",
   penalty: "◉",
 };
+
+/** "an academy kid shoots wide" → "An academy kid shoots wide". */
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 function useNow(ms = 1000) {
   const [now, setNow] = useState(Date.now());
@@ -164,6 +171,33 @@ export function MatchView({
         return `PENALTY! ${n} takes it`;
     }
   };
+  // Big moments replay as a short animation, as they are revealed.
+  const [replay, setReplay] = useState<HighlightMoment | null>(null);
+  const seenEvents = useRef<number | null>(null);
+  useEffect(() => {
+    if (seenEvents.current === null || final || REDUCED) {
+      seenEvents.current = shown.length; // nothing replays for what happened before we arrived
+      return;
+    }
+    const fresh = shown.slice(seenEvents.current);
+    seenEvents.current = shown.length;
+    for (let i = shown.length - 1; i >= shown.length - fresh.length; i--) {
+      const e = shown[i]!;
+      const prev = shown[i - 1];
+      const set = prev && prev.home === e.home && prev.player === e.player && (prev.kind === "penalty" || prev.kind === "free_kick") ? prev.kind : null;
+      let kind: HighlightKind | null = null;
+      if (e.kind === "red") kind = "red";
+      else if (e.kind === "own_goal") kind = "own_goal";
+      else if (e.kind === "goal") kind = set ? `${set}_goal` : "goal";
+      else if (set && (e.kind === "saved" || e.kind === "missed")) kind = `${set}_${e.kind}`;
+      if (kind) {
+        const side = e.home !== (e.kind === "own_goal") ? m.home : m.away;
+        setReplay({ kind, name: name(e), team: clubName(names.get(e.kind === "own_goal" ? (e.home ? m.away : m.home) : side) ?? ""), seed: e.second * 7 + e.player });
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown.length]);
   const count = (home: boolean, kinds: MatchEvent["kind"][]) => shown.filter((e) => e.home === home && kinds.includes(e.kind)).length;
   const half1 = m.possession.slice(0, 2);
   const poss = c.phase === "full_time" ? [m.stats.home_possession, m.stats.away_possession] : half1.length === 2 && c.phase !== "first_half" ? half1.map((v) => Math.round((100 * v) / (half1[0]! + half1[1]! || 1))) : null;
@@ -191,11 +225,11 @@ export function MatchView({
           {m.derby && <span className="tag">DERBY</span>}
         </span>
         <div className="board">
-          <span className="team">{names.get(m.home) ?? m.home}</span>
+          <span className="team">{clubName(names.get(m.home) ?? m.home)}</span>
           <span className="score">
             {hs} - {as}
           </span>
-          <span className="team">{names.get(m.away) ?? m.away}</span>
+          <span className="team">{clubName(names.get(m.away) ?? m.away)}</span>
         </div>
         <div className="clock-row">
           <span className={`clock${c.phase === "first_half" || c.phase === "second_half" ? " running" : ""}`}>{c.label}</span>
@@ -203,7 +237,7 @@ export function MatchView({
         <div className="match-bar" aria-hidden="true">
           <span style={{ width: `${c.progress * 100}%` }} />
         </div>
-        {!final && <Pitch m={m} shown={shown} c={c} />}
+        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} />)}
         {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
@@ -224,7 +258,7 @@ export function MatchView({
                   {ICON[e.kind]}
                 </span>
                 <span>
-                  {line(e)} <span className="note">({names.get(e.home !== (e.kind === "own_goal") ? m.home : m.away)?.split(" ").slice(-1)[0]})</span>
+                  {cap(line(e))} <span className="note">({clubName(names.get(e.home !== (e.kind === "own_goal") ? m.home : m.away) ?? "")})</span>
                 </span>
               </li>
             ))}
@@ -232,6 +266,10 @@ export function MatchView({
         </section>
         <aside className="paper panel">
           <h3>Stats</h3>
+          <p className="legend">
+            <span className="sw home" /> {clubName(names.get(m.home) ?? "")}
+            <span className="sw away" /> {clubName(names.get(m.away) ?? "")}
+          </p>
           {poss && (
             <div className="poss">
               <span>{poss[0]}%</span>
@@ -271,11 +309,11 @@ export function MatchView({
                 <li key={o.home}>
                   {pick ? (
                     <button type="button" className={`link${i === idx ? " on" : ""}`} onClick={() => pick(i)}>
-                      {names.get(o.home)} {h}-{a} {names.get(o.away)}
+                      {clubName(names.get(o.home) ?? "")} {h}-{a} {clubName(names.get(o.away) ?? "")}
                     </button>
                   ) : (
                     <a className={`link${i === idx ? " on" : ""}`} href={`#/game/${day}/${i}`}>
-                      {names.get(o.home)} {o.home_goals}-{o.away_goals} {names.get(o.away)}
+                      {clubName(names.get(o.home) ?? "")} {o.home_goals}-{o.away_goals} {clubName(names.get(o.away) ?? "")}
                     </a>
                   )}
                 </li>
@@ -352,7 +390,8 @@ function Moment({
   const seen = useRef<number | null>(null);
   const [moment, setMoment] = useState<(MatchEvent & { half: 0 | 1 }) | null>(null);
   useEffect(() => {
-    const big = shown.filter((e) => ["goal", "own_goal", "yellow", "red", "penalty"].includes(e.kind));
+    // With animations on, goals, penalties and reds replay as highlights: only yellows show here.
+    const big = shown.filter((e) => (REDUCED ? ["goal", "own_goal", "yellow", "red", "penalty"] : ["yellow"]).includes(e.kind));
     if (seen.current === null) {
       seen.current = big.length; // no fanfare for what happened before we arrived
       return;

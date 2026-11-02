@@ -63,7 +63,7 @@ export function Wardrobe({ me }: { me: Player }) {
                 {id ? (
                   <>
                     <span>{title(byId.get(id)?.style ?? id)}</span>
-                    <Action className="chip" label="TAKE OFF" run={() => unequip(session, me.token_id, k)} done={later} />
+                    <Action className="chip" label="TAKE OFF" run={() => unequip(session, me.token_id, k)} done={later} success="Back in your wardrobe" />
                   </>
                 ) : (
                   <span className="note">nothing</span>
@@ -80,6 +80,7 @@ export function Wardrobe({ me }: { me: Player }) {
               label={`BUY A PACK · ${g(data.price)}`}
               disabled={BigInt(balance) < BigInt(data.price)}
               run={() => buyPack(session, data.price)}
+              success="Pack opened"
               done={() => {
                 setReveal(true);
                 later();
@@ -145,6 +146,7 @@ export function Wardrobe({ me }: { me: Player }) {
                 className="cta small"
                 label={`WEAR ${title(one.style).toUpperCase()}`}
                 run={() => equip(session, me.token_id, one.id)}
+                success={`Wearing ${title(one.style).toLowerCase()}`}
                 done={() => {
                   setPicked([]);
                   later();

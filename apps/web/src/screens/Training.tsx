@@ -83,6 +83,7 @@ export function Training({ me }: { me: Player }) {
             <Action
               label={`ADD ${attested.points} ${skillName(ticket.skill).toUpperCase()}`}
               run={() => finishTraining(session, me.token_id, attested.points, attested.signature)}
+              success={`+${attested.points} ${skillName(ticket.skill).toLowerCase()}`}
               done={() => {
                 saveAttested(null);
                 reload();
@@ -122,6 +123,7 @@ export function Training({ me }: { me: Player }) {
             label={`TRAIN ${skillName(skill).toUpperCase()} · 400k G`}
             disabled={BigInt(balance) < BigInt(TRAINING)}
             run={() => train(session, me.token_id, skill, TRAINING)}
+            success="Session booked: play the drill"
             done={() => setTimeout(reload, 2500)}
           />
           {BigInt(balance) < BigInt(TRAINING) && <p className="note">You have {g(balance)}.</p>}

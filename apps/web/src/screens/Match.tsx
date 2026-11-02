@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { minute, short } from "../lib/format.js";
+import { clubName, minute, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { league } from "../lib/near.js";
 import type { Club, MatchResult } from "../lib/types.js";
@@ -66,26 +66,20 @@ export function Match() {
           <Fragment key={`${m.home}-${m.away}`}>
           {(i === 0 || data.results[i - 1]!.division !== m.division) && (data.results.at(-1)?.division ?? 1) > 1 && <h3 className="div-head">Division {m.division}</h3>}
           <a className="result" key={`${m.home}-${m.away}`} href={`#/game/${shown}/${i}`} aria-label={`Match details: ${names.get(m.home)} ${m.home_goals}-${m.away_goals} ${names.get(m.away)}`}>
-            <div className="score">
-              <span className={m.home === clubId ? "mine" : ""}>{names.get(m.home) ?? short(m.home)}</span>
+            <div className="score compact">
+              <span className={m.home === clubId ? "mine" : ""}>{clubName(names.get(m.home) ?? short(m.home))}</span>
               <strong>
                 {m.home_goals} - {m.away_goals}
               </strong>
-              <span className={m.away === clubId ? "mine" : ""}>{names.get(m.away) ?? short(m.away)}</span>
+              <span className={m.away === clubId ? "mine" : ""}>{clubName(names.get(m.away) ?? short(m.away))}</span>
               {m.derby && <span className="tag">DERBY</span>}
+              <span className="more" aria-hidden="true">›</span>
             </div>
-            <ul className="goals">
-              {m.goals.map((g, i) => (
-                <li key={i}>
-                  {minute(g.minute)} {g.name}
-                  {g.kind === "Own" ? " (own goal, burns 6M)" : g.kind === "Late" ? " (late: mints double)" : ""} for{" "}
-                  {names.get(g.for_home ? m.home : m.away) ?? ""}
-                </li>
-              ))}
-              {m.goals.length === 0 && <li>No goal.</li>}
-            </ul>
-            {m.stats && <Sheet m={m} />}
-            <span className="more">Match sheet, elevens and every action →</span>
+            {m.goals.length > 0 && (
+              <p className="scorers">
+                {m.goals.map((g) => `${minute(g.minute)} ${g.name}${g.kind === "Own" ? " (og)" : ""}`).join(" · ")}
+              </p>
+            )}
           </a>
           </Fragment>
         ))}
@@ -140,37 +134,3 @@ export function divisions(table: Club[]): Club[][] {
 
 /** How many clubs swap between two divisions at the end of a season (as the league does). */
 export const movers = (upper: number, lower: number) => Math.min(3, Math.floor(upper / 2), Math.floor(lower / 2));
-
-/** Shots, shots on target and the man of the match, like the old match sheets. */
-function Sheet({ m }: { m: MatchResult }) {
-  const st = m.stats;
-  const rows: [string, number, number][] = [
-    ["Shots", st.home_shots, st.away_shots],
-    ["On target", st.home_on_target, st.away_on_target],
-  ];
-  return (
-    <div className="sheet">
-      <table className="duel">
-        <tbody>
-          {rows.map(([label, h, a]) => (
-            <tr key={label}>
-              <td className="num">{h}</td>
-              <td>
-                <span className="duel-bar" aria-hidden="true">
-                  <span style={{ width: `${(100 * h) / Math.max(1, h + a)}%` }} />
-                </span>
-                <span className="duel-label">{label}</span>
-              </td>
-              <td className="num">{a}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {st.man_of_the_match && (
-        <p className="mom">
-          <span className="k">MAN OF THE MATCH</span> {st.man_of_the_match.name} · {(st.man_of_the_match.rating / 10).toFixed(1)}
-        </p>
-      )}
-    </div>
-  );
-}
