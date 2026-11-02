@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { clubName, g, minute } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
+import { serverNow } from "../lib/time.js";
 import { clock, liveDay, scoreOf, visible } from "../lib/live.js";
 import { league } from "../lib/near.js";
 import { ROLE_NAME } from "../lib/pitch.js";
@@ -8,9 +9,9 @@ import type { Club, Lineup, MatchResult, Stand } from "../lib/types.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 
 function useNow(ms = 1000) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(serverNow());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms);
+    const t = setInterval(() => setNow(serverNow()), ms);
     return () => clearInterval(t);
   }, [ms]);
   return now;
@@ -24,7 +25,7 @@ const mmss = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor(ms 
  * your corner of the table. Logged out, what the game is in three lines.
  */
 export function Dashboard() {
-  const { session, me, club, clubId, schedule } = useGame();
+  const { session, me, club, clubId, schedule, kickoffs } = useGame();
   const now = useNow();
   const ld = schedule ? liveDay(schedule, now) : null;
   const { data } = useData(async () => {
@@ -52,7 +53,7 @@ export function Dashboard() {
   const day = schedule?.match_day ?? 0;
   const trained = !!me && me.last_trained_day >= day;
   const owed = me ? BigInt(me.wallet) + BigInt(me.salary) : 0n;
-  const c = liveMatch && schedule && ld?.state === "live" ? clock(liveMatch, ld.kickoff, schedule, now) : null;
+  const c = liveMatch && schedule && ld?.state === "live" ? clock(liveMatch, ld.kickoff, schedule, now, kickoffs[ld.day]) : null;
   const halfTime = c?.phase === "half_time" || c?.phase === "waiting_second_half";
 
   // The one thing to do now.
@@ -104,7 +105,7 @@ export function Dashboard() {
         {ld?.state === "live" && liveMatch && schedule ? (
           <a className="hero live-hero" href="#/live">
             <span className="badge-live">LIVE</span>
-            <LiveScore m={liveMatch} kickoff={ld.kickoff} now={now} names={names} />
+            <LiveScore m={liveMatch} kickoff={ld.kickoff} day={ld.day} now={now} names={names} />
           </a>
         ) : (
           <a className="hero" href="#/live">
@@ -200,9 +201,9 @@ export function Dashboard() {
   );
 }
 
-function LiveScore({ m, kickoff, now, names }: { m: MatchResult; kickoff: number; now: number; names: Map<string, string> }) {
-  const { schedule } = useGame();
-  const c = clock(m, kickoff, schedule!, now);
+function LiveScore({ m, kickoff, day, now, names }: { m: MatchResult; kickoff: number; day: number; now: number; names: Map<string, string> }) {
+  const { schedule, kickoffs } = useGame();
+  const c = clock(m, kickoff, schedule!, now, kickoffs[day]);
   const [h, a] = scoreOf(visible(m, c));
   return (
     <span className="hero-score">

@@ -1,3 +1,4 @@
+import type { Kickoffs } from "./time.js";
 import type { MatchEvent, MatchResult, Schedule } from "./types.js";
 
 export const HALF_SECONDS = 45 * 60;
@@ -16,7 +17,8 @@ export function liveDay(s: Schedule, now: number): LiveDay {
   const ht = Number(s.half_time_ms);
   const last = Number(s.last_kickoff_at_ms);
   if (s.first_half_played) return { day: s.match_day, kickoff: Number(s.kickoff_at_ms), state: "live" };
-  if (last > 0 && now < last + 2 * half + ht + 60_000) return { day: s.match_day - 1, kickoff: last, state: "live" };
+  // A few minutes of grace: a half that reached the chain late is revealed late.
+  if (last > 0 && now < last + 2 * half + ht + 180_000) return { day: s.match_day - 1, kickoff: last, state: "live" };
   return { day: s.match_day, kickoff: Number(s.kickoff_at_ms), state: "before" };
 }
 
@@ -35,24 +37,27 @@ export interface Clock {
 /**
  * Where a match is at `now`: each half was played in one transaction, and is
  * revealed over `half_ms` of real time, its clock running at 45 min per half.
+ * Each half starts when it really reached the chain (`kickoffs`, from the
+ * relay), else at its scheduled time; every viewer computes the same.
  */
-export function clock(m: MatchResult | null, kickoff: number, s: Schedule, now: number): Clock {
+export function clock(m: MatchResult | null, kickoff: number, s: Schedule, now: number, kickoffs?: Kickoffs | null): Clock {
   const half = Number(s.half_ms);
   const ht = Number(s.half_time_ms);
   const end1 = m?.half_ends[0] ?? HALF_SECONDS;
   const end2 = m?.half_ends[1] ?? 2 * HALF_SECONDS;
-  const t = now - kickoff;
-  const total = 2 * half + ht;
-  const progress = Math.min(1, Math.max(0, t / total));
-  if (t < 0 || !m) return { phase: "before", second: 0, label: "–", progress: 0 };
-  if (t < half) {
-    const second = Math.floor((t / half) * end1);
+  const start1 = Math.max(kickoff, kickoffs?.first ?? kickoff);
+  // The first half is always shown whole, with at least 30 s of break.
+  const start2 = Math.max(kickoffs?.second ?? kickoff + half + ht, start1 + half + 30_000);
+  const progress = Math.min(1, Math.max(0, (now - start1) / (start2 + half - start1)));
+  if (now < start1 || !m) return { phase: "before", second: 0, label: "–", progress: 0 };
+  if (now < start1 + half) {
+    const second = Math.floor(((now - start1) / half) * end1);
     return { phase: "first_half", second, label: minuteLabel(second, 0), progress };
   }
-  if (t < half + ht) return { phase: "half_time", second: end1, label: "HT", progress };
-  if (!m.full_time) return { phase: "waiting_second_half", second: end1, label: "HT", progress };
-  if (t < total) {
-    const second = HALF_SECONDS + Math.floor(((t - half - ht) / half) * (end2 - HALF_SECONDS));
+  if (!m.full_time) return { phase: now < start1 + half + ht ? "half_time" : "waiting_second_half", second: end1, label: "HT", progress };
+  if (now < start2) return { phase: "half_time", second: end1, label: "HT", progress };
+  if (now < start2 + half) {
+    const second = HALF_SECONDS + Math.floor(((now - start2) / half) * (end2 - HALF_SECONDS));
     return { phase: "second_half", second, label: minuteLabel(second, 1), progress };
   }
   return { phase: "full_time", second: end2, label: "FT", progress: 1 };

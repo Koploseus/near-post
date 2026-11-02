@@ -35,7 +35,7 @@ describe("live replay", () => {
   it("follows the match in play, then the one being replayed, then the next", () => {
     expect(liveDay(sched({ first_half_played: true }), 101 * MIN)).toEqual({ day: 3, kickoff: 100 * MIN, state: "live" });
     expect(liveDay(sched({}), 90 * MIN)).toEqual({ day: 2, kickoff: 70 * MIN, state: "live" });
-    expect(liveDay(sched({}), 97 * MIN)).toEqual({ day: 3, kickoff: 100 * MIN, state: "before" });
+    expect(liveDay(sched({}), 99 * MIN)).toEqual({ day: 3, kickoff: 100 * MIN, state: "before" });
   });
 
   it("runs the clock at 45 minutes per real half, with half-time", () => {
@@ -46,6 +46,28 @@ describe("live replay", () => {
     expect(clock(match(false), k, s, k + 16 * MIN).phase).toBe("waiting_second_half");
     expect(clock(match(true), k, s, k + 20 * MIN)).toMatchObject({ phase: "second_half" });
     expect(clock(match(true), k, s, k + 26 * MIN)).toMatchObject({ phase: "full_time", label: "FT" });
+  });
+
+  it("starts each half when it really reached the chain, the same for every viewer", () => {
+    const s = sched({});
+    const k = 100 * MIN;
+    const m = match(true);
+    // The first half reached the chain 40 s late, the second 70 s late.
+    const kick = { first: k + 40_000, second: k + 15 * MIN + 70_000 };
+    expect(clock(m, k, s, k + 30_000, kick).phase).toBe("before");
+    expect(clock(m, k, s, k + 40_000, kick)).toMatchObject({ phase: "first_half", label: "1'" });
+    // Nothing is skipped: 10 real minutes of first half, then the break.
+    expect(clock(m, k, s, k + 10 * MIN + 30_000, kick).phase).toBe("first_half");
+    expect(clock(m, k, s, k + 15 * MIN + 60_000, kick).phase).toBe("half_time");
+    expect(clock(m, k, s, k + 15 * MIN + 70_000, kick)).toMatchObject({ phase: "second_half", label: "46'" });
+    expect(clock(m, k, s, k + 26 * MIN, kick).phase).toBe("second_half");
+    expect(clock(m, k, s, k + 26 * MIN + 10_000, kick).phase).toBe("full_time");
+    // Unknown (no relay): the schedule.
+    expect(clock(m, k, s, k + 20 * MIN, { first: null, second: null })).toEqual(clock(m, k, s, k + 20 * MIN));
+    // A first half so late that the second came right after: still 30 s of break.
+    const late = { first: k + 6 * MIN, second: k + 15 * MIN };
+    expect(clock(m, k, s, k + 16 * MIN, late).phase).toBe("half_time");
+    expect(clock(m, k, s, k + 16 * MIN + 30_000, late).phase).toBe("second_half");
   });
 
   it("reveals events and the score as the clock runs", () => {

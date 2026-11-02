@@ -6,7 +6,7 @@ import { rpcChain } from "./chain.js";
 import { loadConfig } from "./config.js";
 import { near } from "./chain.js";
 import { parseCrowd } from "./crowd.js";
-import { startScheduler } from "./schedule.js";
+import { Kickoffs, startScheduler } from "./schedule.js";
 
 const config = loadConfig();
 const signer = config.PARENT_PRIVATE_KEY
@@ -14,7 +14,8 @@ const signer = config.PARENT_PRIVATE_KEY
   : undefined;
 const chain = rpcChain(config.NEAR_RPC_URL, signer);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
-const app = createApp(config, chain, { mailer });
+const kickoffs = new Kickoffs();
+const app = createApp(config, chain, { mailer, kickoffs });
 if (config.WEB_DIST) {
   // The web app uses hash routes: only files, and index.html for "/".
   app.use("/*", async (c, next) => {
@@ -31,6 +32,7 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
   const crowdKey = config.CROWD_PRIVATE_KEY;
   const clubs = parseCrowd(config.CROWD, config.PARENT_ACCOUNT_ID);
   startScheduler(chain, config.LEAGUE_ID, {
+    kickoffs,
     ...(crowdKey && clubs.length
       ? { crowd: { clubs, every: config.CROWD_EVERY, asFan: (fan: string) => rpcChain(config.NEAR_RPC_URL, { accountId: fan, privateKey: crowdKey }) } }
       : {}),

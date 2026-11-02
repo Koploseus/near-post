@@ -5,7 +5,7 @@ import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount } from "./au
 import { type Chain, near } from "./chain.js";
 import { loadConfig } from "./config.js";
 import { parseCrowd, seatedBy } from "./crowd.js";
-import { crowdTick, keepFunded, playDue, tick } from "./schedule.js";
+import { Kickoffs, crowdTick, keepFunded, playDue, tick } from "./schedule.js";
 
 const PARENT = "near-post.testnet";
 
@@ -227,6 +227,36 @@ describe("match days", () => {
     };
     expect(await playDue(chain, "league", 24, () => 1000)).toHaveLength(3);
     expect(await playDue(chain, "league", 24, () => 1000)).toHaveLength(0);
+  });
+
+  it("records when each half first reached the chain, and serves it with the time", async () => {
+    const chain = new FakeChain();
+    const kickoffs = new Kickoffs();
+    chain.state.schedule = { next_match_at_ms: "0", match_day: 7, first_half_played: false };
+    const call = chain.call.bind(chain);
+    let calls = 0;
+    chain.call = async (...args: Parameters<typeof call>) => {
+      calls++;
+      // Two divisions: two first halves, then the day waits for half-time.
+      if (calls === 2) chain.state.schedule = { next_match_at_ms: "99999", match_day: 7, first_half_played: true };
+      return call(...args);
+    };
+    let t = 1_000;
+    await playDue(chain, "league", 24, () => (t += 500), kickoffs);
+    expect(kickoffs.get(7)).toEqual({ first: 2_000, second: null }); // after the first call returns
+    chain.state.schedule = { next_match_at_ms: "0", match_day: 7, first_half_played: true };
+    calls = 10;
+    chain.call = async (...args: Parameters<typeof call>) => {
+      chain.state.schedule = { next_match_at_ms: "99999999", match_day: 8, first_half_played: false };
+      return call(...args);
+    };
+    await playDue(chain, "league", 24, () => (t += 500), kickoffs);
+    expect(kickoffs.get(7).second).toBeGreaterThan(2_000);
+    const app = createApp(loadConfig({}), chain, { mailer: mailbox().mailer, kickoffs, now: () => 42 });
+    expect(await (await app.request("/v1/time")).json()).toEqual({ now: 42 });
+    expect(await (await app.request("/v1/kickoffs/7")).json()).toEqual(kickoffs.get(7));
+    expect(await (await app.request("/v1/kickoffs/99")).json()).toEqual({ first: null, second: null });
+    expect((await app.request("/v1/kickoffs/x")).status).toBe(400);
   });
 });
 
