@@ -9,6 +9,7 @@ import { Live } from "./screens/Live.js";
 import { LockerRoom } from "./screens/LockerRoom.js";
 import { Market } from "./screens/Market.js";
 import { Match } from "./screens/Match.js";
+import { Game } from "./screens/Game.js";
 import { Stands } from "./screens/Stands.js";
 
 const ROUTES = {
@@ -20,11 +21,13 @@ const ROUTES = {
   locker: { label: "Locker room", view: LockerRoom },
   album: { label: "Album", view: Album },
   market: { label: "Market", view: Market },
+  game: { label: "", view: Game },
 } as const;
 type Route = keyof typeof ROUTES;
 
+/** "#/game/3/1" → "game"; the rest of the hash is read by the screen. */
 const route = (): Route => {
-  const h = location.hash.replace(/^#\/?/, "") as Route;
+  const h = location.hash.replace(/^#\/?/, "").split("/")[0] as Route;
   return h in ROUTES ? h : "home";
 };
 
@@ -46,8 +49,8 @@ function Header({ current }: { current: Route }) {
         NEAR POST
       </a>
       <nav className="nav" aria-label="Main">
-        {(Object.keys(ROUTES) as Route[]).map((k) => (
-          <a key={k} href={`#/${k}`} aria-current={k === current ? "page" : undefined}>
+        {(Object.keys(ROUTES) as Route[]).filter((k) => ROUTES[k].label).map((k) => (
+          <a key={k} href={`#/${k}`} aria-current={k === current || (k === "match" && current === "game") ? "page" : undefined}>
             {ROUTES[k].label}
           </a>
         ))}
