@@ -140,7 +140,66 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   them. The drill attester above only signs training scores. No presale, no team allocation. (On testnet the contract accounts still
   hold their deploy keys while we iterate; see Limits.)
 
-## Live on testnet (v5)
+## AI coaches and AI footballers
+
+The 24 fictional clubs are run by AI coaches, and 52 AI footballers play in
+the league next to people: 2 per fictional club, and 4 free agents that any club can sign. Each agent is
+an ordinary NEAR account with its own G wallet (`<club>.near-post.testnet`,
+`ai-<n>.near-post.testnet`). Agents and people use the same contract methods
+and have the same rights, no more. An AI footballer can be elected captain of a human club, like anyone else.
+
+| Agent | When | What it decides (contract call) |
+| --- | --- | --- |
+| Coach | between match days | accept one offer for a player (`nft_approve`), bid for one player (`ft_transfer_call {"bid"}`), collect earnings |
+| Coach | before kick-off, at half-time | the formation against this opponent and score (`set_formation`; the captain decides instead when the club has one) |
+| Footballer | between match days | report (`report_for_match`), the strategy (`vote_strategy`), once a week the captain (`vote_captain`), buy a pack and wear it (`{"pack"}`, `equip`), as a free agent: sign for a club or accept an offer |
+| Footballer | at half-time | the strategy for the second half |
+
+How a decision is made (`apps/relay/src/agents/`):
+
+1. `rules.ts`, one readable file, does the football and the money: it prices
+   every player (250k G at 50 overall, 7% more per point, moved halfway to
+   recent sales, up to 30% more when clubs bid for his position), rates each
+   formation's back, middle and front with the contract's own weights, and
+   lists what the agent may do, with a price range.
+2. A language model on NEAR AI Cloud (`Qwen/Qwen3.6-35B-A3B-FP8`, one of the
+   models NEAR AI Cloud serves in a TEE) picks among those options in the agent's character
+   (coaches: builder, gambler, careful, tactician; footballers: leader,
+   showman, loyal, mercenary) and says why in one line.
+3. The code checks every field against the options before signing. Anything
+   else is refused and logged, and the rules decide that field. Without a model key, the rules
+   decide everything.
+
+Prompt injection and manipulation:
+
+- The model never sees text written by people: no player, club or account
+  names, only ids, aliases (`club_1`, `player_2`) and numbers. A test feeds
+  injection strings as names and checks they never reach the prompt
+  (`runner.test.ts`).
+- It answers JSON against a schema, has no tools, sees no key and builds no
+  transaction. The code builds each transaction from a checked option, from
+  a fixed list of methods; at most one sale and one bid per coach a day.
+- Its quotes are shown as plain text: one line, 160 characters, no links,
+  no markup.
+- What the code cannot prevent: a player who sells players between his own
+  accounts to push the reference price up. The move is bounded (halfway to the
+  median of sales, 100k to 5M G) and the 3% sale tax burns on every sale.
+
+Check it yourself:
+
+- `GET /v1/agents` lists the agents; `GET /v1/agents/feed` shows each
+  decision with its quote, transactions, what the checks refused, and the
+  model evidence (SHA-256 of the exact request and response, completion id,
+  NEAR AI Cloud's signature when it returns one; verify it at
+  https://cloud.near.ai/verify).
+- In the app: Club → AI, the coaches' words in the live match, AI tags on
+  the cards.
+
+The relay holds the agents' keys, derived from one secret (`AGENTS_SEED`).
+They are the project's own agents, not players' keys: the relay still holds
+no key of any person.
+
+## Live on testnet (v6)
 
 | Contract | Account |
 | --- | --- |
@@ -153,8 +212,8 @@ Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
 attester's public key). A match day kicks off every 30 minutes: two halves of
 ten minutes and five minutes of half-time. The relay plays each half when it
-is due (anyone can). The league has 8 fictional clubs in 4 derbies and a demo
-crowd.
+is due (anyone can). The league has 24 fictional clubs in two divisions,
+8 of them in 4 derbies, a demo crowd and the AI agents above.
 
 v1 to v4 (1 and 2 November) stay on `*-v1` to `*-v4.near-post.testnet`;
 they are no longer used.
@@ -225,8 +284,14 @@ fly volumes create near_post_data --region cdg --size 1
 fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
 fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
 fly secrets set ATTESTER_PRIVATE_KEY=ed25519:...      # signs drill scores (public key set in the league)
+fly secrets set AGENTS_SEED=...                       # the AI agents' keys are derived from it (32+ chars)
+fly secrets set NEAR_AI_API_KEY=sk-...                # optional: without it the agents follow their rules
 fly deploy
 ```
+
+The coaches sign with their clubs' accounts: add each coach's derived key once,
+with the clubs' own keys (`pnpm --filter @near-post/relay build && AGENTS_SEED_FILE=<file> node scripts/agents-keys.mjs <keys-dir>`).
+The relay creates the AI footballers' accounts itself.
 
 For the hackathon, `fly.toml` turns the email check off
 (`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.
@@ -309,6 +374,7 @@ because a contract cannot check an email or pay gas for a player.
 | `POST /v1/vault {account_id, public_key, ts, signature, credential_id, salt, iv, ciphertext}` | Stores a passkey backup, signed by a key of that account (5 minutes, 5 passkeys at most). The verify call returns the backups to a device whose key is not on the account. |
 | `GET /v1/time`, `GET /v1/kickoffs/:day` | The relay's clock and the real kick-off of each half, so every viewer sees the live match in step. |
 | `POST /v1/accounts/:id/topup` | Gas for a player account below 0.15 NEAR, twice a day at most. |
+| `GET /v1/agents`, `GET /v1/agents/feed?limit&day`, `GET /v1/agents/:account` | The AI agents and their journal. |
 | `GET /v1/rules`, `GET /v1/clubs/:id/stand` | League reads. |
 
 Run it: `cp apps/relay/.env.example apps/relay/.env`, set `PARENT_PRIVATE_KEY`
@@ -332,7 +398,9 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   amounts keep it cheap on testnet. A mainnet relay would need stronger limits.
 - **Testnet contract accounts still hold their deploy keys** while the game is
   being built, so we can redeploy. They will be deleted before submission;
-  after that, a new version means new accounts (v2), not an upgrade.
+  after that, a new version means new accounts (v2), not an upgrade. One
+  exception so far: on 2 November the league's code was redeployed on
+  `league-v6` with the same state, to add `rename_club`.
 
 - Club shares go to the club treasury, which the league holds as real G so
   that penalties can burn it.
