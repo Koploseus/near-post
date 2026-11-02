@@ -105,7 +105,18 @@ export const leagueCall = <T = unknown>(s: Session, method: string, args: Record
 export const transferRegistration = (s: Session, tokenId: string, club: string) =>
   call(s, PLAYERS, "nft_transfer", { receiver_id: club, token_id: tokenId }, { deposit: 1n });
 
-export const train = (s: Session, tokenId: string, amount: string) =>
-  call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount, msg: JSON.stringify({ train: tokenId }) }, { deposit: 1n, tgas: 150 });
+/** Pays for a training session on one skill: the league opens a ticket. */
+export const train = (s: Session, tokenId: string, skill: string, amount: string) =>
+  call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount, msg: JSON.stringify({ train: { token_id: tokenId, skill } }) }, { deposit: 1n, tgas: 150 });
+
+export const startDrill = (tokenId: string) =>
+  relay<{ ticket: import("./types.js").Ticket; level: number }>("/v1/training/start", { token_id: tokenId });
+
+export const attestDrill = (tokenId: string, clicks: { t: number; x: number; y: number }[]) =>
+  relay<{ hits: number; points: number; signature: string }>("/v1/training/attest", { token_id: tokenId, clicks });
+
+/** Submits the attested score: the league adds the points. */
+export const finishTraining = (s: Session, tokenId: string, points: number, signature: string) =>
+  leagueCall<import("./types.js").Player>(s, "finish_training", { token_id: tokenId, points, signature }, 30);
 
 export const goalars = (accountId: string) => view<string>(GOALARS, "ft_balance_of", { account_id: accountId });

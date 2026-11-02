@@ -62,6 +62,7 @@ export function Match() {
               ))}
               {m.goals.length === 0 && <li>No goal.</li>}
             </ul>
+            {m.stats && <Sheet m={m} />}
           </div>
         ))}
       </section>
@@ -91,6 +92,40 @@ export function Match() {
           </tbody>
         </table>
       </section>
+    </div>
+  );
+}
+
+/** Shots, shots on target and the man of the match, like the old match sheets. */
+function Sheet({ m }: { m: MatchResult }) {
+  const st = m.stats;
+  const rows: [string, number, number][] = [
+    ["Shots", st.home_shots, st.away_shots],
+    ["On target", st.home_on_target, st.away_on_target],
+  ];
+  return (
+    <div className="sheet">
+      <table className="duel">
+        <tbody>
+          {rows.map(([label, h, a]) => (
+            <tr key={label}>
+              <td className="num">{h}</td>
+              <td>
+                <span className="duel-bar" aria-hidden="true">
+                  <span style={{ width: `${(100 * h) / Math.max(1, h + a)}%` }} />
+                </span>
+                <span className="duel-label">{label}</span>
+              </td>
+              <td className="num">{a}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {st.man_of_the_match && (
+        <p className="mom">
+          <span className="k">MAN OF THE MATCH</span> {st.man_of_the_match.name} · {(st.man_of_the_match.rating / 10).toFixed(1)}
+        </p>
+      )}
     </div>
   );
 }

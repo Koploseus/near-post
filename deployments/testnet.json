@@ -1,31 +1,32 @@
 {
   "network": "testnet",
-  "version": "v3",
-  "deployed_at": "2026-11-02T10:03:13.676Z",
+  "version": "v4",
+  "deployed_at": "2026-11-02T12:24:59.271Z",
   "contracts": {
     "league": {
-      "account_id": "league-v3.near-post.testnet",
-      "wasm_sha256": "1a1bfa3275bfd5bb596e60098b9397fb431d638af3b03935e853d02e85b8210e",
-      "deploy_tx": "98z2VdrU191XeyRjXAHUVF9EdUswjYYBw64BJVNGbPBJ",
-      "init_tx": "oFRuugqfGJZhS6d69SZutD2N9HBuV2rHGptPhY6cNJs"
+      "account_id": "league-v4.near-post.testnet",
+      "wasm_sha256": "09254e4feb274a0b522c55474b5f06f5f262f407e19dae0b5eb799dacd9dedf4",
+      "deploy_tx": "HWuxZUYE1gvpbqNK7bpUpRxwkB6uYdVbPZ4qDdS2U7fw",
+      "init_tx": "2Ghjrocps5zctpARYFDvuJf5Kw63zQncEwh61Z9cLWuT"
     },
     "goalars": {
-      "account_id": "goalars-v3.near-post.testnet",
+      "account_id": "goalars-v4.near-post.testnet",
       "wasm_sha256": "43a1787022ed40db1c0b2fdb6d75e9d301aa2f2f7d9f3f6c9870c41405b7679b",
-      "deploy_tx": "3wUdoJfyZQq1tzJSXvBfNA5DLthVNSJTyN1RXm6rwzoP",
-      "init_tx": "DNCdsWknb5ih4QRjN4YXHGSqbU8CNNsxuyauhC9etEeU"
+      "deploy_tx": "bAQpdYLS87myt9qYLgSK5hUSkkHtkp5oCxofkR734hj",
+      "init_tx": "GuRRMy5s2QPgQ1LrwTnAM3cbXseV5xZeQ4r26kJcpCGR"
     },
     "players": {
-      "account_id": "players-v3.near-post.testnet",
+      "account_id": "players-v4.near-post.testnet",
       "wasm_sha256": "dbf6f7d0397aef9a0dbaa36ff565b5fc54a2add2f68b40e20a56000a5523b1bd",
-      "deploy_tx": "FLjyBCDEvNiz2rN3c8tAD8rCoNfGVMbufUifkQyGGW5S",
-      "init_tx": "7vZfaTaFNLmpFjYghrLh1Y5Xn9YwdsAA7PqWVGucW4pA"
+      "deploy_tx": "vKsXs9v3pVm2gzQRNGBx4RWyYJMoATRafTQy1kPn4QX",
+      "init_tx": "AThMUtUQueG16U3tfRGczbGrVHuZdV1HwAdjys1b9oYc"
     },
     "items": {
-      "account_id": "items-v3.near-post.testnet",
+      "account_id": "items-v4.near-post.testnet",
       "wasm_sha256": "418c1b2ace81c011ddc27658cd5153d56335b6f105e37b234c807a99c73ba603",
-      "deploy_tx": "5RFgJD5cZUdpPFYYugxwRh7R2GDEwTqzY1RkoDNAJsgz",
-      "init_tx": "6tsUJ9mSHJRbyJfm8feJKe658xrc4kos88tx7LRukqDV"
+      "deploy_tx": "7ktXeaVfeLStnb7RTcFmXeQT1BHaSGxmewZdaPMMh2US",
+      "init_tx": "8Pw23GbR1FNZQo7xWHmVbrBGwLJKGUaCPBpuFGUzsbQf"
     }
-  }
+  },
+  "attester": "ed25519:4cqYajyLcamJ9VPFLbNff3hqdwedoTQwkenqWEqsJLpc"
 }

@@ -165,3 +165,39 @@ a.cta.signin { display: inline-flex; align-items: center; text-decoration: none;
   .nav { order: 3; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; border-bottom: 3px solid var(--paper); }
   .nav a { white-space: nowrap; padding: 10px 12px; }
 }
+
+/* ---- v4: player cards, skills, training drill, match sheet ---- */
+.sticker.bronze .sticker-face { background: linear-gradient(160deg, #c98a52, #8a5a33); }
+.sticker.silver .sticker-face { background: linear-gradient(160deg, #e3e6ea, #9aa3ad); }
+.sticker.gold .sticker-face { background: linear-gradient(160deg, #f7d77a, #d29a17); }
+.card-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 4px; margin-top: 5px; font-size: 10px; font-weight: 700; color: var(--muted-on-paper); letter-spacing: .3px; }
+.card-stats span { display: flex; gap: 3px; align-items: baseline; }
+.card-stats b { font-family: var(--display); font-weight: 400; font-size: 12px; color: var(--ink); }
+.skill-bars { display: grid; gap: 6px; margin: 0; }
+.skill-bars > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; }
+.skill-bars dt { font-size: 13px; font-weight: 700; color: var(--muted-on-paper); }
+.skill-bars dd { margin: 0; display: flex; align-items: center; gap: 8px; }
+.skill-bars .track { flex: 1; height: 8px; background: #e2d6bb; border-radius: 4px; overflow: hidden; }
+.skill-bars .track span { display: block; height: 100%; background: var(--blue); border-radius: 4px; }
+.skill-bars b { min-width: 22px; text-align: right; font-family: var(--display); font-weight: 400; }
+.skill-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.skill-pick button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 3px solid var(--ink); border-radius: 4px; background: #fffaf0; color: var(--ink); font-size: 12px; font-weight: 800; cursor: pointer; }
+.skill-pick button b { font-family: var(--display); font-weight: 400; font-size: 18px; }
+.skill-pick button[aria-checked="true"] { background: var(--ink); color: var(--yellow); }
+.big-score { font-size: 20px; font-weight: 800; margin: 0; }
+.big-score strong { color: #1e7a47; font-family: var(--display); font-weight: 400; }
+.drill-wrap { grid-column: 1 / -1; margin-bottom: 24px; }
+.drill-head { display: flex; justify-content: space-between; font-family: var(--display); font-size: 20px; color: var(--yellow); margin-bottom: 8px; }
+.drill { position: relative; width: 100%; border: 4px solid var(--paper); border-radius: 6px; background: #2e7d4f repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 10%, transparent 10% 20%); cursor: crosshair; touch-action: none; user-select: none; overflow: hidden; }
+.drill::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; background: rgba(243,234,215,.6); }
+.target { position: absolute; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, var(--paper) 0 22%, var(--red) 23% 48%, var(--paper) 49% 62%, var(--red) 63%); box-shadow: 0 4px 0 rgba(0,0,0,.3); animation: pop .15s ease-out both; z-index: 1; }
+.sheet { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.duel { width: 100%; max-width: 520px; border-collapse: collapse; }
+.duel td { padding: 4px 6px; vertical-align: middle; }
+.duel .num { width: 36px; text-align: center; font-family: var(--display); font-size: 18px; }
+.duel-bar { display: block; height: 8px; background: var(--red); border-radius: 4px; overflow: hidden; }
+.duel-bar span { display: block; height: 100%; background: var(--blue); }
+.duel-label { display: block; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted-on-paper); margin-top: 2px; }
+.mom { margin: 0; font-weight: 800; }
+.mom .k { margin-right: 8px; }
+@media (max-width: 600px) { .drill-head { font-size: 16px; } .card-stats { font-size: 9px; } }

@@ -2,12 +2,12 @@ import { useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
-import { league, leagueCall, topUp, train, transferRegistration } from "../lib/near.js";
+import { league, leagueCall, topUp, transferRegistration } from "../lib/near.js";
 import type { Club, Player, Position } from "../lib/types.js";
 import { SignIn } from "./SignIn.js";
-import { Sticker } from "./Sticker.js";
+import { SkillBars, Sticker } from "./Sticker.js";
+import { Training } from "./Training.js";
 
-const TRAINING = "400000000000";
 
 export function LockerRoom() {
   const { session, me, club, loading } = useGame();
@@ -81,7 +81,6 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
   const day = schedule?.match_day ?? 0;
   const { data: reported, reload } = useData(() => league<boolean>("is_reported", { token_id: me.token_id, match_day: day }), [me.token_id, day]);
   const owed = BigInt(me.wallet) + BigInt(me.salary);
-  const canTrain = BigInt(balance) >= BigInt(TRAINING) && me.last_trained_day < day;
   return (
     <div className="locker">
       <div className="paper panel me">
@@ -92,9 +91,9 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
           <dl className="stats">
             <dt>Club</dt>
             <dd>{club.name}</dd>
-            <dt>Attack / defence</dt>
+            <dt>Rating</dt>
             <dd>
-              {me.attack} / {me.defence}
+              {me.overall} · attack {me.attack} · defence {me.defence}
             </dd>
             <dt>Goals</dt>
             <dd>{me.goals}</dd>
@@ -103,6 +102,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
             <dt>Your G</dt>
             <dd>{g(balance)}</dd>
           </dl>
+          <SkillBars p={me} />
         </div>
       </div>
       <div className="actions">
@@ -117,13 +117,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
             </>
           )}
         </div>
-        <div className="paper panel">
-          <h3>Training</h3>
-          <p className="note">
-            400k G, burned. +1 {me.position === "Mf" || me.position === "Fw" ? "attack" : "defence"}. Once per match day.
-          </p>
-          <Action label="TRAIN · 400k G" disabled={!canTrain} run={() => train(session!, me.token_id, TRAINING)} done={() => setTimeout(refresh, 2500)} />
-        </div>
+        <Training me={me} />
         <div className="paper panel">
           <h3>Collect</h3>
           <p className="note">Your goals are minted, your salary is paid from the club treasury.</p>

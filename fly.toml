@@ -12,7 +12,7 @@ primary_region = 'cdg'
 [env]
   NEAR_NETWORK = "testnet"
   NEAR_RPC_URL = "https://test.rpc.fastnear.com"
-  LEAGUE_ID = "league-v3.near-post.testnet"
+  LEAGUE_ID = "league-v4.near-post.testnet"
   PARENT_ACCOUNT_ID = "near-post.testnet"
   EMAIL_MODE = "console"
   PLAY_MATCH_DAYS = "true"
@@ -26,7 +26,7 @@ primary_region = 'cdg'
   CROWD = "rive-nord:5,port-lune:4,pont-levant:3,haute-ville:4,marais:2,vieux-phare:3,saint-cendre:2,cote-rouge:3"
   CROWD_EVERY = "3"
   # The parent tops up the contracts' storage balance when it runs low.
-  KEEP_FUNDED = "league-v3.near-post.testnet,players-v3.near-post.testnet,goalars-v3.near-post.testnet"
+  KEEP_FUNDED = "league-v4.near-post.testnet,players-v4.near-post.testnet,goalars-v4.near-post.testnet"
 
 [http_service]
   internal_port = 8080

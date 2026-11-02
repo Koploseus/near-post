@@ -45,8 +45,10 @@ const call = async (acct, method, args, tgas = 50) => {
   return r.transaction.hash;
 };
 
-// Storage for the new clubs, squads, fans and stands is paid by the contracts.
-for (const [prefix, fund] of [["league-v3", 15], ["players-v3", 5], ["goalars-v3", 3]]) {
+// Storage for the new clubs (skipped with SKIP_TOPUP=1), squads, fans and stands is paid by the contracts.
+const version = LEAGUE.match(/^league-(v\d+)\./)?.[1] ?? "v3";
+for (const [prefix, fund] of [[`league-${version}`, 15], [`players-${version}`, 5], [`goalars-${version}`, 3]]) {
+  if (process.env.SKIP_TOPUP) break;
   const r = await parent.transfer({ receiverId: `${prefix}.${PARENT}`, amount: near(fund) });
   console.log("storage top-up", prefix, fund, "NEAR", r.transaction.hash);
 }

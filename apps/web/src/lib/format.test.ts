@@ -14,8 +14,10 @@ describe("format", () => {
     expect(minute(92)).toBe("90+2'");
     expect(short("rive-nord.near-post.testnet")).toBe("rive-nord");
   });
-  it("turns a sticker gold at 75", () => {
-    expect(tier(74, 40)).toBe("silver");
-    expect(tier(40, 75)).toBe("gold");
+  it("gives cards a tier by rating", () => {
+    expect(tier(64)).toBe("bronze");
+    expect(tier(65)).toBe("silver");
+    expect(tier(74)).toBe("silver");
+    expect(tier(75)).toBe("gold");
   });
 });

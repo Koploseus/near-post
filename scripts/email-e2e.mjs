@@ -8,8 +8,8 @@ const require = createRequire(new URL("../apps/relay/package.json", import.meta.
 const { Account, JsonRpcProvider, KeyPair } = require("near-api-js");
 
 const [keys, relay, email] = process.argv.slice(2);
-const LEAGUE = "league-v3.near-post.testnet";
-const PLAYERS = "players-v3.near-post.testnet";
+const LEAGUE = "league-v4.near-post.testnet";
+const PLAYERS = "players-v4.near-post.testnet";
 const post = async (path, body) => {
   const r = await fetch(relay + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, body: await r.json() };

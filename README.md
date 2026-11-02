@@ -10,7 +10,7 @@ empty one burns the club's treasury.
 Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
 > **Status, 2 November 2026.** The four contracts compile reproducibly, are
-> unit-tested and sandbox-tested, and run on **testnet** (v3, below). The relay
+> unit-tested and sandbox-tested, and run on **testnet** (v4, below). The relay
 > signs players in by email and plays match days. The web app plays the whole
 > game on testnet: stands and tifo, match day, locker room, album, market.
 
@@ -28,8 +28,13 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   (an NFT transfer) and you are in its squad. Report before each match day
   (`report_for_match`): present, you play at your rating; absent, an academy
   player takes your place.
+- **Six skills, a rating out of 100.** Every player has pace, shooting,
+  passing, dribbling, defending and physical (1 to 99). His card rating weighs
+  them by position, like a striker's shooting and pace or a defender's
+  defending and physical; bronze below 65, silver from 65, gold from 75. The
+  match engine's attack and defence come from the same skills.
 - **Clubs are full from day one.** A new club signs eleven academy players (a
-  4-4-2, ratings 40 to 60), played by the league, so there is always eleven a
+  4-4-2, ratings 25 to 65), played by the league, so there is always eleven a
   side however few people play. People replace them as they join.
 - **Teammates elect a captain every week, on chain.** Each person in the squad
   has one vote (`vote_captain`), changeable until the week ends; the last match
@@ -41,7 +46,8 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   goal with a probability set by its attack against the other side's defence
   (position-weighted ratings, home advantage 10%). A stronger eleven usually
   wins, an upset stays possible. The scorer is drawn among the eleven, more
-  often a good forward, and his attack goes up by one.
+  often a good forward, and his shooting goes up by one. Each match also keeps
+  shots, shots on target and the man of the match.
 - **Match days are played on chain.** Every club meets every other once per
   cycle. Anyone can call `play_match_day` when it is due; the score comes from
   the block's random seed. Win 3 points, draw 1.
@@ -51,10 +57,19 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   every match he starts (while the treasury lasts); 5% of every sale of his
   registration. All of it follows the person, not the club: he collects with
   `claim_player`. Academy players' wallets go to their club.
-- **Training:** send 400k G to the league with `ft_transfer_call` and
-  `msg {"train": "<token_id>"}`; the G burn and the player gains a point
-  (attack for midfielders and forwards, defence for the others). Once per match
-  day.
+- **Training is a drill.** Send 400k G to the league with `ft_transfer_call`
+  and `msg {"train": {"token_id": "<id>", "skill": "pace"}}`: the G burn and a
+  training ticket opens. Then play the drill in the browser: 12 targets pop up
+  on a pitch, smaller and quicker as the skill rises. 11 hits give 3 points, 9
+  give 2, 6 give 1; from 80 a training adds at most 2, from 90 at most 1. The
+  relay replays your clicks against the ticket's on-chain seed and signs the
+  points; `finish_training` checks that signature. Once per match day.
+- **The drill's attester is the one trusted key.** A contract cannot see a
+  browser game, so the league accepts training points signed by one ed25519
+  key, fixed at init and readable with `attester()`. The relay holds it. It can
+  grant at most 3 points per paid ticket, once, within its match day, and
+  nothing else: no mint, no transfer, no rule. A bot that plays the drill well
+  still pays 400k G per try and gains 3 points a day at most.
 - **Rivals make derbies.** Two clubs that name each other (`set_rival`) play
   derbies, where the stands mint or burn double.
 - **The stadium is a tifo.** Each fan who checks in paints part of it. At 60% of
@@ -77,49 +92,36 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   contract enforces it, so no bug in the league can pass the cap.
 - **No admin method.** No contract has an owner, an admin function or an
   upgrade method: nobody, including us, can mint G or change a rule through
-  them. No presale, no team allocation. (On testnet the contract accounts still
+  them. The drill attester above only signs training scores. No presale, no team allocation. (On testnet the contract accounts still
   hold their deploy keys while we iterate; see Limits.)
 
-## Live on testnet (v3)
+## Live on testnet (v4)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v3.near-post.testnet`](https://testnet.nearblocks.io/address/league-v3.near-post.testnet) |
-| Goalars | [`goalars-v3.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v3.near-post.testnet) |
-| Players | [`players-v3.near-post.testnet`](https://testnet.nearblocks.io/address/players-v3.near-post.testnet) |
-| Items | [`items-v3.near-post.testnet`](https://testnet.nearblocks.io/address/items-v3.near-post.testnet) |
+| League | [`league-v4.near-post.testnet`](https://testnet.nearblocks.io/address/league-v4.near-post.testnet) |
+| Goalars | [`goalars-v4.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v4.near-post.testnet) |
+| Players | [`players-v4.near-post.testnet`](https://testnet.nearblocks.io/address/players-v4.near-post.testnet) |
+| Items | [`items-v4.near-post.testnet`](https://testnet.nearblocks.io/address/items-v4.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
-`contracts/res/` (see `deployments/testnet.json`). A match day is due every
-10 minutes and anyone can play it.
+`contracts/res/` (see `deployments/testnet.json`, which also records the drill
+attester's public key). A match day is due every 10 minutes and anyone can
+play it. The league has 8 fictional clubs in 4 derbies and a demo crowd.
 
-What happened on v3, 2 November 2026, all on chain:
+First training on v4, 2 November 2026, in a browser: an email account
+(`u18a8faac560b9c9b.near-post.testnet`) created Lucas Drill, a forward, signed
+for AS Pont-Levant, paid 400k G for a shooting session, hit 12 targets of 12
+and submitted the relay's signature: shooting 60 to 63, rating 52 to 53.
 
-1. `player-1.near-post.testnet` created his footballer, Koplo, a forward
-   ([create_footballer](https://testnet.nearblocks.io/txns/ESwff9CXwMKRH6ZDVXSNsmbejfamrn6nfMGLLgX9xB8U)),
-   signed for Olympique Rive Nord by giving it his registration
-   ([nft_transfer](https://testnet.nearblocks.io/txns/3MAHNRP2PxF2BBiGdb3tgk1w2Rk6VYonLVTKFtJAizwd))
-   and trained once: 400k G burned, attack 58 to 59
-   ([ft_transfer_call](https://testnet.nearblocks.io/txns/FAVVeNu9BzUcWmVCsvAyBDeHAYP7LY322ZvWwk595wJv)).
-2. FC Port-Lune bid 500k G for him
-   ([bid](https://testnet.nearblocks.io/txns/DXYQBifP2fYaiEyz4SCtdhUhWZQhowFef1UF8ajHivUe));
-   Rive Nord accepted by approving the league
-   ([nft_approve](https://testnet.nearblocks.io/txns/AbJFWZahG3LBwzW123s9zqT6GxXcpvfLmHKEJDj6yCFW)).
-   The price was shared by the sell-on clause: 400k to Rive Nord (80%), 85k to
-   the person who plays Koplo (10% as his own trainer, 5% as the player, 2% as
-   his previous club when he was a free agent), 15k burned (3%).
-3. The derby, Rive Nord 1-0 Port-Lune, Garnier 63'
-   ([play_match_day](https://testnet.nearblocks.io/txns/AMjCt5BuxievfKV5eApPRmc3FmELUr4wxX5wQMwgoR1e)).
-   Koplo started for his new club. Rive Nord's one fan came: tifo complete.
-
-v1 and v2 (1 and 2 November) stay on `*-v1` and `*-v2.near-post.testnet`;
+v1 to v3 (1 and 2 November) stay on `*-v1` to `*-v3.near-post.testnet`;
 they are no longer used.
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v3.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v3.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v4.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v4.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -133,16 +135,18 @@ pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
-The web app reads the v3 contracts on testnet. Email sign-in goes through the
+The web app reads the v4 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
 - **Stands**: a club's live tifo, painted by the fans who checked in. Take your
   seat, follow a club, claim a full house, collect.
 - **Match day**: countdown, the button that plays a due match day (anyone can),
-  last results with scorers, the table.
+  last results with scorers, shots, shots on target and man of the match, the
+  table.
 - **Locker room**: sign in with email, create your footballer, sign for a club,
-  report for the match, train (400k G burned), collect goals and salary, top up gas.
+  report for the match, train a skill with the drill, collect goals and salary,
+  top up gas.
 - **Album**: your club's squad as stickers (XI, C), the back of a sticker with
   its career, the captain vote.
 - **Market**: scout a squad, bid in G, cancel; a manager accepts with one
@@ -176,6 +180,7 @@ email codes and rate limits are in memory, and the scheduler plays match days.
 ```bash
 fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
 fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
+fly secrets set ATTESTER_PRIVATE_KEY=ed25519:...      # signs drill scores (public key set in the league)
 fly deploy
 ```
 
