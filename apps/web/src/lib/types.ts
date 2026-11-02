@@ -114,6 +114,8 @@ export interface MatchResult {
   half_ends: number[];
   possession: number[];
   first_half_events: number;
+  /** 1 is the top division. */
+  division: number;
   full_time: boolean;
 }
 
@@ -134,6 +136,10 @@ export interface Schedule {
   first_half_played: boolean;
   half_ms: string;
   half_time_ms: string;
+  season: number;
+  season_day: number;
+  season_days: number;
+  divisions: number;
 }
 
 export interface Career {

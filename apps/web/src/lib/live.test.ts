@@ -12,6 +12,10 @@ const sched = (o: Partial<Schedule>): Schedule => ({
   first_half_played: false,
   half_ms: String(10 * MIN),
   half_time_ms: String(5 * MIN),
+  season: 1,
+  season_day: 3,
+  season_days: 19,
+  divisions: 1,
   ...o,
 });
 const match = (full: boolean): MatchResult =>

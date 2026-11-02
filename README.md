@@ -27,7 +27,15 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   only our three contracts and the game's methods, up to 300 Tgas, a few
   hundred calls a day. Match days kick off on their own: the relay plays them
   when due (anyone still can).
-- **Your club starts in Division 3.** Every new account gets 1M G, then 1M more
+- **Divisions of 20, promotion and relegation.** A new club joins the lowest
+  division with room (a new one opens below when all are full). A season is
+  19 match days, a full round of a 20-club division; at its end the bottom
+  three of each division swap with the top three of the one below (fewer
+  when a division is small), the final tables are kept on chain
+  (`final_table`) and every club starts again on zero. `play_match_day`
+  plays one division per call, so the gas of a call never grows with the
+  league (107 Tgas at most for a 20-club division in the sandbox).
+- **Signing up pays.** Every new account gets 1M G, then 1M more
   on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **You are a footballer.** `create_footballer(name, position)` mints your
   player as an NFT in your name: a free agent. Give that registration to a club
@@ -57,7 +65,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   attacking midfielder, winger, striker) weighs the six skills its own way.
 - **Matches are live: two halves of ten real minutes.** A match day kicks off
   every 30 minutes on testnet. At kick-off `play_match_day` plays the first
-  half of every fixture with the action engine of the original Star du Foot:
+  half of every fixture, division by division, with the action engine of the original Star du Foot:
   the ball is at one player's feet, who passes, takes a man on, is fouled or
   shoots, with odds from his role, his skills, the opponent marking him and
   the strategy; time and possession run as it goes. A foul in the attacking

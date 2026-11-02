@@ -138,6 +138,21 @@ impl Game {
         let second = self.call(caller, "play_match_day", json!({})).await?;
         Ok((first, second))
     }
+
+    /// Plays a match day however many divisions it has: one call per
+    /// division and half, until the next match day opens.
+    async fn play_full_day(
+        &self,
+        caller: &Account,
+    ) -> Result<Vec<near_workspaces::result::ExecutionFinalResult>> {
+        let day = self.view("match_day", json!({})).await?;
+        let mut calls = Vec::new();
+        while self.view("match_day", json!({})).await? == day {
+            self.wait_for_match_day().await?;
+            calls.push(self.call(caller, "play_match_day", json!({})).await?);
+        }
+        Ok(calls)
+    }
 }
 
 /// Gas burnt by the league itself in a call, in Tgas.
@@ -350,7 +365,7 @@ async fn a_match_day_end_to_end() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
+async fn two_divisions_play_one_call_per_division_and_half() -> Result<()> {
     let game = deploy().await?;
     let mut managers = Vec::new();
     for i in 0..32 {
@@ -399,24 +414,27 @@ async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
         }
         managers.push(m);
     }
-    // A full week: the last day also elects 32 captains.
+    // A full week: two divisions (20 and 12 clubs), one call per division
+    // and half; the last day also elects 32 captains.
     let mut worst = 0;
     for day in 1..=7 {
-        let (first, played) = game.play_day(&managers[0]).await?;
-        let (h1, h2) = (
-            league_gas(&first, game.league.id()),
-            league_gas(&played, game.league.id()),
-        );
-        println!(
-            "32-club match day {day}: first half {h1} Tgas, second half and settlement {h2} Tgas ({} in total)",
-            played.total_gas_burnt.as_tgas()
-        );
-        first.into_result()?;
-        played.into_result()?;
-        worst = worst.max(h1).max(h2);
+        let calls = game.play_full_day(&managers[0]).await?;
+        assert_eq!(calls.len(), 4, "two divisions, two halves");
+        let gas: Vec<u64> = calls
+            .iter()
+            .map(|c| league_gas(c, game.league.id()))
+            .collect();
+        println!("32 clubs in 2 divisions, match day {day}: {gas:?} Tgas per call");
+        for c in calls {
+            c.into_result()?;
+        }
+        worst = worst.max(*gas.iter().max().unwrap());
     }
-    println!("worst 32-club match day: {worst} Tgas in the league call");
-    assert!(worst < 250, "match day too close to the 300 Tgas limit");
+    println!("worst call: {worst} Tgas in the league");
+    assert!(
+        worst < 200,
+        "a division's half too close to the 300 Tgas limit"
+    );
     let captain = game
         .view("captain", json!({ "club_id": managers[0].id() }))
         .await?;

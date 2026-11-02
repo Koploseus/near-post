@@ -5,7 +5,7 @@ import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount } from "./au
 import { type Chain, near } from "./chain.js";
 import { loadConfig } from "./config.js";
 import { parseCrowd, seatedBy } from "./crowd.js";
-import { crowdTick, keepFunded, tick } from "./schedule.js";
+import { crowdTick, keepFunded, playDue, tick } from "./schedule.js";
 
 const PARENT = "near-post.testnet";
 
@@ -213,6 +213,20 @@ describe("match days", () => {
     expect(await tick(chain, "league", 999)).toBeNull();
     expect(await tick(chain, "league", 1000)).toBe("tx-call");
     expect(chain.calls.at(-1)).toBe("call league.play_match_day");
+  });
+
+  it("calls again while divisions are still due, and stops", async () => {
+    const chain = new FakeChain();
+    // Three calls due (two divisions' first halves, then nothing until half-time).
+    let due = 3;
+    chain.state.schedule = { next_match_at_ms: "0" };
+    const call = chain.call.bind(chain);
+    chain.call = async (...args: Parameters<typeof call>) => {
+      if (--due <= 0) chain.state.schedule = { next_match_at_ms: "99999" };
+      return call(...args);
+    };
+    expect(await playDue(chain, "league", 24, () => 1000)).toHaveLength(3);
+    expect(await playDue(chain, "league", 24, () => 1000)).toHaveLength(0);
   });
 });
 
