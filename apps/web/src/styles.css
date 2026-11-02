@@ -170,9 +170,9 @@ a.cta.signin { display: inline-flex; align-items: center; text-decoration: none;
 .sticker.bronze .sticker-face { background: linear-gradient(160deg, #c98a52, #8a5a33); }
 .sticker.silver .sticker-face { background: linear-gradient(160deg, #e3e6ea, #9aa3ad); }
 .sticker.gold .sticker-face { background: linear-gradient(160deg, #f7d77a, #d29a17); }
-.card-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 4px; margin-top: 5px; font-size: 10px; font-weight: 700; color: var(--muted-on-paper); letter-spacing: .3px; }
-.card-stats span { display: flex; gap: 3px; align-items: baseline; }
-.card-stats b { font-family: var(--display); font-weight: 400; font-size: 12px; color: var(--ink); }
+.card-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 2px; margin-top: 5px; font-size: 9px; font-weight: 700; color: var(--muted-on-paper); letter-spacing: .3px; }
+.card-stats span { display: flex; flex-direction: column; align-items: center; line-height: 1.1; min-width: 0; }
+.card-stats b { font-family: var(--display); font-weight: 400; font-size: 13px; color: var(--ink); }
 .skill-bars { display: grid; gap: 6px; margin: 0; }
 .skill-bars > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; }
 .skill-bars dt { font-size: 13px; font-weight: 700; color: var(--muted-on-paper); }
@@ -200,4 +200,4 @@ a.cta.signin { display: inline-flex; align-items: center; text-decoration: none;
 .duel-label { display: block; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted-on-paper); margin-top: 2px; }
 .mom { margin: 0; font-weight: 800; }
 .mom .k { margin-right: 8px; }
-@media (max-width: 600px) { .drill-head { font-size: 16px; } .card-stats { font-size: 9px; } }
+@media (max-width: 600px) { .drill-head { font-size: 16px; } .card-stats b { font-size: 12px; } }
