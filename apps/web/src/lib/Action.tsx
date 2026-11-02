@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { EXPLORER } from "./config.js";
 
 /** A button that runs a transaction and shows its outcome, with a link to the explorer. */
@@ -8,8 +8,10 @@ export function Action({
   done,
   className = "cta",
   disabled,
+  aria,
 }: {
-  label: string;
+  label: ReactNode;
+  aria?: string;
   run: () => Promise<{ hash: string } | unknown>;
   done?: () => void;
   className?: string;
@@ -23,6 +25,7 @@ export function Action({
         type="button"
         className={className}
         disabled={busy || disabled}
+        aria-label={aria}
         onClick={async () => {
           setBusy(true);
           setMsg(null);

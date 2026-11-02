@@ -49,7 +49,29 @@ fn league() -> League {
         acc("items.testnet"),
         U64(10 * MINUTE_MS),
         attester_pk(),
+        U64(4 * MINUTE_MS),
+        U64(MINUTE_MS),
     )
+}
+
+/// Plays a whole match day: the first half at kick-off, the second after
+/// half-time. Returns the final results.
+fn kick_off(l: &mut League, seed: u8) -> Vec<MatchResult> {
+    at("anyone.testnet", l.next_match_at_ns, seed);
+    l.play_match_day();
+    at("anyone.testnet", l.next_match_at_ns, seed);
+    l.play_match_day()
+}
+
+fn all_99() -> Skills {
+    Skills {
+        pace: 99,
+        shooting: 99,
+        passing: 99,
+        dribbling: 99,
+        defending: 99,
+        physical: 99,
+    }
 }
 
 /// A league with `n` clubs named c0..cn and `fans` fans each.
@@ -192,21 +214,45 @@ fn a_match_day_cannot_be_played_early() {
 #[test]
 fn anyone_plays_a_due_match_day_and_the_next_one_opens() {
     let mut l = league_with(4, 0);
-    let first_due = due(&l);
-    at("anyone.testnet", first_due, 1);
+    let kickoff = due(&l);
+    at("anyone.testnet", kickoff, 1);
+    let first = l.play_match_day();
+    assert_eq!(first.len(), 2);
+    assert!(first.iter().all(|m| !m.full_time && m.half_ends.len() == 1));
+    assert_eq!(l.match_day(), 1, "still match day 1 at half-time");
+    // The second half is due after the half and half-time (4 + 1 minutes).
+    assert_eq!(due(&l), kickoff + 5 * MINUTE_MS * 1_000_000);
+    at("anyone.testnet", due(&l) - 1, 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| l
+            .clone_for_test()
+            .play_match_day()))
+        .is_err()
+    );
+    at("anyone.testnet", due(&l), 1);
     let results = l.play_match_day();
-    assert_eq!(results.len(), 2);
+    assert!(
+        results
+            .iter()
+            .all(|m| m.full_time && m.half_ends.len() == 2 && m.elevens.len() == 4)
+    );
+    for (a, b) in first.iter().zip(&results) {
+        assert_eq!(
+            a.events[..],
+            b.events[..a.events.len()],
+            "the first half does not change"
+        );
+    }
     assert_eq!(l.match_day(), 2);
     assert_eq!(l.results(1), results);
-    assert_eq!(due(&l), first_due + 10 * MINUTE_MS * 1_000_000);
+    assert_eq!(due(&l), kickoff + 10 * MINUTE_MS * 1_000_000);
 }
 
 #[test]
 fn table_points_and_goals_add_up() {
     let mut l = league_with(6, 0);
     for d in 0..5u64 {
-        at("anyone.testnet", due(&l), d as u8 + 1);
-        l.play_match_day();
+        kick_off(&mut l, d as u8 + 1);
     }
     let table = l.table();
     assert_eq!(table.len(), 6);
@@ -249,8 +295,7 @@ fn an_incomplete_tifo_burns_two_percent_and_resets_the_streak() {
         as_caller(&format!("f0-{f}.testnet"));
         l.check_in();
     }
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     let s = l.stand_result(acc("c0.testnet"), 1).unwrap();
     assert!(!s.full_house);
     assert_eq!(s.burned, U128(20 * ONE_G));
@@ -266,8 +311,7 @@ fn a_full_house_pays_every_fan_present_once() {
         as_caller(&format!("f0-{f}.testnet"));
         l.check_in();
     }
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     assert!(l.stand_result(acc("c0.testnet"), 1).unwrap().full_house);
     assert_eq!(l.get_club(acc("c0.testnet")).unwrap().full_house_streak, 1);
     at("f0-0.testnet", due(&l), 1);
@@ -282,8 +326,7 @@ fn a_stand_reward_is_claimed_once() {
     let mut l = league_with(2, 1);
     as_caller("f0-0.testnet");
     l.check_in();
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     at("f0-0.testnet", due(&l), 1);
     l.claim_stand(acc("c0.testnet"), 1);
     l.claim_stand(acc("c0.testnet"), 1);
@@ -297,8 +340,7 @@ fn only_fans_who_came_can_claim() {
     l.check_in();
     as_caller("f0-1.testnet");
     l.check_in();
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     at("stranger.testnet", due(&l), 1);
     l.claim_stand(acc("c0.testnet"), 1);
 }
@@ -316,8 +358,7 @@ fn a_derby_doubles_the_stand_burn() {
     l.set_rival(Some(acc("c1.testnet")));
     as_caller("c1.testnet");
     l.set_rival(Some(acc("c0.testnet")));
-    at("anyone.testnet", due(&l), 1);
-    let results = l.play_match_day();
+    let results = kick_off(&mut l, 1);
     assert!(results[0].derby);
     let s = l.stand_result(acc("c1.testnet"), 1).unwrap();
     assert_eq!((s.multiplier, s.burned), (2, U128(40 * ONE_G)));
@@ -328,8 +369,7 @@ fn a_one_sided_rivalry_is_not_a_derby() {
     let mut l = league_with(2, 0);
     as_caller("c0.testnet");
     l.set_rival(Some(acc("c1.testnet")));
-    at("anyone.testnet", due(&l), 1);
-    assert!(!l.play_match_day()[0].derby);
+    assert!(!kick_off(&mut l, 1)[0].derby);
 }
 
 #[test]
@@ -384,52 +424,6 @@ fn ids(l: &League, club: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_manager_sets_his_eleven() {
-    let mut l = league_with(1, 0);
-    let squad = ids(&l, "c0.testnet");
-    as_caller("c0.testnet");
-    let mut lineup = squad.clone();
-    lineup.reverse();
-    l.set_lineup(acc("c0.testnet"), lineup.clone());
-    let xi: Vec<String> = l
-        .starting_eleven(acc("c0.testnet"))
-        .into_iter()
-        .map(|p| p.token_id)
-        .collect();
-    assert_eq!(xi, lineup);
-}
-
-#[test]
-#[should_panic(expected = "a lineup is eleven players")]
-fn a_lineup_has_eleven() {
-    let mut l = league_with(1, 0);
-    let mut squad = ids(&l, "c0.testnet");
-    squad.pop();
-    as_caller("c0.testnet");
-    l.set_lineup(acc("c0.testnet"), squad);
-}
-
-#[test]
-#[should_panic(expected = "that player is not in the squad")]
-fn no_lineup_with_someone_elses_player() {
-    let mut l = league_with(2, 0);
-    let mut squad = ids(&l, "c0.testnet");
-    squad[10] = ids(&l, "c1.testnet")[10].clone();
-    as_caller("c0.testnet");
-    l.set_lineup(acc("c0.testnet"), squad);
-}
-
-#[test]
-#[should_panic(expected = "a player is listed twice")]
-fn no_player_twice() {
-    let mut l = league_with(1, 0);
-    let mut squad = ids(&l, "c0.testnet");
-    squad[10] = squad[9].clone();
-    as_caller("c0.testnet");
-    l.set_lineup(acc("c0.testnet"), squad);
-}
-
-#[test]
 #[should_panic(expected = "only the players contract reports transfers")]
 fn only_the_players_contract_reports_transfers() {
     let mut l = league_with(1, 0);
@@ -442,8 +436,6 @@ fn only_the_players_contract_reports_transfers() {
 fn a_sold_player_changes_squad_keeps_his_wallet_and_leaves_the_eleven() {
     let mut l = league_with(2, 0);
     let squad = ids(&l, "c0.testnet");
-    as_caller("c0.testnet");
-    l.set_lineup(acc("c0.testnet"), squad.clone());
     let star = squad[10].clone(); // a forward
     l.players.get_mut(&star).unwrap().wallet = U128(42);
     as_caller("players.testnet");
@@ -470,8 +462,7 @@ fn goals_fill_the_scorers_wallets_and_raise_their_shooting() {
     let r = the_rules();
     let mut expected: std::collections::HashMap<String, (u128, u32)> = Default::default();
     for d in 0..6u64 {
-        at("anyone.testnet", due(&l), d as u8 + 1);
-        for m in l.play_match_day() {
+        for m in kick_off(&mut l, d as u8 + 1) {
             for g in m.goals {
                 let k = match g.kind {
                     GoalKind::Normal => 1,
@@ -513,8 +504,7 @@ fn own_goals_burn_from_the_club_at_fault() {
                 .unwrap()
                 .treasury = U128(100_000_000 * ONE_G);
         }
-        at("anyone.testnet", due(&l), (d % 250) as u8 + 1);
-        let m = l.play_match_day().remove(0);
+        let m = kick_off(&mut l, (d % 250) as u8 + 1).remove(0);
         let own = |home_at_fault: bool| {
             m.goals
                 .iter()
@@ -607,7 +597,7 @@ fn a_free_agent_cannot_report() {
 fn a_person_plays_only_when_he_reports() {
     let mut l = league_with(2, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
-    l.players.get_mut(&token).unwrap().overall = 99; // the best player of the squad
+    l.players.get_mut(&token).unwrap().skills = all_99(); // the best player of the squad
     let plays = |l: &League| {
         l.starting_eleven(acc("c0.testnet"))
             .iter()
@@ -619,8 +609,7 @@ fn a_person_plays_only_when_he_reports() {
     l.report_for_match();
     assert!(plays(&l));
     // Next match day he must report again.
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     assert!(!plays(&l));
 }
 
@@ -628,21 +617,19 @@ fn a_person_plays_only_when_he_reports() {
 fn starters_who_are_people_get_a_salary_from_the_treasury() {
     let mut l = league_with(2, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
-    l.players.get_mut(&token).unwrap().overall = 99;
+    l.players.get_mut(&token).unwrap().skills = all_99();
     let salary = the_rules().salary.0;
     l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(salary + 5);
     as_caller("koplo.testnet");
     l.report_for_match();
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     assert_eq!(l.get_player(token.clone()).unwrap().salary, U128(salary));
     // The treasury only lost the salary (and gained nothing yet: mints settle by callback).
     assert_eq!(l.get_club(acc("c0.testnet")).unwrap().treasury, U128(5));
     // An empty treasury pays nothing.
     as_caller("koplo.testnet");
     l.report_for_match();
-    at("anyone.testnet", due(&l), 2);
-    l.play_match_day();
+    kick_off(&mut l, 2);
     assert_eq!(l.get_player(token).unwrap().salary, U128(salary));
 }
 
@@ -670,8 +657,7 @@ fn the_club_cannot_collect_a_persons_wallet() {
 
 fn play_days(l: &mut League, n: u32) {
     for i in 0..n {
-        at("anyone.testnet", due(l), (i % 200) as u8 + 1);
-        l.play_match_day();
+        kick_off(l, (i % 200) as u8 + 1);
     }
 }
 
@@ -704,16 +690,15 @@ fn teammates_elect_a_captain_for_the_next_week() {
 }
 
 #[test]
-fn the_captain_picks_the_eleven_and_the_manager_no_longer_can() {
+fn the_captain_picks_the_formation_and_the_manager_no_longer_can() {
     let mut l = league_with(2, 0);
     let b = sign_person(&mut l, "ben.testnet", "c0.testnet");
     as_caller("ben.testnet");
     l.vote_captain(b.clone());
     play_days(&mut l, 7);
-    let mut xi: Vec<String> = ids(&l, "c0.testnet").into_iter().take(10).collect();
-    xi.push(b);
     as_caller("ben.testnet");
-    l.set_lineup(acc("c0.testnet"), xi.clone());
+    l.set_formation(acc("c0.testnet"), Formation::F433);
+    assert_eq!(l.lineup(acc("c0.testnet")).formation, Formation::F433);
 }
 
 #[test]
@@ -724,9 +709,8 @@ fn a_manager_cannot_override_the_captain() {
     as_caller("ben.testnet");
     l.vote_captain(b);
     play_days(&mut l, 7);
-    let squad: Vec<String> = ids(&l, "c0.testnet").into_iter().take(11).collect();
     as_caller("c0.testnet");
-    l.set_lineup(acc("c0.testnet"), squad);
+    l.set_formation(acc("c0.testnet"), Formation::F352);
 }
 
 #[test]
@@ -821,8 +805,7 @@ fn a_ticket_ends_with_its_match_day() {
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
     let _ = train(&mut l, "koplo.testnet", &token, the_rules().training_cost.0);
     let id = l.training_ticket(token.clone()).unwrap().id;
-    at("anyone.testnet", due(&l), 1);
-    l.play_match_day();
+    kick_off(&mut l, 1);
     l.finish_training(token.clone(), 1, sign_drill(&token, id, 1));
 }
 
@@ -844,8 +827,7 @@ fn the_attester_key_is_readable() {
 #[test]
 fn a_match_sheet_has_shots_and_a_man_of_the_match() {
     let mut l = league_with(2, 0);
-    at("anyone.testnet", due(&l), 3);
-    for m in l.play_match_day() {
+    for m in kick_off(&mut l, 3) {
         let s = &m.stats;
         let real = |home: bool| {
             m.goals
@@ -1041,4 +1023,140 @@ impl Player {
         self.last_trained_day = day;
         self
     }
+}
+
+// ---- Live matches: formations, slots, strategy ----
+
+impl League {
+    fn clone_for_test(&self) -> Self {
+        near_sdk::borsh::from_slice(&near_sdk::borsh::to_vec(self).unwrap()).unwrap()
+    }
+}
+
+#[test]
+fn a_manager_picks_a_formation_and_the_eleven_follows_it() {
+    let mut l = league_with(1, 0);
+    let before = l.lineup(acc("c0.testnet"));
+    assert_eq!(before.formation, Formation::F442);
+    assert_eq!(before.players.iter().flatten().count(), 11);
+    as_caller("c0.testnet");
+    l.set_formation(acc("c0.testnet"), Formation::F433);
+    let after = l.lineup(acc("c0.testnet"));
+    assert_eq!(after.roles, Formation::F433.roles().to_vec());
+    // The academy keeper stays in goal; every slot is filled once.
+    assert_eq!(after.players[0].as_ref().unwrap().position, Position::Gk);
+    let mut ids: Vec<String> = after
+        .players
+        .iter()
+        .flatten()
+        .map(|p| p.token_id.clone())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 11);
+}
+
+#[test]
+fn a_person_takes_his_slot_and_plays_there() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.take_slot(9);
+    let lineup = l.lineup(acc("c0.testnet"));
+    assert_eq!(lineup.players[9].as_ref().unwrap().token_id, token);
+    assert!(lineup.chosen[9] && !lineup.chosen[10]);
+    assert!(l.is_reported(token.clone(), 1), "taking a slot reports him");
+    // He moves: his old slot is free again.
+    l.take_slot(10);
+    let lineup = l.lineup(acc("c0.testnet"));
+    assert_eq!(lineup.players[10].as_ref().unwrap().token_id, token);
+    assert!(!lineup.chosen[9]);
+    let results = kick_off(&mut l, 4);
+    let m = results
+        .iter()
+        .find(|m| m.home == acc("c0.testnet") || m.away == acc("c0.testnet"))
+        .unwrap();
+    let side = usize::from(m.away == acc("c0.testnet"));
+    assert_eq!(m.elevens[side][10], token);
+}
+
+#[test]
+#[should_panic(expected = "another player took that slot")]
+fn a_slot_taken_by_someone_else_is_not_free() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.take_slot(5);
+    as_caller("ben.testnet");
+    l.take_slot(5);
+}
+
+#[test]
+fn at_half_time_people_change_slot_and_strategy() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.take_slot(9);
+    l.vote_strategy(Strategy::Defend);
+    at("anyone.testnet", l.next_match_at_ns, 2);
+    let first = l.play_match_day();
+    let m = &first[0];
+    let side = usize::from(m.away == acc("c0.testnet"));
+    assert_eq!(m.strategies[side], Strategy::Defend);
+    as_caller("koplo.testnet");
+    l.take_slot(10);
+    l.vote_strategy(Strategy::Attack);
+    at("anyone.testnet", l.next_match_at_ns, 2);
+    let m = l.play_match_day().remove(0);
+    assert_eq!(
+        (m.elevens[side][9].clone(), m.elevens[2 + side][10].clone()),
+        (token.clone(), token)
+    );
+    assert_eq!(m.strategies[2 + side], Strategy::Attack);
+}
+
+#[test]
+fn a_full_match_sheet_adds_up() {
+    let mut l = league_with(4, 0);
+    for d in 0..6u8 {
+        for m in kick_off(&mut l, d + 1) {
+            let st = &m.stats;
+            assert_eq!((m.home_goals, m.away_goals), live::score(&m.events));
+            assert_eq!(st.home_possession + st.away_possession, 100);
+            assert!(st.home_on_target <= st.home_shots && st.away_on_target <= st.away_shots);
+            assert!(st.man_of_the_match.is_some());
+            assert_eq!(m.goals.len() as u8, m.home_goals + m.away_goals);
+            for g in &m.goals {
+                assert!(!g.player.is_empty() && (1..=99).contains(&g.minute));
+            }
+            assert!(
+                m.events
+                    .windows(2)
+                    .all(|w| w[0].second <= w[1].second + 15 || w[1].second >= 2_700)
+            );
+        }
+    }
+}
+
+#[test]
+fn goal_minutes_read_like_a_match_sheet() {
+    assert_eq!(minute_of(0, 0), 1);
+    assert_eq!(minute_of(2_699, 0), 45);
+    assert_eq!(minute_of(2_750, 0), 45 + 1);
+    assert_eq!(minute_of(2_700, 1), 46);
+    assert_eq!(minute_of(5_390, 1), 90);
+    assert_eq!(minute_of(5_500, 1), 90 + 2);
+}
+
+#[test]
+fn fixtures_are_known_before_kick_off() {
+    let mut l = league_with(4, 0);
+    let planned = l.fixtures_of(1);
+    assert_eq!(planned.len(), 2);
+    let played: Vec<(AccountId, AccountId)> = kick_off(&mut l, 1)
+        .into_iter()
+        .map(|m| (m.home, m.away))
+        .collect();
+    assert_eq!(planned, played);
 }

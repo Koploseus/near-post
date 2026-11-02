@@ -18,11 +18,37 @@ export interface Star {
   rating: number;
 }
 
+export type Role = "Gk" | "Lb" | "Cb" | "Rb" | "Dm" | "Cm" | "Lm" | "Rm" | "Am" | "Lw" | "Rw" | "St";
+export type Formation = "4-4-2" | "4-3-3" | "3-5-2" | "4-2-3-1";
+export type Strategy = "defend" | "balanced" | "attack";
+export type EventKind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow";
+
+export interface MatchEvent {
+  second: number;
+  home: boolean;
+  kind: EventKind;
+  player: number;
+}
+
+export interface Lineup {
+  formation: Formation;
+  strategy: Strategy;
+  roles: Role[];
+  players: (Player | null)[];
+  chosen: boolean[];
+}
+
 export interface MatchStats {
   home_shots: number;
   away_shots: number;
   home_on_target: number;
   away_on_target: number;
+  home_possession: number;
+  away_possession: number;
+  home_corners: number;
+  away_corners: number;
+  home_fouls: number;
+  away_fouls: number;
   man_of_the_match: Star | null;
 }
 
@@ -76,6 +102,15 @@ export interface MatchResult {
   derby: boolean;
   goals: Goal[];
   stats: MatchStats;
+  events: MatchEvent[];
+  /** First half home, first half away, then the second half. "" is an empty slot. */
+  elevens: string[][];
+  formations: Formation[];
+  strategies: Strategy[];
+  half_ends: number[];
+  possession: number[];
+  first_half_events: number;
+  full_time: boolean;
 }
 
 export interface Stand {
@@ -90,6 +125,11 @@ export interface Schedule {
   match_day: number;
   next_match_at_ms: string;
   interval_ms: string;
+  kickoff_at_ms: string;
+  last_kickoff_at_ms: string;
+  first_half_played: boolean;
+  half_ms: string;
+  half_time_ms: string;
 }
 
 export interface Career {
@@ -105,4 +145,11 @@ export interface Offer {
   price: string;
   state: "Open" | "Accepting" | "Sold" | "Cancelled";
   match_day: number;
+}
+
+export interface Captain {
+  token_id: string;
+  name: string;
+  week: number;
+  votes: number;
 }

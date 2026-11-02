@@ -1,13 +1,13 @@
 // Deploys the four checked-in wasm to testnet as sub-accounts of near-post.testnet.
 // Keys are read from / written to <keys-dir> (mode 600, outside the repo) and never printed.
-// Usage: node scripts/deploy-testnet.mjs <keys-dir> . <version> <match-interval-ms>
+// Usage: node scripts/deploy-testnet.mjs <keys-dir> . <version> <match-interval-ms> [half-ms] [half-time-ms]
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 const require = createRequire(new URL("../apps/relay/package.json", import.meta.url));
 const { Account, JsonRpcProvider, KeyPair } = require("near-api-js");
 
-const [keys, repo, version, intervalMs] = process.argv.slice(2);
+const [keys, repo, version, intervalMs, halfMs = "600000", halfTimeMs = "300000"] = process.argv.slice(2);
 const provider = new JsonRpcProvider({ url: "https://test.rpc.fastnear.com" });
 const PARENT = "near-post.testnet";
 const near = (n) => BigInt(Math.round(n * 1000)) * 10n ** 21n;
@@ -55,7 +55,7 @@ if (!existsSync(`${keys}/attester.json`)) {
 }
 const attester = load("attester").public_key;
 manifest.attester = attester;
-await init("league", { goalars_id: id("goalars"), players_id: id("players"), items_id: id("items"), match_interval_ms: String(intervalMs), attester });
+await init("league", { goalars_id: id("goalars"), players_id: id("players"), items_id: id("items"), match_interval_ms: String(intervalMs), attester, half_ms: String(halfMs), half_time_ms: String(halfTimeMs) });
 
 writeFileSync(`${repo}/deployments/testnet.json`, JSON.stringify(manifest, null, 2) + "\n");
 console.log("manifest written");

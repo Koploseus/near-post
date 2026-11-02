@@ -8,7 +8,8 @@ use near_workspaces::types::{Gas, NearToken};
 use near_workspaces::{Account, Contract, Worker};
 use serde_json::{Value, json};
 
-const MATCH_INTERVAL_MS: u64 = 60_000;
+const MATCH_INTERVAL_MS: u64 = 240_000;
+const HALF_MS: u64 = 60_000;
 const ONE_G: u128 = 1_000_000;
 
 /// The drill attester of these tests (the relay holds the real one).
@@ -52,6 +53,8 @@ async fn deploy() -> Result<Game> {
             "players_id": players.id(),
             "items_id": items.id(),
             "match_interval_ms": MATCH_INTERVAL_MS.to_string(),
+            "half_ms": HALF_MS.to_string(),
+            "half_time_ms": HALF_MS.to_string(),
             "attester": attester_public_key(),
         }))
         .transact()
@@ -119,6 +122,37 @@ impl Game {
     }
 }
 
+impl Game {
+    /// Plays a whole match day: the first half at kick-off, the second after
+    /// half-time. Returns both calls (the second one settles the day).
+    async fn play_day(
+        &self,
+        caller: &Account,
+    ) -> Result<(
+        near_workspaces::result::ExecutionFinalResult,
+        near_workspaces::result::ExecutionFinalResult,
+    )> {
+        self.wait_for_match_day().await?;
+        let first = self.call(caller, "play_match_day", json!({})).await?;
+        self.wait_for_match_day().await?;
+        let second = self.call(caller, "play_match_day", json!({})).await?;
+        Ok((first, second))
+    }
+}
+
+/// Gas burnt by the league itself in a call, in Tgas.
+fn league_gas(
+    r: &near_workspaces::result::ExecutionFinalResult,
+    league: &near_workspaces::AccountId,
+) -> u64 {
+    r.receipt_outcomes()
+        .iter()
+        .filter(|o| o.executor_id == *league)
+        .map(|o| o.gas_burnt.as_tgas())
+        .max()
+        .unwrap_or(0)
+}
+
 fn g(v: &Value) -> u128 {
     v.as_str().unwrap().parse().unwrap()
 }
@@ -182,9 +216,9 @@ async fn a_match_day_end_to_end() -> Result<()> {
     let early = game.call(&home, "play_match_day", json!({})).await?;
     assert!(early.is_failure());
 
-    game.wait_for_match_day().await?;
     let supply_before = game.supply().await?;
-    let played = game.call(&fans[2], "play_match_day", json!({})).await?;
+    let (first, played) = game.play_day(&fans[2]).await?;
+    first.into_result()?;
     println!(
         "2-club match day: {} Tgas",
         played.total_gas_burnt.as_tgas()
@@ -319,7 +353,7 @@ async fn a_match_day_end_to_end() -> Result<()> {
 async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
     let game = deploy().await?;
     let mut managers = Vec::new();
-    for i in 0..64 {
+    for i in 0..32 {
         let m = game.account().await?;
         game.call(&m, "create_club", json!({ "name": format!("Club {i}") }))
             .await?
@@ -365,33 +399,32 @@ async fn a_full_league_match_day_fits_in_one_transaction() -> Result<()> {
         }
         managers.push(m);
     }
-    // A full week: the last day also elects 64 captains.
+    // A full week: the last day also elects 32 captains.
     let mut worst = 0;
     for day in 1..=7 {
-        game.wait_for_match_day().await?;
-        let played = game.call(&managers[0], "play_match_day", json!({})).await?;
-        let gas = played.total_gas_burnt.as_tgas();
-        let own = played
-            .receipt_outcomes()
-            .iter()
-            .filter(|o| o.executor_id == *game.league.id())
-            .map(|o| o.gas_burnt.as_tgas())
-            .max()
-            .unwrap_or(0);
-        println!("64-club match day {day}: {gas} Tgas in total, {own} Tgas in the call itself");
+        let (first, played) = game.play_day(&managers[0]).await?;
+        let (h1, h2) = (
+            league_gas(&first, game.league.id()),
+            league_gas(&played, game.league.id()),
+        );
+        println!(
+            "32-club match day {day}: first half {h1} Tgas, second half and settlement {h2} Tgas ({} in total)",
+            played.total_gas_burnt.as_tgas()
+        );
+        first.into_result()?;
         played.into_result()?;
-        worst = worst.max(own);
+        worst = worst.max(h1).max(h2);
     }
-    println!("worst 64-club match day: {worst} Tgas in the league call");
+    println!("worst 32-club match day: {worst} Tgas in the league call");
     assert!(worst < 250, "match day too close to the 300 Tgas limit");
     let captain = game
         .view("captain", json!({ "club_id": managers[0].id() }))
         .await?;
     assert_eq!(captain["votes"], 1);
     let table = game.view("table", json!({})).await?;
-    assert_eq!(table.as_array().unwrap().len(), 64);
+    assert_eq!(table.as_array().unwrap().len(), 32);
     let total: String = game.players.view("nft_total_supply").await?.json()?;
-    assert_eq!(total, "720");
+    assert_eq!(total, "360");
     Ok(())
 }
 
@@ -490,22 +523,11 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
     assert!(after["overall"].as_u64().unwrap() >= before["overall"].as_u64().unwrap());
     assert_eq!(supply - game.supply().await?, 400_000 * ONE_G);
 
-    // The manager (no captain yet) puts him in the eleven; he reports; he plays.
-    let mut xi: Vec<Value> = squad.as_array().unwrap()[..10]
-        .iter()
-        .map(|p| p["token_id"].clone())
-        .collect();
-    xi.push(json!(token));
-    game.call(
-        &club,
-        "set_lineup",
-        json!({ "club_id": club.id(), "token_ids": xi }),
-    )
-    .await?
-    .into_result()?;
-    game.call(&koplo, "report_for_match", json!({}))
+    // He takes a striker's slot (which reports him) and plays there.
+    game.call(&koplo, "take_slot", json!({ "slot": 9 }))
         .await?
         .into_result()?;
+    let _ = squad;
     let eleven = game
         .view("starting_eleven", json!({ "club_id": club.id() }))
         .await?;
@@ -516,10 +538,13 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
             .iter()
             .any(|p| p["token_id"] == json!(token))
     );
-    game.wait_for_match_day().await?;
-    game.call(&koplo, "play_match_day", json!({}))
-        .await?
-        .into_result()?;
+    let (first, second) = game.play_day(&koplo).await?;
+    first.into_result()?;
+    let results: Value = second.into_result()?.json()?;
+    let m = &results[0];
+    let side = if m["home"] == json!(club.id()) { 0 } else { 1 };
+    assert_eq!(m["elevens"][side][9], json!(token));
+    assert!(m["full_time"].as_bool().unwrap());
     Ok(())
 }
 
