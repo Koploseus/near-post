@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { type Click, type Drill as DrillT, FIELD, LANES, PASSER, ballOut, drill, hits, laneAt, mateAt, outcomes, points } from "../../../relay/src/drill.js";
+import { type ReactNode, useEffect, useState } from "react";
+import { type Click, type Drill as DrillT, drill } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
+import { DribbleGame, PassesGame, SprintGame, TacklesGame } from "./Games.js";
 import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
@@ -66,7 +67,7 @@ export function Training({ me }: { me: Player }) {
         setError(e instanceof Error ? e.message : String(e));
       }
     };
-    return run.drill.game === "penalties" ? <PenaltyGame setup={run.drill.setup} onDone={finish} /> : <Drill d={run.drill} onDone={finish} />;
+    return game(run.drill, finish);
   }
 
   return (
@@ -135,121 +136,28 @@ export function Training({ me }: { me: Player }) {
   );
 }
 
+const PENALTIES = "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.";
 const HOW: Record<string, string> = {
-  shooting: "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.",
-  physical: "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.",
-  passing: "through balls. Click where the pass should go: in front of your running teammate, away from the defenders.",
-  dribbling: "a slalom. Click to switch side and pass each cone on the free side.",
-  pace: "a slalom at speed. Click to switch side and pass each cone on the free side.",
-  defending: "tackles. Click when the attacker pushes the ball away from his feet (the ball turns green).",
+  shooting: PENALTIES,
+  physical: PENALTIES,
+  passing: "five through balls. Drag from the ball to where your running teammate will be, away from the defenders.",
+  dribbling: "eight defenders slide in. Swipe left or right (or ← →) once each one commits, before he gets to you.",
+  pace: "five races to a ball played into space. After GO, press left and right in turn (or ← →) to sprint.",
+  defending: "six duels. The attacker cuts left or right, sometimes after a feint: swipe to his side (or ← →) as he cuts.",
 };
 
-const pct = (v: number, of: number) => `${(v / of) * 100}%`;
-
-/** A drill on a pitch: what to do depends on the skill (see drill.ts). Clicks are recorded for the relay. */
-function Drill({ d, onDone }: { d: DrillT; onDone: (clicks: Click[]) => void }) {
-  const field = useRef<HTMLDivElement>(null);
-  const clicks = useRef<Click[]>([]);
-  const [t, setT] = useState(0);
-  const [start] = useState(() => performance.now());
-
-  useEffect(() => {
-    field.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-    let raf = 0;
-    const tick = () => {
-      const now = performance.now() - start;
-      setT(now);
-      if (now >= d.end) onDone(clicks.current);
-      else raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const res = outcomes(d, clicks.current);
-  const doneRounds = (d.rounds as { start?: number; at?: number; window?: number }[]).filter((r) => (r.at ?? r.start! + r.window!) < t).length;
-  const hit = res.slice(0, doneRounds).filter(Boolean).length;
-  const title = { penalties: "Penalties", passes: "Through balls", slalom: "Slalom", tackles: "Tackles" }[d.game];
-  return (
-    <div className="drill-wrap">
-      <div className="drill-head">
-        <span>
-          {title} · {hit} / {d.rounds.length} · +{points(hit, d.rounds.length)}
-        </span>
-        <span>{Math.max(0, Math.ceil((d.end - t) / 1000))}s</span>
-      </div>
-      <div
-        ref={field}
-        className={`drill ${d.game}`}
-        style={{ aspectRatio: `${FIELD.w} / ${FIELD.h}` }}
-        onPointerDown={(e) => {
-          const box = field.current!.getBoundingClientRect();
-          clicks.current.push({
-            t: Math.round(performance.now() - start),
-            x: Math.round(((e.clientX - box.left) / box.width) * FIELD.w),
-            y: Math.round(((e.clientY - box.top) / box.height) * FIELD.h),
-          });
-        }}
-        role="application"
-        aria-label={`Training drill: ${title}`}
-      >
-        <Scene d={d} t={t} clicks={clicks.current} res={res} />
-      </div>
-    </div>
-  );
-}
-
-function Scene({ d, t, clicks, res }: { d: DrillT; t: number; clicks: Click[]; res: boolean[] }) {
-  const at = (x: number, y: number) => ({ left: pct(x, FIELD.w), top: pct(y, FIELD.h) });
-  if (d.game === "penalties") return null;
-  if (d.game === "passes") {
-    const i = d.rounds.findIndex((p) => t < p.start + p.window + 800);
-    const p = d.rounds[Math.max(0, i)]!;
-    const mate = mateAt(p, Math.max(p.start, t));
-    const pass = clicks.find((c) => c.t >= p.start + 120 && c.t <= p.start + p.window);
-    const flight = pass ? Math.min(1, ((t - pass.t) * 1.3) / Math.hypot(pass.x - PASSER.x, pass.y - PASSER.y)) : 0;
-    const ball = pass ? { x: PASSER.x + (pass.x - PASSER.x) * flight, y: PASSER.y + (pass.y - PASSER.y) * flight } : PASSER;
-    return (
-      <>
-        {p.defenders.map((df, n) => (
-          <span key={n} className="d-player red" style={at(df.x, df.y)} />
-        ))}
-        <span className="d-player blue" style={at(mate.x, mate.y)} />
-        <span className="d-player blue you" style={at(PASSER.x, PASSER.y + 20)} />
-        <span className="d-ball" style={at(ball.x, ball.y)} />
-        {pass && flight >= 1 && i >= 0 && <span className={`verdict ${res[i] ? "ok" : "no"}`}>{res[i] ? "ON HIS FEET" : "CUT OUT"}</span>}
-      </>
-    );
+/** The canvas game for a drill. */
+function game(d: DrillT, onDone: (trace: Click[]) => void): ReactNode {
+  switch (d.game) {
+    case "penalties":
+      return <PenaltyGame setup={d.setup} onDone={onDone} />;
+    case "passes":
+      return <PassesGame setup={d.setup} onDone={onDone} />;
+    case "dribble":
+      return <DribbleGame setup={d.setup} onDone={onDone} />;
+    case "sprint":
+      return <SprintGame setup={d.setup} onDone={onDone} />;
+    case "tackles":
+      return <TacklesGame setup={d.setup} onDone={onDone} />;
   }
-  if (d.game === "slalom") {
-    const lane = laneAt(clicks, t);
-    const speed = 0.35; // field units per ms on screen
-    return (
-      <>
-        <span className="lane-line" style={{ left: "50%" }} />
-        {d.rounds.map((c, n) => {
-          const y = 500 - (c.at - t) * speed;
-          if (y < -40 || y > 640) return null;
-          return <span key={n} className={`cone${t > c.at ? (res[n] ? " passed" : " hit") : ""}`} style={at(LANES[c.side], y)} />;
-        })}
-        <span className="d-player blue you" style={at(LANES[lane], 500)} />
-        <span className="d-ball small" style={at(LANES[lane] + 18, 480)} />
-      </>
-    );
-  }
-  const i = d.rounds.findIndex((r) => t < r.start + r.window + 700);
-  const duel = d.rounds[Math.max(0, i)]!;
-  const p = Math.min(1, Math.max(0, (t - duel.start) / duel.window));
-  const y = 80 + p * 340;
-  const out = ballOut(duel, t);
-  const tried = clicks.find((c) => c.t >= duel.start + 120 && c.t <= duel.start + duel.window);
-  return (
-    <>
-      <span className="d-player red" style={at(500, y)} />
-      <span className={`d-ball${out >= duel.need ? " free" : ""}`} style={at(500, y + 30 + out * 90)} />
-      <span className="d-player blue you" style={at(500, 520)} />
-      {tried && i >= 0 && t > tried.t + 200 && <span className={`verdict ${res[i] ? "ok" : "no"}`}>{res[i] ? "CLEAN TACKLE" : "FOUL!"}</span>}
-    </>
-  );
 }

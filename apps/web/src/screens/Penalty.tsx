@@ -6,17 +6,13 @@ import {
   type Kick,
   type PenaltySetup,
   type Press,
-  SCREEN,
   goals,
   penalties,
   sway,
   toScreen,
 } from "../../../relay/src/penalty.js";
+import { H, INK, SKIN, W, ball, banner, hint, shadow, stands } from "./art.js";
 
-const W = SCREEN.w;
-const H = SCREEN.h;
-const SKIN = "#C68B5E";
-const INK = "#1B2340";
 const KEEPER = "#F2B705";
 const SHIRT = "#2F5DA8";
 
@@ -28,19 +24,6 @@ const VERDICT: Record<string, string> = {
   post: "OFF THE POST!",
   none: "TOO LATE",
 };
-
-/** A fixed crowd: where each fan sits and the colour he wears. */
-const CROWD = (() => {
-  const fans: { x: number; y: number; c: string; p: number }[] = [];
-  const colours = ["#F3EAD7", "#C8202F", "#F2B705", "#2F5DA8", "#1B2340", "#e2d6ba"];
-  let seed = 7;
-  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let row = 0; row < 9; row++) {
-    const y = 26 + row * 15;
-    for (let x = 6 + (row % 2) * 7; x < W; x += 14) fans.push({ x: x + r() * 4, y: y + r() * 3, c: colours[Math.floor(r() * colours.length)]!, p: r() * 6 });
-  }
-  return fans;
-})();
 
 /**
  * The penalty game, drawn on a canvas from behind the ball. Press on the
@@ -99,7 +82,7 @@ export function PenaltyGame({ setup, onDone }: { setup: PenaltySetup; onDone: (t
       </div>
       <canvas
         ref={canvas}
-        className="pen-canvas"
+        className="game-canvas"
         width={W * 2}
         height={H * 2}
         role="application"
@@ -204,28 +187,6 @@ function draw(
   } else if (!k.shot && t < k.end) {
     hint(g, i === 0 && t - k.start < 4000 ? "Press on the ball, drag to your target, release" : `Penalty ${i + 1} of ${kicks.length}`);
   }
-}
-
-function stands(g: CanvasRenderingContext2D, t: number, cheer: number) {
-  const sky = g.createLinearGradient(0, 0, 0, 170);
-  sky.addColorStop(0, "#0e1428");
-  sky.addColorStop(1, "#1B2340");
-  g.fillStyle = sky;
-  g.fillRect(0, 0, W, 175);
-  for (const f of CROWD) {
-    const jump = cheer >= 0 && cheer < 2500 ? Math.abs(Math.sin(cheer / 120 + f.p)) * 6 : Math.sin(t / 600 + f.p) * 0.8;
-    g.fillStyle = f.c;
-    g.beginPath();
-    g.arc(f.x, f.y - jump, 4.2, 0, Math.PI * 2);
-    g.fill();
-  }
-  // Boards along the pitch.
-  g.fillStyle = "#121933";
-  g.fillRect(0, 160, W, 22);
-  g.fillStyle = "#F2B705";
-  g.font = "900 13px 'Archivo Black', system-ui";
-  g.textAlign = "center";
-  for (let x = 90; x < W; x += 200) g.fillText(x % 400 === 90 ? "NEAR POST" : "GOALARS", x, 176);
 }
 
 function pitch(g: CanvasRenderingContext2D) {
@@ -424,73 +385,5 @@ function taker(g: CanvasRenderingContext2D, kick: number) {
   g.beginPath();
   g.arc(5, -262, 22, Math.PI * 1.05, Math.PI * 1.95);
   g.fill();
-  g.restore();
-}
-
-function shadow(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
-  g.fillStyle = "rgba(0,0,0,.28)";
-  g.beginPath();
-  g.ellipse(x, y + r * 0.6, r * 1.1, r * 0.35, 0, 0, Math.PI * 2);
-  g.fill();
-}
-
-function ball(g: CanvasRenderingContext2D, x: number, y: number, r: number, spin: number) {
-  if (y > 400) shadow(g, x, y, r);
-  g.save();
-  g.translate(x, y);
-  g.rotate(spin);
-  g.fillStyle = "#fff";
-  g.strokeStyle = "#111";
-  g.lineWidth = Math.max(1, r / 9);
-  g.beginPath();
-  g.arc(0, 0, r, 0, Math.PI * 2);
-  g.fill();
-  g.stroke();
-  // Pentagon patches.
-  g.fillStyle = "#1B2340";
-  const patch = (cx: number, cy: number, pr: number) => {
-    g.beginPath();
-    for (let a = 0; a < 5; a++) {
-      const ang = -Math.PI / 2 + (a * 2 * Math.PI) / 5;
-      g.lineTo(cx + Math.cos(ang) * pr, cy + Math.sin(ang) * pr);
-    }
-    g.closePath();
-    g.fill();
-  };
-  patch(0, 0, r * 0.32);
-  for (let a = 0; a < 5; a++) {
-    const ang = -Math.PI / 2 + (a * 2 * Math.PI) / 5;
-    patch(Math.cos(ang) * r * 0.78, Math.sin(ang) * r * 0.78, r * 0.2);
-  }
-  g.restore();
-}
-
-function banner(g: CanvasRenderingContext2D, text: string, good: boolean, since: number) {
-  const pop = Math.min(1, since / 220);
-  g.save();
-  g.translate(W / 2, 250);
-  g.scale(0.4 + 0.6 * pop + (pop < 1 ? 0.15 * Math.sin(pop * Math.PI) : 0), 0.4 + 0.6 * pop);
-  g.font = "900 78px 'Archivo Black', system-ui";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.lineWidth = 10;
-  g.strokeStyle = good ? "#C8202F" : INK;
-  g.strokeText(text, 0, 0);
-  g.fillStyle = good ? "#F2B705" : "#F3EAD7";
-  g.fillText(text, 0, 0);
-  g.restore();
-}
-
-function hint(g: CanvasRenderingContext2D, text: string) {
-  g.save();
-  g.font = "800 20px Archivo, system-ui";
-  g.textAlign = "center";
-  const w = g.measureText(text).width + 28;
-  g.fillStyle = "rgba(18,25,51,.75)";
-  g.beginPath();
-  g.roundRect(W / 2 - w / 2, 392, w, 36, 8);
-  g.fill();
-  g.fillStyle = "#F3EAD7";
-  g.fillText(text, W / 2, 417);
   g.restore();
 }

@@ -188,7 +188,6 @@ a.cta.signin { display: inline-flex; align-items: center; text-decoration: none;
 .big-score strong { color: #1e7a47; font-family: var(--display); font-weight: 400; }
 .drill-wrap { grid-column: 1 / -1; margin-bottom: 24px; }
 .drill-head { display: flex; justify-content: space-between; font-family: var(--display); font-size: 20px; color: var(--yellow); margin-bottom: 8px; }
-.drill { position: relative; width: 100%; border: 4px solid var(--paper); border-radius: 6px; background: #2e7d4f repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 10%, transparent 10% 20%); cursor: crosshair; touch-action: none; user-select: none; overflow: hidden; }
 .target { position: absolute; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, var(--paper) 0 22%, var(--red) 23% 48%, var(--paper) 49% 62%, var(--red) 63%); box-shadow: 0 4px 0 rgba(0,0,0,.3); animation: pop .15s ease-out both; z-index: 1; }
 .sheet { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .duel { width: 100%; max-width: 520px; border-collapse: collapse; }
@@ -355,29 +354,7 @@ a.result:hover, a.result:focus-visible { background: rgba(242,183,5,.18); }
 .others a.link.on { font-weight: 800; text-decoration: underline; }
 
 /* ---- Training drills ---- */
-.drill > span { position: absolute; translate: -50% -50%; pointer-events: none; }
-.drill.penalties { background: #2e7d4f repeating-linear-gradient(180deg, rgba(255,255,255,.06) 0 12%, transparent 12% 24%); }
-.goal-frame { translate: none !important; border: 6px solid #fff; border-bottom: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.18) 0 2px, transparent 2px 14px), repeating-linear-gradient(90deg, rgba(255,255,255,.18) 0 2px, transparent 2px 14px); }
-.pen-spot { width: 1.2%; aspect-ratio: 1; border-radius: 50%; background: #fff; }
-.keeper { translate: -50% -100% !important; transform-origin: 50% 100%; transition: left .25s ease-out, transform .25s ease-out; }
-.keeper svg { display: block; width: 100%; height: auto; }
-.keeper.dive.left { transform: rotate(-55deg); }
-.keeper.dive.right { transform: rotate(55deg); }
-.d-ball { width: 3%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff 0 45%, #ddd 46%); box-shadow: 0 0 0 2px #111, 0 4px 6px rgba(0,0,0,.35); z-index: 3; }
-.d-ball.small { width: 2.2%; }
-.d-ball.free { box-shadow: 0 0 0 4px var(--green-ok), 0 4px 6px rgba(0,0,0,.35); }
-.d-player { width: 5%; aspect-ratio: 1; border-radius: 50%; border: 3px solid var(--ink); }
-.d-player.blue { background: var(--blue); }
-.d-player.red { background: var(--red); }
-.d-player.you { box-shadow: 0 0 0 4px var(--yellow); }
-.cone { width: 3%; aspect-ratio: 1; background: #ff7a1a; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.cone.hit { background: #ff2a2a; }
-.cone.passed { opacity: .4; }
-.lane-line { top: 0; bottom: 0; width: 2px; height: 100%; background: rgba(243,234,215,.35); translate: none !important; }
-.verdict { top: 18% !important; left: 50% !important; font-family: var(--display); font-size: clamp(28px, 6vw, 56px); color: var(--yellow); text-shadow: 0 4px 0 var(--ink); animation: zoom .35s cubic-bezier(.2,1.6,.4,1) both; z-index: 4; }
-.verdict.no { color: var(--paper); }
-.hint { top: 8% !important; left: 50% !important; font-weight: 800; color: var(--paper); background: rgba(18,25,51,.6); padding: 4px 12px; border-radius: 4px; }
-.pen-canvas { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 600; border: 4px solid var(--paper); border-radius: 6px; touch-action: none; cursor: grab; background: #1B2340; }
+.game-canvas { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 600; border: 4px solid var(--paper); border-radius: 6px; touch-action: none; cursor: grab; background: #1B2340; }
 .pen-dots { display: inline-flex; gap: 8px; align-items: center; }
 .pen-dots i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--paper); }
 .pen-dots i.in { background: #45d483; }

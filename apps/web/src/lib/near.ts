@@ -130,7 +130,7 @@ export const train = (s: Session, tokenId: string, skill: string, amount: string
 export const startDrill = (tokenId: string) =>
   relay<{ ticket: import("./types.js").Ticket; level: number }>("/v1/training/start", { token_id: tokenId });
 
-export const attestDrill = (tokenId: string, clicks: { t: number; x: number; y: number }[]) =>
+export const attestDrill = (tokenId: string, clicks: { t: number; x: number; y: number; up?: boolean }[]) =>
   relay<{ hits: number; rounds: number; points: number; signature: string }>("/v1/training/attest", { token_id: tokenId, clicks });
 
 /** Submits the attested score: the league adds the points. */
