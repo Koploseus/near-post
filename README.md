@@ -77,39 +77,46 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   them. No presale, no team allocation. (On testnet the contract accounts still
   hold their deploy keys while we iterate; see Limits.)
 
-## Live on testnet (v2)
+## Live on testnet (v3)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v2.near-post.testnet`](https://testnet.nearblocks.io/address/league-v2.near-post.testnet) |
-| Goalars | [`goalars-v2.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v2.near-post.testnet) |
-| Players | [`players-v2.near-post.testnet`](https://testnet.nearblocks.io/address/players-v2.near-post.testnet) |
-| Items | [`items-v2.near-post.testnet`](https://testnet.nearblocks.io/address/items-v2.near-post.testnet) |
+| League | [`league-v3.near-post.testnet`](https://testnet.nearblocks.io/address/league-v3.near-post.testnet) |
+| Goalars | [`goalars-v3.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v3.near-post.testnet) |
+| Players | [`players-v3.near-post.testnet`](https://testnet.nearblocks.io/address/players-v3.near-post.testnet) |
+| Items | [`items-v3.near-post.testnet`](https://testnet.nearblocks.io/address/items-v3.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`). A match day is due every
 10 minutes and anyone can play it.
 
-First v2 match day, 2 November 2026: the derby Olympique Rive Nord 1-1 FC
-Port-Lune ([play_match_day](https://testnet.nearblocks.io/txns/CZAW1hUhhvAtcXpZRBEFWRFVWuM95fsUU6YdgGU7ZhFV)).
-Rive Nord's equaliser, 62nd minute, was scored by Koplo, a footballer played
-by a person: `player-1.near-post.testnet` created him
-([create_footballer](https://testnet.nearblocks.io/txns/3Ti6zonii4E53Xvmzw8X7rCV45tDQ7zNbJpzzdbv4Tvi)),
-gave his registration to Rive Nord
-([nft_transfer](https://testnet.nearblocks.io/txns/C3PTF1fZX7rzTY2LKf9nxposCnMmTXbhPmCcaxmCCJBD)),
-trained once (400k G burned, attack 49 to 50,
-[ft_transfer_call](https://testnet.nearblocks.io/txns/5p1zYZHP9q48miVRh9SoQQhs6SHc8X1yrwwp4GaA9bHA))
-and reported for the match. The goal put 4.2M G in his own wallet. Rive Nord's
-one fan came, so its tifo was complete.
+What happened on v3, 2 November 2026, all on chain:
 
-v1 (1 November, before squads) stays on `*-v1.near-post.testnet`; it is no
-longer used.
+1. `player-1.near-post.testnet` created his footballer, Koplo, a forward
+   ([create_footballer](https://testnet.nearblocks.io/txns/ESwff9CXwMKRH6ZDVXSNsmbejfamrn6nfMGLLgX9xB8U)),
+   signed for Olympique Rive Nord by giving it his registration
+   ([nft_transfer](https://testnet.nearblocks.io/txns/3MAHNRP2PxF2BBiGdb3tgk1w2Rk6VYonLVTKFtJAizwd))
+   and trained once: 400k G burned, attack 58 to 59
+   ([ft_transfer_call](https://testnet.nearblocks.io/txns/FAVVeNu9BzUcWmVCsvAyBDeHAYP7LY322ZvWwk595wJv)).
+2. FC Port-Lune bid 500k G for him
+   ([bid](https://testnet.nearblocks.io/txns/DXYQBifP2fYaiEyz4SCtdhUhWZQhowFef1UF8ajHivUe));
+   Rive Nord accepted by approving the league
+   ([nft_approve](https://testnet.nearblocks.io/txns/AbJFWZahG3LBwzW123s9zqT6GxXcpvfLmHKEJDj6yCFW)).
+   The price was shared by the sell-on clause: 400k to Rive Nord (80%), 85k to
+   the person who plays Koplo (10% as his own trainer, 5% as the player, 2% as
+   his previous club when he was a free agent), 15k burned (3%).
+3. The derby, Rive Nord 1-0 Port-Lune, Garnier 63'
+   ([play_match_day](https://testnet.nearblocks.io/txns/AMjCt5BuxievfKV5eApPRmc3FmELUr4wxX5wQMwgoR1e)).
+   Koplo started for his new club. Rive Nord's one fan came: tifo complete.
+
+v1 and v2 (1 and 2 November) stay on `*-v1` and `*-v2.near-post.testnet`;
+they are no longer used.
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v2.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v2.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v3.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v3.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
