@@ -47,7 +47,13 @@ use near_sdk::{
 /// 1 G in the token's smallest unit (goalars has 6 decimals).
 pub const ONE_G: u128 = 1_000_000;
 /// The fixture list is bounded so a match day always fits in one transaction.
-pub const MAX_CLUBS: u32 = 32;
+/// Clubs in a division, and how many go up and down each season.
+pub const DIVISION_SIZE: usize = 20;
+pub const MOVERS: usize = 3;
+/// Match days in a season: a full round of a 20-club division.
+pub const SEASON_DAYS: u32 = 19;
+/// Clubs in the whole league (ten divisions).
+pub const MAX_CLUBS: u32 = 200;
 
 /// The economy, in G and basis points (out of 10_000). Fixed forever.
 /// Mints are nominal: the goalars contract scales each one by the room left
@@ -398,6 +404,9 @@ enum StorageKey {
     StrategyVotes,
     Takers,
     Suspended,
+    Divisions,
+    DayResults,
+    FinalTables,
 }
 
 #[near(serializers = [json, borsh])]
@@ -459,6 +468,8 @@ pub struct MatchResult {
     /// How many of `events` belong to the first half.
     pub first_half_events: u32,
     pub full_time: bool,
+    /// 1 is the top division.
+    pub division: u8,
 }
 
 /// How a club's stand ended on a match day.
@@ -490,6 +501,11 @@ pub struct Schedule {
     pub first_half_played: bool,
     pub half_ms: U64,
     pub half_time_ms: U64,
+    pub season: u32,
+    /// Match day of the season, 1 to `season_days`.
+    pub season_day: u32,
+    pub season_days: u32,
+    pub divisions: u32,
 }
 
 /// A club's eleven for the next half: formation, strategy and, slot by slot,
@@ -517,7 +533,15 @@ pub struct League {
     half_time_ns: u64,
     kickoff_ns: u64,
     last_kickoff_ns: u64,
-    first_half_played: bool,
+    /// Halves played today, by division (0, 1 or 2).
+    halves: Vec<u8>,
+    season: u32,
+    /// Clubs by division, the top one first.
+    divisions: Vector<Vec<AccountId>>,
+    /// (match day, division index) -> its results.
+    day_results: LookupMap<(u32, u8), Vec<MatchResult>>,
+    /// (season, division) -> final standings, champion first.
+    final_tables: LookupMap<(u32, u8), Vec<AccountId>>,
     formations: LookupMap<AccountId, Formation>,
     /// (club, match day) -> the slots people took, by slot.
     slots: LookupMap<(AccountId, u32), Vec<Option<String>>>,
@@ -531,7 +555,6 @@ pub struct League {
     attendance: LookupMap<(AccountId, u32), u32>,
     /// Accounts that got the signup grant, with how many welcome bonuses they got.
     welcome: LookupMap<AccountId, u8>,
-    results: LookupMap<u32, Vec<MatchResult>>,
     stands: LookupMap<(AccountId, u32), StandResult>,
     stand_claims: LookupSet<(AccountId, u32, AccountId)>,
     /// Nominal G an account can claim.
@@ -628,7 +651,11 @@ impl League {
             half_time_ns: half_time_ms.0 * MS,
             kickoff_ns: env::block_timestamp() + interval_ns,
             last_kickoff_ns: 0,
-            first_half_played: false,
+            halves: Vec::new(),
+            season: 1,
+            divisions: Vector::new(StorageKey::Divisions),
+            day_results: LookupMap::new(StorageKey::DayResults),
+            final_tables: LookupMap::new(StorageKey::FinalTables),
             formations: LookupMap::new(StorageKey::Formations),
             slots: LookupMap::new(StorageKey::Slots),
             strategy_votes: LookupMap::new(StorageKey::StrategyVotes),
@@ -638,7 +665,6 @@ impl League {
             present: LookupSet::new(StorageKey::Present),
             attendance: LookupMap::new(StorageKey::Attendance),
             welcome: LookupMap::new(StorageKey::Welcome),
-            results: LookupMap::new(StorageKey::Results),
             stands: LookupMap::new(StorageKey::Stands),
             stand_claims: LookupSet::new(StorageKey::StandClaims),
             credits: LookupMap::new(StorageKey::Credits),
@@ -743,17 +769,21 @@ impl League {
             interval_ms: U64(self.interval_ns / MS),
             kickoff_at_ms: U64(self.kickoff_ns / MS),
             last_kickoff_at_ms: U64(self.last_kickoff_ns / MS),
-            first_half_played: self.first_half_played,
+            first_half_played: self.first_half_played(),
             half_ms: U64(self.half_ns / MS),
             half_time_ms: U64(self.half_time_ns / MS),
+            season: self.season,
+            season_day: (self.match_day - 1) % SEASON_DAYS + 1,
+            season_days: SEASON_DAYS,
+            divisions: self.divisions.len(),
         }
     }
 
     // ---- Clubs and fans ----
 
-    /// Creates the caller's club in Division 3 with eleven academy players
-    /// (a 4-4-2, ratings 40 to 60), minted as NFTs. A new account gets the
-    /// signup grant.
+    /// Creates the caller's club in the lowest division with room (a new
+    /// division when all are full) with eleven academy players (a 4-4-2),
+    /// minted as NFTs. A new account gets the signup grant.
     pub fn create_club(&mut self, name: String) {
         let manager = env::predecessor_account_id();
         let name = name.trim().to_string();
@@ -766,12 +796,13 @@ impl League {
             "you already manage a club"
         );
         require!(self.club_ids.len() < MAX_CLUBS, "the league is full");
+        let division = self.join_division(&manager);
         self.clubs.insert(
             manager.clone(),
             Club {
                 name,
                 manager: manager.clone(),
-                division: 3,
+                division,
                 fans: 0,
                 full_house_streak: 0,
                 best_streak: 0,
@@ -861,7 +892,7 @@ impl League {
     /// wins; a tie or no vote plays balanced.
     pub fn vote_strategy(&mut self, strategy: Strategy) {
         let (token, club) = self.my_player_and_club();
-        let half = if self.first_half_played { 2 } else { 1 };
+        let half = self.next_half(&club);
         let votes = self
             .strategy_votes
             .entry((club, self.match_day, half))
@@ -881,7 +912,7 @@ impl League {
         let xi = self.eleven_of(&club_id);
         Lineup {
             formation,
-            strategy: self.strategy_of(&club_id, if self.first_half_played { 2 } else { 1 }),
+            strategy: self.strategy_of(&club_id, self.next_half(&club_id)),
             roles: formation.roles().to_vec(),
             players: xi
                 .iter()
@@ -1366,21 +1397,34 @@ impl League {
     }
 
     /// Clubs in standing order: points, goal difference, goals scored, then name.
+    /// Every club, division by division, each in table order.
     pub fn table(&self) -> Vec<Club> {
-        let mut clubs: Vec<Club> = self
-            .club_ids
+        (0..self.divisions.len())
+            .flat_map(|d| self.division_table(d as u8 + 1))
+            .collect()
+    }
+
+    /// One division's table this season: points, goal difference, goals.
+    pub fn division_table(&self, division: u8) -> Vec<Club> {
+        let ids = self
+            .divisions
+            .get(u32::from(division.max(1)) - 1)
+            .cloned()
+            .unwrap_or_default();
+        let mut clubs: Vec<Club> = ids
             .iter()
             .filter_map(|id| self.clubs.get(id).cloned())
             .collect();
-        clubs.sort_by(|a, b| {
-            let gd = |c: &Club| c.goals_for as i64 - c.goals_against as i64;
-            b.points
-                .cmp(&a.points)
-                .then(gd(b).cmp(&gd(a)))
-                .then(b.goals_for.cmp(&a.goals_for))
-                .then(a.name.cmp(&b.name))
-        });
+        clubs.sort_by(standing);
         clubs
+    }
+
+    /// How a division finished a past season, champion first.
+    pub fn final_table(&self, season: u32, division: u8) -> Vec<AccountId> {
+        self.final_tables
+            .get(&(season, division))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// How many welcome bonuses an account has received, or None before its signup grant.
@@ -1457,14 +1501,38 @@ impl League {
     /// Plays the current match day. Anyone can call it once it is due; the
     /// relay does it on schedule. Plays every fixture, credits goals, settles
     /// every stand, then opens the next match day.
+    /// Plays what is due, one division per call (the top one first): its
+    /// first half from kick-off, its second half after half-time. The last
+    /// second half of the day settles it; the last day of a season moves
+    /// clubs up and down. Call again while it is due.
     pub fn play_match_day(&mut self) -> Vec<MatchResult> {
         let now = env::block_timestamp();
         require!(now >= self.next_match_at_ns, "the match day is not due yet");
-        if self.first_half_played {
-            self.second_half(now)
+        self.halves.resize(self.divisions.len() as usize, 0);
+        if let Some(d) = self.halves.iter().position(|h| *h == 0) {
+            let results = self.first_half(d as u8, now);
+            self.halves[d] = 1;
+            if self.first_half_played() {
+                self.next_match_at_ns =
+                    (self.kickoff_ns + self.half_ns + self.half_time_ns).max(now);
+            }
+            results
+        } else if let Some(d) = self.halves.iter().position(|h| *h == 1) {
+            let results = self.second_half(d as u8);
+            self.halves[d] = 2;
+            if self.halves.iter().all(|h| *h == 2) {
+                self.close_day(now);
+            }
+            results
         } else {
-            self.first_half(now)
+            // No club yet: the day passes.
+            self.close_day(now);
+            Vec::new()
         }
+    }
+
+    pub fn season(&self) -> u32 {
+        self.season
     }
 
     /// Splits what goalars really minted (after the cap curve) between the
@@ -1483,16 +1551,24 @@ impl League {
     }
 
     /// The pairings of a match day (home, away), known in advance.
+    /// The fixtures of a match day, division by division (as the divisions
+    /// stand now).
     pub fn fixtures_of(&self, match_day: u32) -> Vec<(AccountId, AccountId)> {
-        let ids: Vec<AccountId> = self.club_ids.iter().cloned().collect();
-        fixtures(ids.len(), match_day.max(1) - 1)
-            .into_iter()
-            .map(|(h, a)| (ids[h].clone(), ids[a].clone()))
+        (0..self.divisions.len() as u8)
+            .flat_map(|d| self.division_fixtures(d, match_day))
             .collect()
     }
 
+    /// A match day's results, division by division.
     pub fn results(&self, match_day: u32) -> Vec<MatchResult> {
-        self.results.get(&match_day).cloned().unwrap_or_default()
+        (0..self.divisions.len().max(1) as u8)
+            .flat_map(|d| {
+                self.day_results
+                    .get(&(match_day, d))
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .collect()
     }
 
     pub fn stand_result(&self, club_id: AccountId, match_day: u32) -> Option<StandResult> {
@@ -1664,17 +1740,16 @@ impl League {
         id
     }
 
-    /// Kick-off: plays the first half of every fixture.
-    fn first_half(&mut self, now: u64) -> Vec<MatchResult> {
+    /// Kick-off: plays the first half of every fixture of a division.
+    fn first_half(&mut self, div: u8, now: u64) -> Vec<MatchResult> {
+        let _ = now;
         let day = self.match_day;
-        let ids: Vec<AccountId> = self.club_ids.iter().cloned().collect();
         let block_seed = env::random_seed_array();
         let mut results = Vec::new();
-        for (index, (h, a)) in fixtures(ids.len(), day - 1).into_iter().enumerate() {
-            let (home, away) = (ids[h].clone(), ids[a].clone());
+        for (index, (home, away)) in self.division_fixtures(div, day).into_iter().enumerate() {
             let (hs, hxi, hf) = self.side_of(&home, 1, None);
             let (aws, axi, af) = self.side_of(&away, 1, None);
-            let seed = derive_seed(block_seed, &[day as u64, index as u64, 1]);
+            let seed = derive_seed(block_seed, &[day as u64, div as u64, index as u64, 1]);
             let half = live::play_half(seed, 1, &hs, &aws, true);
             let (hg, ag) = live::score(&half.events);
             let mut m = MatchResult {
@@ -1693,23 +1768,27 @@ impl League {
                 half_ends: vec![half.end],
                 possession: half.possession.to_vec(),
                 full_time: false,
+                division: div + 1,
             };
             m.stats = sheet(&m, None);
             results.push(m);
         }
-        self.results.insert(day, results.clone());
-        self.first_half_played = true;
-        self.next_match_at_ns = (self.kickoff_ns + self.half_ns + self.half_time_ns).max(now);
+        self.day_results.insert((day, div), results.clone());
         results
     }
 
-    /// After half-time: plays the second halves, then settles the match day.
-    fn second_half(&mut self, now: u64) -> Vec<MatchResult> {
+    /// After half-time: plays the second halves of a division and settles
+    /// its clubs' day.
+    fn second_half(&mut self, div: u8) -> Vec<MatchResult> {
         let day = self.match_day;
         let rules = the_rules();
-        let ids: Vec<AccountId> = self.club_ids.iter().cloned().collect();
+        let ids: Vec<AccountId> = self.divisions.get(div as u32).cloned().unwrap_or_default();
         let block_seed = env::random_seed_array();
-        let mut results = self.results.get(&day).cloned().unwrap_or_default();
+        let mut results = self
+            .day_results
+            .get(&(day, div))
+            .cloned()
+            .unwrap_or_default();
         let mut treasury_mints: Vec<(AccountId, u128)> = Vec::new();
         let mut burn_total: u128 = 0;
         let mut derby_clubs: Vec<AccountId> = Vec::new();
@@ -1717,7 +1796,7 @@ impl League {
         for (index, m) in results.iter_mut().enumerate() {
             let (hs, hxi, hf) = self.side_of(&m.home, 2, Some(FirstHalf::of(m, true)));
             let (aws, axi, af) = self.side_of(&m.away, 2, Some(FirstHalf::of(m, false)));
-            let seed = derive_seed(block_seed, &[day as u64, index as u64, 2]);
+            let seed = derive_seed(block_seed, &[day as u64, div as u64, index as u64, 2]);
             let half = live::play_half(seed, 2, &hs, &aws, false);
             m.events.extend(half.events);
             m.elevens.push(hxi);
@@ -1830,21 +1909,7 @@ impl League {
             burn_total += self.settle_stand(id, day, k, &rules);
         }
 
-        self.results.insert(day, results.clone());
-        self.match_day += 1;
-        self.first_half_played = false;
-        self.last_kickoff_ns = self.kickoff_ns;
-        self.kickoff_ns = (self.kickoff_ns + self.interval_ns).max(now + MINUTE_NS);
-        self.next_match_at_ns = self.kickoff_ns;
-
-        // The last match day of a week elects next week's captains.
-        let next = self.match_day;
-        if (next - 1).is_multiple_of(rules.week_length) {
-            let week = self.week_of(next);
-            for id in &ids {
-                self.elect_captain(id, week);
-            }
-        }
+        self.day_results.insert((day, div), results.clone());
 
         if burn_total > 0 {
             ext_goalars::ext(self.goalars_id.clone())
@@ -1873,6 +1938,113 @@ impl League {
                 .detach();
         }
         results
+    }
+
+    /// Every division has played: the next match day opens. The last match
+    /// day of a week elects next week's captains; the last of a season moves
+    /// clubs up and down and starts a new season.
+    fn close_day(&mut self, now: u64) {
+        let rules = the_rules();
+        let closing = self.match_day;
+        self.match_day += 1;
+        self.halves = vec![0; self.divisions.len() as usize];
+        self.last_kickoff_ns = self.kickoff_ns;
+        self.kickoff_ns = (self.kickoff_ns + self.interval_ns).max(now + MINUTE_NS);
+        self.next_match_at_ns = self.kickoff_ns;
+        let next = self.match_day;
+        if (next - 1).is_multiple_of(rules.week_length) {
+            let week = self.week_of(next);
+            let ids: Vec<AccountId> = self.club_ids.iter().cloned().collect();
+            for id in &ids {
+                self.elect_captain(id, week);
+            }
+        }
+        if closing.is_multiple_of(SEASON_DAYS) {
+            self.end_season();
+        }
+    }
+
+    /// Final tables are kept; the bottom three of a division swap with the
+    /// top three of the one below (fewer when a division is small); every
+    /// club starts the new season on zero.
+    fn end_season(&mut self) {
+        let n = self.divisions.len();
+        let mut tables: Vec<Vec<AccountId>> = (0..n)
+            .map(|d| {
+                self.division_table(d as u8 + 1)
+                    .into_iter()
+                    .map(|c| c.manager)
+                    .collect()
+            })
+            .collect();
+        for (d, t) in tables.iter().enumerate() {
+            self.final_tables
+                .insert((self.season, d as u8 + 1), t.clone());
+        }
+        for d in 0..n.saturating_sub(1) as usize {
+            let k = MOVERS.min(tables[d].len() / 2).min(tables[d + 1].len() / 2);
+            let keep = tables[d].len() - k;
+            let down: Vec<AccountId> = tables[d].split_off(keep);
+            let up: Vec<AccountId> = tables[d + 1].drain(..k).collect();
+            tables[d].extend(up);
+            tables[d + 1].splice(0..0, down);
+        }
+        for (d, t) in tables.into_iter().enumerate() {
+            for id in &t {
+                if let Some(c) = self.clubs.get_mut(id) {
+                    c.division = d as u8 + 1;
+                    c.played = 0;
+                    c.won = 0;
+                    c.drawn = 0;
+                    c.lost = 0;
+                    c.goals_for = 0;
+                    c.goals_against = 0;
+                    c.points = 0;
+                }
+            }
+            self.divisions.replace(d as u32, t);
+        }
+        self.season += 1;
+    }
+
+    /// A new club goes to the lowest division with room, or opens one below.
+    fn join_division(&mut self, club: &AccountId) -> u8 {
+        let n = self.divisions.len();
+        if n > 0
+            && let Some(last) = self.divisions.get_mut(n - 1)
+            && last.len() < DIVISION_SIZE
+        {
+            last.push(club.clone());
+            return n as u8;
+        }
+        self.divisions.push(vec![club.clone()]);
+        // A division born after kick-off waits for the next match day.
+        let started = self.halves.iter().any(|h| *h > 0);
+        self.halves.resize(n as usize, 0);
+        self.halves.push(if started { 2 } else { 0 });
+        n as u8 + 1
+    }
+
+    fn division_fixtures(&self, div: u8, match_day: u32) -> Vec<(AccountId, AccountId)> {
+        let ids = self.divisions.get(div as u32).cloned().unwrap_or_default();
+        fixtures(ids.len(), (match_day.max(1) - 1) % SEASON_DAYS)
+            .into_iter()
+            .map(|(h, a)| (ids[h].clone(), ids[a].clone()))
+            .collect()
+    }
+
+    fn first_half_played(&self) -> bool {
+        !self.halves.is_empty() && self.halves.iter().all(|h| *h >= 1)
+    }
+
+    /// The half a club's next lineup and votes are for.
+    fn next_half(&self, club: &AccountId) -> u8 {
+        let div = self.clubs.get(club).map_or(1, |c| c.division.max(1)) as usize - 1;
+        if self.halves.get(div).copied().unwrap_or(0) >= 1 {
+            2
+        } else {
+            1
+        }
     }
 
     /// Whether `who` leads `club` on the pitch: its captain, or its manager
@@ -2358,6 +2530,16 @@ fn merge(items: Vec<(AccountId, u128)>) -> Vec<(AccountId, u128)> {
 
 /// 60% of fans, rounded up.
 /// A goal's minute on the sheet: 1 to 45, 46 to 90, stoppage time as 45+ or 90+.
+/// Table order: points, goal difference, goals scored, name.
+fn standing(a: &Club, b: &Club) -> std::cmp::Ordering {
+    let gd = |c: &Club| c.goals_for as i64 - c.goals_against as i64;
+    b.points
+        .cmp(&a.points)
+        .then(gd(b).cmp(&gd(a)))
+        .then(b.goals_for.cmp(&a.goals_for))
+        .then(a.name.cmp(&b.name))
+}
+
 pub fn minute_of(second: u16, half: usize) -> u8 {
     let m = second as u32 / 60 + 1;
     let cap = if half == 0 { 45 } else { 90 };

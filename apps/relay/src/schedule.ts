@@ -7,11 +7,25 @@ interface Schedule {
   interval_ms: string;
 }
 
-/** One tick: plays the match day if it is due. Returns the tx hash if it did. */
+/** One call: plays a division's half if the match day is due. Returns the tx hash if it did. */
 export async function tick(chain: Chain, leagueId: string, nowMs = Date.now()): Promise<string | null> {
   const s = await chain.view<{ next_match_at_ms: string }>(leagueId, "schedule");
   if (nowMs < Number(s.next_match_at_ms)) return null;
   return chain.call(leagueId, "play_match_day", {}, 300);
+}
+
+/**
+ * Plays everything due: the league plays one division per call, so it calls
+ * again while the match day stays due (at most `max` calls a tick).
+ */
+export async function playDue(chain: Chain, leagueId: string, max = 24, now: () => number = Date.now): Promise<string[]> {
+  const txs: string[] = [];
+  while (txs.length < max) {
+    const tx = await tick(chain, leagueId, now());
+    if (!tx) break;
+    txs.push(tx);
+  }
+  return txs;
 }
 
 /**
@@ -84,8 +98,8 @@ export function startScheduler(chain: Chain, leagueId: string, opts: SchedulerOp
     if (busy) return;
     busy = true;
     try {
-      const tx = await tick(chain, leagueId).catch(log("match day not played"));
-      if (tx) console.log(`match day played: ${tx}`);
+      const txs = await playDue(chain, leagueId).catch(log("match day not played"));
+      for (const tx of txs ?? []) console.log(`match day played: ${tx}`);
       if (opts.crowd) {
         const seated = await crowdTick(chain, opts.crowd.asFan, leagueId, opts.crowd.clubs, opts.crowd.every, done).catch(log("crowd"));
         if (seated?.length) console.log(`crowd: ${seated.length} fans seated`);

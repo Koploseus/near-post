@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { minute, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { league } from "../lib/near.js";
@@ -33,7 +33,9 @@ export function Match() {
   return (
     <div className="match">
       <section className="panel ink" aria-label="Next match day">
-        <span className="eyebrow">MATCH DAY {day}</span>
+        <span className="eyebrow">
+          SEASON {schedule?.season ?? 1} · MATCH DAY {schedule?.season_day ?? day} OF {schedule?.season_days ?? 19}
+        </span>
         {schedule?.first_half_played ? (
           <h2>
             Live now · <a href="#/live">follow the match →</a>
@@ -61,6 +63,8 @@ export function Match() {
       <section className="paper panel" aria-label={`Results of match day ${last}`}>
         <h2>{shown > 0 ? `Match day ${shown}` : "No match played yet"}</h2>
         {data?.results.map((m, i) => (
+          <Fragment key={`${m.home}-${m.away}`}>
+          {(i === 0 || data.results[i - 1]!.division !== m.division) && (data.results.at(-1)?.division ?? 1) > 1 && <h3 className="div-head">Division {m.division}</h3>}
           <a className="result" key={`${m.home}-${m.away}`} href={`#/game/${shown}/${i}`} aria-label={`Match details: ${names.get(m.home)} ${m.home_goals}-${m.away_goals} ${names.get(m.away)}`}>
             <div className="score">
               <span className={m.home === clubId ? "mine" : ""}>{names.get(m.home) ?? short(m.home)}</span>
@@ -83,37 +87,59 @@ export function Match() {
             {m.stats && <Sheet m={m} />}
             <span className="more">Match sheet, elevens and every action →</span>
           </a>
+          </Fragment>
         ))}
       </section>
 
-      <section className="paper panel" aria-label="Table">
-        <h2>Division 3</h2>
-        <table className="table">
-          <thead>
-            <tr>
-              <th scope="col">#</th>
-              <th scope="col">Club</th>
-              <th scope="col">P</th>
-              <th scope="col">GD</th>
-              <th scope="col">Pts</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.table.map((c, i) => (
-              <tr key={c.manager} className={c.manager === clubId ? "mine" : ""}>
-                <td>{i + 1}</td>
-                <td>{c.name}</td>
-                <td>{c.played}</td>
-                <td>{c.goals_for - c.goals_against}</td>
-                <td>{c.points}</td>
+      {divisions(data?.table ?? []).map((clubs, d, all) => (
+        <section className="paper panel" aria-label={`Division ${d + 1} table`} key={d}>
+          <h2>Division {d + 1}</h2>
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Club</th>
+                <th scope="col">P</th>
+                <th scope="col">GD</th>
+                <th scope="col">Pts</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody>
+              {clubs.map((c, i) => {
+                const up = d > 0 && i < movers(all[d - 1]!.length, clubs.length);
+                const down = d < all.length - 1 && i >= clubs.length - movers(clubs.length, all[d + 1]!.length);
+                return (
+                  <tr key={c.manager} className={`${c.manager === clubId ? "mine" : ""}${up ? " up" : ""}${down ? " down" : ""}`}>
+                    <td>{i + 1}</td>
+                    <td>
+                      {c.name}
+                      {up && <span className="zone"> ▲</span>}
+                      {down && <span className="zone"> ▼</span>}
+                    </td>
+                    <td>{c.played}</td>
+                    <td>{c.goals_for - c.goals_against}</td>
+                    <td>{c.points}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {all.length > 1 && <p className="note">▲ promoted, ▼ relegated at the end of the season (match day {schedule?.season_days ?? 19}).</p>}
+        </section>
+      ))}
     </div>
   );
 }
+
+/** The league table split by division (it comes division by division). */
+export function divisions(table: Club[]): Club[][] {
+  const out: Club[][] = [];
+  for (const c of table) (out[c.division - 1] ??= []).push(c);
+  return out.filter(Boolean);
+}
+
+/** How many clubs swap between two divisions at the end of a season (as the league does). */
+export const movers = (upper: number, lower: number) => Math.min(3, Math.floor(upper / 2), Math.floor(lower / 2));
 
 /** Shots, shots on target and the man of the match, like the old match sheets. */
 function Sheet({ m }: { m: MatchResult }) {

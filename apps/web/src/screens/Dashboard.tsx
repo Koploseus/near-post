@@ -35,6 +35,7 @@ export function Dashboard() {
     const live = ld?.state === "live" ? await league<MatchResult[]>("results", { match_day: ld.day }) : [];
     return { table, fixtures, last, lineup, stand, live };
   }, [schedule?.match_day, schedule?.first_half_played, clubId, ld?.state]);
+  const myDivision = data?.table.find((c) => c.manager === clubId)?.division ?? 1;
   const names = new Map((data?.table ?? []).map((c) => [c.manager, c.name]));
   const fixture = data?.fixtures.find(([h, a]) => h === clubId || a === clubId);
   const opponent = fixture ? (fixture[0] === clubId ? fixture[1] : fixture[0]) : null;
@@ -152,9 +153,9 @@ export function Dashboard() {
 
       <aside className="dash-right">
         <section className="paper panel">
-          <span className="k">DIVISION 3</span>
+          <span className="k">DIVISION {myDivision}</span>
           <ol className="mini-table">
-            {data?.table.map((c) => (
+            {data?.table.filter((c) => c.division === myDivision).map((c) => (
               <li key={c.manager} className={c.manager === clubId ? "mine" : ""}>
                 <span>{c.name}</span>
                 <b>{c.points}</b>
