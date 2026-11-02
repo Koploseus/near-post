@@ -69,31 +69,39 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   them. No presale, no team allocation. (On testnet the contract accounts still
   hold their deploy keys while we iterate; see Limits.)
 
-## Live on testnet (v1)
+## Live on testnet (v2)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v1.near-post.testnet`](https://testnet.nearblocks.io/address/league-v1.near-post.testnet) |
-| Goalars | [`goalars-v1.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v1.near-post.testnet) |
-| Players | [`players-v1.near-post.testnet`](https://testnet.nearblocks.io/address/players-v1.near-post.testnet) |
-| Items | [`items-v1.near-post.testnet`](https://testnet.nearblocks.io/address/items-v1.near-post.testnet) |
+| League | [`league-v2.near-post.testnet`](https://testnet.nearblocks.io/address/league-v2.near-post.testnet) |
+| Goalars | [`goalars-v2.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v2.near-post.testnet) |
+| Players | [`players-v2.near-post.testnet`](https://testnet.nearblocks.io/address/players-v2.near-post.testnet) |
+| Items | [`items-v2.near-post.testnet`](https://testnet.nearblocks.io/address/items-v2.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`). A match day is due every
 10 minutes and anyone can play it.
 
-First match day, 1 November 2026: the derby Olympique Rive Nord 2-0 FC Port-Lune
-([play_match_day](https://testnet.nearblocks.io/txns/Ez3szi66K2zpa2sTcvzQd1iGdATqSraaZgZtf3TYgcv3)).
-Rive Nord's one fan was in the stand, so the tifo was complete and, derby
-oblige, his claim minted 200k G scaled by the cap curve
-([claim](https://testnet.nearblocks.io/txns/4LTb68BMmTCKSKxc5jSyRGDUspmUQU1V5Dc5eyeybLoH)).
-The two goals put 3.6M G in Rive Nord's treasury, which the league holds.
+First v2 match day, 2 November 2026: the derby Olympique Rive Nord 1-1 FC
+Port-Lune ([play_match_day](https://testnet.nearblocks.io/txns/CZAW1hUhhvAtcXpZRBEFWRFVWuM95fsUU6YdgGU7ZhFV)).
+Rive Nord's equaliser, 62nd minute, was scored by Koplo, a footballer played
+by a person: `player-1.near-post.testnet` created him
+([create_footballer](https://testnet.nearblocks.io/txns/3Ti6zonii4E53Xvmzw8X7rCV45tDQ7zNbJpzzdbv4Tvi)),
+gave his registration to Rive Nord
+([nft_transfer](https://testnet.nearblocks.io/txns/C3PTF1fZX7rzTY2LKf9nxposCnMmTXbhPmCcaxmCCJBD)),
+trained once (400k G burned, attack 49 to 50,
+[ft_transfer_call](https://testnet.nearblocks.io/txns/5p1zYZHP9q48miVRh9SoQQhs6SHc8X1yrwwp4GaA9bHA))
+and reported for the match. The goal put 4.2M G in his own wallet. Rive Nord's
+one fan came, so its tifo was complete.
+
+v1 (1 November, before squads) stays on `*-v1.near-post.testnet`; it is no
+longer used.
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v1.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v1.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v2.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v2.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
