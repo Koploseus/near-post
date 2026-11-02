@@ -1488,3 +1488,14 @@ fn nobody_else_dresses_him() {
     as_caller("c0.testnet");
     let _ = l.equip(token, "hair.mohawk".into());
 }
+
+#[test]
+fn old_match_sheets_are_deleted() {
+    let mut l = league_with(2, 0);
+    for d in 0..=KEEP_RESULTS {
+        play_day(&mut l, (d % 250) as u8 + 1);
+    }
+    assert!(l.results(1).is_empty(), "the oldest sheet is gone");
+    assert_eq!(l.results(2).len(), 1);
+    assert_eq!(l.results(KEEP_RESULTS + 1).len(), 1);
+}

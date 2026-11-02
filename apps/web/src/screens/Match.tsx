@@ -50,7 +50,7 @@ export function Match() {
           <label className="seg-select">
             <span className="note">Results of match day</span>
             <select value={shown} onChange={(e) => setShown(Number(e.target.value))}>
-              {Array.from({ length: last }, (_, i) => last - i).map((d) => (
+              {Array.from({ length: Math.min(last, 96) }, (_, i) => last - i).map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>

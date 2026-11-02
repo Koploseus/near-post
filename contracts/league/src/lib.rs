@@ -56,6 +56,9 @@ pub const MOVERS: usize = 3;
 pub const SEASON_DAYS: u32 = 19;
 /// Clubs in the whole league (ten divisions).
 pub const MAX_CLUBS: u32 = 200;
+/// Match sheets are kept this many match days, then deleted to free their
+/// storage (two days of match days every 30 minutes).
+pub const KEEP_RESULTS: u32 = 96;
 
 /// The economy, in G and basis points (out of 10_000). Fixed forever.
 /// Mints are nominal: the goalars contract scales each one by the room left
@@ -1966,6 +1969,11 @@ impl League {
         let rules = the_rules();
         let closing = self.match_day;
         self.match_day += 1;
+        if closing > KEEP_RESULTS {
+            for d in 0..self.divisions.len() as u8 {
+                self.day_results.remove(&(closing - KEEP_RESULTS, d));
+            }
+        }
         self.halves = vec![0; self.divisions.len() as usize];
         self.last_kickoff_ns = self.kickoff_ns;
         self.kickoff_ns = (self.kickoff_ns + self.interval_ns).max(now + MINUTE_NS);
