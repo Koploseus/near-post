@@ -187,7 +187,7 @@ function Match({
                   {ICON[e.kind]}
                 </span>
                 <span>
-                  {line(e)} <span className="note">({names.get(e.home ? m.home : m.away)?.split(" ").slice(-1)[0]})</span>
+                  {line(e)} <span className="note">({names.get(e.home !== (e.kind === "own_goal") ? m.home : m.away)?.split(" ").slice(-1)[0]})</span>
                 </span>
               </li>
             ))}
