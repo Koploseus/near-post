@@ -18,13 +18,15 @@ export function Match() {
   const now = useNow();
   const day = schedule?.match_day ?? 1;
   const last = day - 1;
+  const [picked, setShown] = useState<number | null>(null);
+  const shown = picked ?? last;
   const { data } = useData(async () => {
     const [results, table] = await Promise.all([
-      last > 0 ? league<MatchResult[]>("results", { match_day: last }) : Promise.resolve([]),
+      shown > 0 ? league<MatchResult[]>("results", { match_day: shown }) : Promise.resolve([]),
       league<Club[]>("table"),
     ]);
     return { results, table };
-  }, [last]);
+  }, [shown]);
   const names = new Map((data?.table ?? []).map((c) => [c.manager, c.name]));
   const due = schedule ? Number(schedule.next_match_at_ms) : 0;
   const left = Math.max(0, due - now);
@@ -32,17 +34,34 @@ export function Match() {
     <div className="match">
       <section className="panel ink" aria-label="Next match day">
         <span className="eyebrow">MATCH DAY {day}</span>
-        <h2>{left > 0 ? `Kick-off in ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "Kick-off now"}</h2>
-        <p className="sub">
-          Kick-off is automatic: the relay plays each match day on chain when it is due (anyone could). The score comes from the
-          block's random seed and the elevens' skills.
-        </p>
+        {schedule?.first_half_played ? (
+          <h2>
+            Live now · <a href="#/live">follow the match →</a>
+          </h2>
+        ) : left > 0 ? (
+          <h2>Kick-off in {Math.floor(left / 60000)}:{String(Math.floor(left / 1000) % 60).padStart(2, "0")}</h2>
+        ) : (
+          <h2 className="kickoff-now">Kick-off! The whistle is coming…</h2>
+        )}
+        <p className="sub">Kick-off is automatic: the relay plays each half on chain when it is due (anyone could).</p>
+        {last > 1 && (
+          <label className="seg-select">
+            <span className="note">Results of match day</span>
+            <select value={shown} onChange={(e) => setShown(Number(e.target.value))}>
+              {Array.from({ length: last }, (_, i) => last - i).map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </section>
 
       <section className="paper panel" aria-label={`Results of match day ${last}`}>
-        <h2>{last > 0 ? `Match day ${last}` : "No match played yet"}</h2>
-        {data?.results.map((m) => (
-          <div className="result" key={`${m.home}-${m.away}`}>
+        <h2>{shown > 0 ? `Match day ${shown}` : "No match played yet"}</h2>
+        {data?.results.map((m, i) => (
+          <a className="result" key={`${m.home}-${m.away}`} href={`#/game/${shown}/${i}`} aria-label={`Match details: ${names.get(m.home)} ${m.home_goals}-${m.away_goals} ${names.get(m.away)}`}>
             <div className="score">
               <span className={m.home === clubId ? "mine" : ""}>{names.get(m.home) ?? short(m.home)}</span>
               <strong>
@@ -62,7 +81,8 @@ export function Match() {
               {m.goals.length === 0 && <li>No goal.</li>}
             </ul>
             {m.stats && <Sheet m={m} />}
-          </div>
+            <span className="more">Match sheet, elevens and every action →</span>
+          </a>
         ))}
       </section>
 

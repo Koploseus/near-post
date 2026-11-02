@@ -48,6 +48,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     };
   }, [session, tick]);
 
+  // The schedule moves on its own (kick-off, half-time, full time): poll it.
+  useEffect(() => {
+    const t = setInterval(async () => {
+      const s = await league<Schedule>("schedule").catch(() => null);
+      if (s) setSchedule((prev) => (JSON.stringify(prev) === JSON.stringify(s) ? prev : s));
+    }, 10_000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
     <Ctx.Provider
       value={{ session, setSession, me, club, clubId: club ? me!.owner : null, schedule, balance, refresh, loading }}

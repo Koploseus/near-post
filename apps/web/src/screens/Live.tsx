@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
-import { clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
+import { type Clock, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
+import { SPOTS } from "../lib/pitch.js";
 import { league } from "../lib/near.js";
 import type { Club, MatchEvent, MatchResult, Player } from "../lib/types.js";
 
@@ -55,10 +56,23 @@ export function Live() {
     return (
       <div className="live">
         <section className="scoreboard before">
-          <span className="eyebrow">MATCH DAY {ld.day} · KICK-OFF IN</span>
-          <div className="countdown">
-            {Math.floor(left / 60_000)}:{String(Math.floor(left / 1000) % 60).padStart(2, "0")}
-          </div>
+          {left > 0 ? (
+            <>
+              <span className="eyebrow">MATCH DAY {ld.day} · KICK-OFF IN</span>
+              <div className="countdown">
+                <span className="bouncing-ball" aria-hidden="true">
+                  ⚽
+                </span>
+                {Math.floor(left / 60_000)}:{String(Math.floor(left / 1000) % 60).padStart(2, "0")}
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="eyebrow">MATCH DAY {ld.day}</span>
+              <div className="countdown kickoff-now">KICK-OFF!</div>
+              <p className="sub">The teams walk out: the first half is being played on chain, the whistle comes in a few seconds.</p>
+            </>
+          )}
           <p className="sub">Two halves of ten minutes, five minutes of half-time. Take your slot and vote the strategy before kick-off.</p>
           <a className="cta" href="#/team">
             SET YOUR TEAM
@@ -80,10 +94,13 @@ export function Live() {
     );
   }
   if (!m) return <p className="sub">Waiting for the kick-off transaction…</p>;
-  return <Match m={m} kickoff={ld.kickoff} now={now} names={names} all={data?.results ?? []} pick={setPick} idx={idx} day={ld.day} />;
+  return <MatchView m={m} kickoff={ld.kickoff} now={now} names={names} all={data?.results ?? []} pick={setPick} idx={idx} day={ld.day} />;
 }
 
-function Match({
+/** Full time, for a match looked at afterwards. */
+export const FINAL: Clock = { phase: "full_time", second: 99_999, label: "FT", progress: 1 };
+
+export function MatchView({
   m,
   kickoff,
   now,
@@ -92,15 +109,17 @@ function Match({
   pick,
   idx,
   day,
+  final,
 }: {
   m: MatchResult;
   kickoff: number;
   now: number;
   names: Map<string, string>;
   all: MatchResult[];
-  pick: (i: number) => void;
+  pick?: (i: number) => void;
   idx: number;
   day: number;
+  final?: boolean;
 }) {
   const { schedule } = useGame();
   const { data: squads } = useData(
@@ -108,7 +127,7 @@ function Match({
     [m.home, m.away],
   );
   const who = useMemo(() => new Map((squads ?? []).flat().map((p) => [p.token_id, p.name])), [squads]);
-  const c = clock(m, kickoff, schedule!, now);
+  const c = final || !schedule ? FINAL : clock(m, kickoff, schedule, now);
   const shown = visible(m, c);
   const [hs, as] = scoreOf(shown);
   const name = (e: MatchEvent & { half: 0 | 1 }) => who.get(eleven(m, e)[e.player] ?? "") ?? "a player";
@@ -168,6 +187,8 @@ function Match({
         <div className="match-bar" aria-hidden="true">
           <span style={{ width: `${c.progress * 100}%` }} />
         </div>
+        {!final && <Pitch m={m} shown={shown} c={c} />}
+        {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
             CHANGE SLOT OR STRATEGY
@@ -177,7 +198,7 @@ function Match({
 
       <div className="live-grid">
         <section className="paper panel feed" aria-label="Match events">
-          <h3>Live</h3>
+          <h3>{final ? "Every action" : "Live"}</h3>
           <ol>
             {shown.length === 0 && <li className="note">Kick-off. The ball is rolling.</li>}
             {[...shown].reverse().map((e, i) => (
@@ -229,18 +250,104 @@ function Match({
           <h3>Other matches</h3>
           <ul className="others">
             {all.map((o, i) => {
-              const [h, a] = scoreOf(visible(o, clock(o, kickoff, schedule!, now)));
+              const [h, a] = final || !schedule ? [o.home_goals, o.away_goals] : scoreOf(visible(o, clock(o, kickoff, schedule, now)));
               return (
                 <li key={o.home}>
-                  <button type="button" className={`link${i === idx ? " on" : ""}`} onClick={() => pick(i)}>
-                    {names.get(o.home)} {h}-{a} {names.get(o.away)}
-                  </button>
+                  {pick ? (
+                    <button type="button" className={`link${i === idx ? " on" : ""}`} onClick={() => pick(i)}>
+                      {names.get(o.home)} {h}-{a} {names.get(o.away)}
+                    </button>
+                  ) : (
+                    <a className={`link${i === idx ? " on" : ""}`} href={`#/game/${day}/${i}`}>
+                      {names.get(o.home)} {o.home_goals}-{o.away_goals} {names.get(o.away)}
+                    </a>
+                  )}
                 </li>
               );
             })}
           </ul>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** A small pitch: 22 players in their formations, and the ball going where the play is. */
+function Pitch({ m, shown, c }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock }) {
+  const second = c.phase === "second_half" || c.phase === "full_time";
+  const f = [m.formations[second ? 2 : 0] ?? m.formations[0]!, m.formations[second ? 3 : 1] ?? m.formations[1]!];
+  const last = shown[shown.length - 1];
+  const s = c.second;
+  const recent = last && s - last.second < 45 && (c.phase === "first_half" || c.phase === "second_half");
+  let x = 50 + 28 * Math.sin(s / 37) + 8 * Math.sin(s / 11);
+  let y = 50 + 30 * Math.sin(s / 23 + 1);
+  if (recent && last) {
+    const dir = last.home ? 1 : -1; // home attacks to the right
+    const at = (v: number) => 50 + dir * v;
+    if (last.kind === "goal" || last.kind === "own_goal") [x, y] = [at(47), 50];
+    else if (last.kind === "saved") [x, y] = [at(43), 46 + (s % 9)];
+    else if (last.kind === "missed") [x, y] = [at(46), (s % 2 ? 30 : 70)];
+    else if (last.kind === "corner") [x, y] = [at(48), s % 2 ? 3 : 97];
+    else [x, y] = [at(5 + (s % 20)), 20 + (s % 60)];
+  }
+  const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time";
+  if (stopped) [x, y] = [50, 50];
+  const spot = (side: 0 | 1, k: number) => {
+    const [sx, sy] = SPOTS[f[side]!][k]!;
+    const depth = (100 - sy) * 0.46 + 3; // own goal line to halfway
+    const wobble = stopped ? 0 : Math.sin(s / 7 + k * 1.7 + side) * 2;
+    return side === 0 ? { left: `${depth + wobble}%`, top: `${sx}%` } : { left: `${100 - depth + wobble}%`, top: `${100 - sx}%` };
+  };
+  return (
+    <div className="mini-pitch" aria-hidden="true">
+      <span className="mp-line mp-half" />
+      <span className="mp-line mp-circle" />
+      <span className="mp-goal mp-left" />
+      <span className="mp-goal mp-right" />
+      {[0, 1].map((side) =>
+        Array.from({ length: 11 }, (_, k) => <span key={`${side}-${k}`} className={`mp-dot ${side ? "away" : "home"}`} style={spot(side as 0 | 1, k)} />),
+      )}
+      <span className="mp-ball" style={{ left: `${Math.min(98, Math.max(2, x))}%`, top: `${Math.min(96, Math.max(4, y))}%` }} />
+    </div>
+  );
+}
+
+/** "GOAL!" and cards, shown for a few seconds as they happen. */
+function Moment({
+  shown,
+  name,
+  names,
+  m,
+}: {
+  shown: (MatchEvent & { half: 0 | 1 })[];
+  name: (e: MatchEvent & { half: 0 | 1 }) => string;
+  names: Map<string, string>;
+  m: MatchResult;
+}) {
+  const seen = useRef<number | null>(null);
+  const [moment, setMoment] = useState<(MatchEvent & { half: 0 | 1 }) | null>(null);
+  useEffect(() => {
+    const big = shown.filter((e) => e.kind === "goal" || e.kind === "own_goal" || e.kind === "yellow");
+    if (seen.current === null) {
+      seen.current = big.length; // no fanfare for what happened before we arrived
+      return;
+    }
+    if (big.length > seen.current) {
+      seen.current = big.length;
+      setMoment(big[big.length - 1]!);
+      const t = setTimeout(() => setMoment(null), 4_000);
+      return () => clearTimeout(t);
+    }
+  }, [shown]);
+  if (!moment) return null;
+  const goal = moment.kind !== "yellow";
+  const team = names.get((moment.home !== (moment.kind === "own_goal")) ? m.home : m.away) ?? "";
+  return (
+    <div className={`moment ${goal ? "goal" : "card"}`} role="status">
+      <strong>{goal ? (moment.kind === "own_goal" ? "OWN GOAL!" : "GOAL!") : "🟨 BOOKED"}</strong>
+      <span>
+        {name(moment)} · {team}
+      </span>
     </div>
   );
 }
