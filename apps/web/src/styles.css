@@ -276,7 +276,8 @@ button.spot:hover { transform: scale(1.06); background: var(--yellow); }
 .match-bar span { display: block; height: 100%; background: var(--yellow); transition: width 1s linear; }
 .live-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
 .feed ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: 560px; overflow-y: auto; }
-.ev { display: grid; grid-template-columns: 56px 28px minmax(0, 1fr); align-items: center; gap: 6px; padding: 10px 4px; border-top: 1px solid #d8cba9; animation: pop .3s ease-out both; }
+.ev { display: grid; grid-template-columns: 56px 28px minmax(0, 1fr); align-items: center; gap: 6px; padding: 10px 4px; border-top: 1px solid #d8cba9; }
+.ev:first-child { animation: pop .3s ease-out; }
 .ev-min { font-family: var(--display); color: var(--blue); }
 .ev.goal, .ev.own_goal { background: rgba(242,183,5,.35); font-weight: 800; font-size: 18px; }
 .ev.yellow .ev-min { color: #b8860b; }
