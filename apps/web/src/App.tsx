@@ -1,17 +1,84 @@
-import { Stadium } from "./Stadium.js";
+import { useEffect, useState } from "react";
+import { g, short } from "./lib/format.js";
+import { GameProvider, useGame } from "./lib/game.js";
+import { signOut } from "./lib/near.js";
+import { Album } from "./screens/Album.js";
+import { LockerRoom } from "./screens/LockerRoom.js";
+import { Market } from "./screens/Market.js";
+import { Match } from "./screens/Match.js";
+import { Stands } from "./screens/Stands.js";
+
+const ROUTES = {
+  stands: { label: "Stands", view: Stands },
+  match: { label: "Match day", view: Match },
+  locker: { label: "Locker room", view: LockerRoom },
+  album: { label: "Album", view: Album },
+  market: { label: "Market", view: Market },
+} as const;
+type Route = keyof typeof ROUTES;
+
+const route = (): Route => {
+  const h = location.hash.replace(/^#\/?/, "") as Route;
+  return h in ROUTES ? h : "stands";
+};
+
+function useRoute() {
+  const [r, setR] = useState<Route>(route);
+  useEffect(() => {
+    const on = () => setR(route());
+    addEventListener("hashchange", on);
+    return () => removeEventListener("hashchange", on);
+  }, []);
+  return r;
+}
+
+function Header({ current }: { current: Route }) {
+  const { session, setSession, balance } = useGame();
+  return (
+    <header className="wrap top">
+      <a className="brand" href="#/stands">
+        NEAR POST
+      </a>
+      <nav className="nav" aria-label="Main">
+        {(Object.keys(ROUTES) as Route[]).map((k) => (
+          <a key={k} href={`#/${k}`} aria-current={k === current ? "page" : undefined}>
+            {ROUTES[k].label}
+          </a>
+        ))}
+      </nav>
+      {session ? (
+        <span className="who">
+          <strong>{g(balance)}</strong>
+          <span title={session.accountId}>{short(session.accountId)}</span>
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              signOut();
+              setSession(null);
+            }}
+          >
+            Sign out
+          </button>
+        </span>
+      ) : (
+        <a className="who" href="#/locker">
+          Sign in
+        </a>
+      )}
+    </header>
+  );
+}
 
 export function App() {
+  const r = useRoute();
+  const View = ROUTES[r].view;
   return (
-    <>
-      <header className="wrap top">
-        <span className="brand">NEAR POST</span>
-        <nav className="nav" aria-label="Main">
-          <a href="/" aria-current="page">
-            Stadium
-          </a>
-        </nav>
-      </header>
-      <Stadium />
-    </>
+    <GameProvider>
+      <Header current={r} />
+      <main className="wrap page">
+        <View />
+      </main>
+    </GameProvider>
   );
 }
