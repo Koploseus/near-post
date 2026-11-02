@@ -3,7 +3,8 @@ import { short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { league, leagueCall } from "../lib/near.js";
 import { FORMATIONS, ROLE_LABEL, ROLE_NAME, SPOTS } from "../lib/pitch.js";
-import type { Captain, Lineup as LineupT, Strategy } from "../lib/types.js";
+import { useEffect, useState } from "react";
+import type { Captain, Lineup as LineupT, Player, Strategy, Takers } from "../lib/types.js";
 
 const STRATEGIES: [Strategy, string][] = [
   ["defend", "Defend"],
@@ -35,7 +36,7 @@ export function Lineup() {
           {mine >= 0
             ? `You play ${ROLE_NAME[lineup.roles[mine]!].toLowerCase()} (slot ${mine + 1}). Tap another free slot to move.`
             : me
-              ? "Tap a slot to take it: that also reports you fit. Free slots go to the best academy player for the role."
+              ? "Tap a slot to take it. Free slots go to the best player of the squad for the role; an academy kid fills any gap."
               : "Create your footballer in the locker room to take a slot."}
         </p>
         <div className="formations" role="group" aria-label="Formation">
@@ -111,8 +112,57 @@ export function Lineup() {
             )}
           </div>
           <p className="note">Now: {lineup.strategy}. Players in slots: {lineup.chosen.filter(Boolean).length} of 11 · {short(clubId)}</p>
+          <SetPieces clubId={clubId} leader={isCaptain} />
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** Who takes free kicks and penalties: the captain names them, else the best shooter on the pitch. */
+function SetPieces({ clubId, leader }: { clubId: string; leader: boolean }) {
+  const { session } = useGame();
+  const { data, reload } = useData(
+    () => Promise.all([league<Takers>("takers", { club_id: clubId }), league<Player[]>("squad", { account_id: clubId })]),
+    [clubId],
+  );
+  const [pick, setPick] = useState<Takers>({ free_kick: null, penalty: null });
+  useEffect(() => {
+    if (data) setPick(data[0]);
+  }, [data]);
+  if (!data) return null;
+  const [takers, squad] = data;
+  const byShooting = [...squad].sort((a, b) => b.skills.shooting - a.skills.shooting);
+  const nameOf = (t: string | null) => (t ? (squad.find((p) => p.token_id === t)?.name ?? "someone who left") : "the best shooter on the pitch");
+  const rows: [keyof Takers, string][] = [
+    ["free_kick", "Free kicks"],
+    ["penalty", "Penalties"],
+  ];
+  return (
+    <div className="set-pieces">
+      <span className="k">SET PIECES</span>
+      {rows.map(([k, label]) =>
+        leader && session ? (
+          <label key={k} className="taker">
+            <span>{label}</span>
+            <select value={pick[k] ?? ""} onChange={(e) => setPick({ ...pick, [k]: e.target.value || null })}>
+              <option value="">Best shooter on the pitch</option>
+              {byShooting.map((p) => (
+                <option key={p.token_id} value={p.token_id}>
+                  {p.name} · shooting {p.skills.shooting}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p key={k} className="note">
+            {label}: {nameOf(takers[k])}
+          </p>
+        ),
+      )}
+      {leader && session && (pick.free_kick !== takers.free_kick || pick.penalty !== takers.penalty) && (
+        <Action className="cta small" label="SAVE TAKERS" run={() => leagueCall(session, "set_takers", { club_id: clubId, free_kick: pick.free_kick, penalty: pick.penalty }, 30)} done={reload} />
+      )}
     </div>
   );
 }

@@ -253,7 +253,50 @@ pub struct MatchStats {
     pub away_corners: u8,
     pub home_fouls: u8,
     pub away_fouls: u8,
+    pub home_yellows: u8,
+    pub away_yellows: u8,
+    pub home_reds: u8,
+    pub away_reds: u8,
     pub man_of_the_match: Option<Star>,
+}
+
+/// What a side's first half leaves for its second: who was booked, who was
+/// sent off and the slots they left.
+#[derive(Default)]
+struct FirstHalf {
+    booked: Vec<String>,
+    off: Vec<String>,
+    off_slots: Vec<usize>,
+}
+
+impl FirstHalf {
+    fn of(m: &MatchResult, home: bool) -> Self {
+        let xi = &m.elevens[usize::from(!home)];
+        let mut out = Self::default();
+        for e in m.events.iter().take(m.first_half_events as usize) {
+            if e.home != home {
+                continue;
+            }
+            let token = xi.get(e.player as usize).cloned().unwrap_or_default();
+            match e.kind {
+                EventKind::Yellow => out.booked.push(token),
+                EventKind::Red => {
+                    out.off.push(token);
+                    out.off_slots.push(e.player as usize);
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+}
+
+/// The set-piece takers a club's captain named (token ids).
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Takers {
+    pub free_kick: Option<String>,
+    pub penalty: Option<String>,
 }
 
 /// `msg` of an approval that accepts an offer.
@@ -353,6 +396,8 @@ enum StorageKey {
     Formations,
     Slots,
     StrategyVotes,
+    Takers,
+    Suspended,
 }
 
 #[near(serializers = [json, borsh])]
@@ -513,7 +558,24 @@ pub struct League {
     attester: [u8; 32],
     tickets: LookupMap<String, Ticket>,
     next_ticket: u64,
+    /// Set-piece takers by club.
+    takers: LookupMap<AccountId, Takers>,
+    /// (player, match day): suspended after a red card the day before.
+    suspended: LookupSet<(String, u32)>,
 }
+
+/// A squad holds at most this many players: eleven and one more.
+pub const MAX_SQUAD: usize = 12;
+/// Stands in for a missing player when a squad runs short (not a token).
+pub const BOT: &str = "academy";
+pub const BOT_SKILLS: Skills = Skills {
+    pace: 35,
+    shooting: 35,
+    passing: 35,
+    dribbling: 35,
+    defending: 35,
+    physical: 35,
+};
 
 const MINT_GAS: Gas = Gas::from_tgas(10);
 const BURN_GAS: Gas = Gas::from_tgas(10);
@@ -595,6 +657,8 @@ impl League {
             attester,
             tickets: LookupMap::new(StorageKey::Tickets),
             next_ticket: 0,
+            takers: LookupMap::new(StorageKey::Takers),
+            suspended: LookupSet::new(StorageKey::Suspended),
         }
     }
 
@@ -732,24 +796,40 @@ impl League {
     /// The captain (or the manager, without one) picks the formation for
     /// the next half: before kick-off or at half-time.
     pub fn set_formation(&mut self, club_id: AccountId, formation: Formation) {
-        let caller = env::predecessor_account_id();
-        let club = self
-            .clubs
-            .get(&club_id)
-            .unwrap_or_else(|| env::panic_str("no such club"));
-        let allowed = match self.captain(club_id.clone()) {
-            Some(c) => self
-                .players
-                .get(&c.token_id)
-                .map(|p| p.beneficiary() == &caller)
-                .unwrap_or(false),
-            None => club.manager == caller,
-        };
         require!(
-            allowed,
+            self.leads(&club_id, &env::predecessor_account_id()),
             "only the captain (or the manager, without one) picks the formation"
         );
         self.formations.insert(club_id, formation);
+    }
+
+    /// The captain (or the manager, without one) names who takes free kicks
+    /// and penalties. `None` leaves it to the best shooter on the pitch; a
+    /// taker who is not in the eleven is skipped the same way.
+    pub fn set_takers(
+        &mut self,
+        club_id: AccountId,
+        free_kick: Option<String>,
+        penalty: Option<String>,
+    ) {
+        require!(
+            self.leads(&club_id, &env::predecessor_account_id()),
+            "only the captain (or the manager, without one) names the takers"
+        );
+        let squad = self.squads.get(&club_id).cloned().unwrap_or_default();
+        for t in [&free_kick, &penalty].into_iter().flatten() {
+            require!(squad.contains(t), "a taker must be in the squad");
+        }
+        self.takers.insert(club_id, Takers { free_kick, penalty });
+    }
+
+    pub fn takers(&self, club_id: AccountId) -> Takers {
+        self.takers.get(&club_id).cloned().unwrap_or_default()
+    }
+
+    /// Whether a player is suspended for a match day (a red card the day before).
+    pub fn is_suspended(&self, token_id: String, match_day: u32) -> bool {
+        self.suspended.contains(&(token_id, match_day))
     }
 
     /// The caller takes a slot (0 to 10) of his club's formation for the next
@@ -1163,10 +1243,27 @@ impl League {
         if let Some(lineup) = self.lineups.get_mut(&old_owner) {
             lineup.retain(|t| t != &token_id);
         }
-        let squad = self.squads.entry(new_owner).or_default();
+        let squad = self.squads.get(&new_owner).cloned().unwrap_or_default();
+        let mut squad = squad;
         if !squad.contains(&token_id) {
             squad.push(token_id);
         }
+        // Eleven and one more: past twelve, the weakest academy player leaves
+        // the squad (his NFT stays with the club). Twelve people and no
+        // academy player left: the newcomer sits on the bench.
+        while squad.len() > MAX_SQUAD {
+            let weakest = squad
+                .iter()
+                .filter_map(|t| self.players.get(t))
+                .filter(|p| p.controller.is_none())
+                .min_by_key(|p| (p.overall, std::cmp::Reverse(p.token_id.clone())))
+                .map(|p| p.token_id.clone());
+            match weakest {
+                Some(w) => squad.retain(|t| t != &w),
+                None => break,
+            }
+        }
+        self.squads.insert(new_owner, squad);
     }
 
     /// The person who plays him (or, for an academy player, his owner)
@@ -1575,8 +1672,8 @@ impl League {
         let mut results = Vec::new();
         for (index, (h, a)) in fixtures(ids.len(), day - 1).into_iter().enumerate() {
             let (home, away) = (ids[h].clone(), ids[a].clone());
-            let (hs, hxi, hf) = self.side_of(&home, 1);
-            let (aws, axi, af) = self.side_of(&away, 1);
+            let (hs, hxi, hf) = self.side_of(&home, 1, None);
+            let (aws, axi, af) = self.side_of(&away, 1, None);
             let seed = derive_seed(block_seed, &[day as u64, index as u64, 1]);
             let half = live::play_half(seed, 1, &hs, &aws, true);
             let (hg, ag) = live::score(&half.events);
@@ -1618,8 +1715,8 @@ impl League {
         let mut derby_clubs: Vec<AccountId> = Vec::new();
 
         for (index, m) in results.iter_mut().enumerate() {
-            let (hs, hxi, hf) = self.side_of(&m.home, 2);
-            let (aws, axi, af) = self.side_of(&m.away, 2);
+            let (hs, hxi, hf) = self.side_of(&m.home, 2, Some(FirstHalf::of(m, true)));
+            let (aws, axi, af) = self.side_of(&m.away, 2, Some(FirstHalf::of(m, false)));
             let seed = derive_seed(block_seed, &[day as u64, index as u64, 2]);
             let half = live::play_half(seed, 2, &hs, &aws, false);
             m.events.extend(half.events);
@@ -1657,7 +1754,7 @@ impl League {
                     .players
                     .get(&token)
                     .map(|p| p.name.clone())
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| "Academy kid".to_string());
                 let kind = match e.kind {
                     EventKind::OwnGoal => GoalKind::Own,
                     _ if e.second as u32 > 2 * live::HALF_SECONDS => GoalKind::Late,
@@ -1697,6 +1794,18 @@ impl League {
             }
             m.goals = goals;
             m.stats = sheet(m, Some(&self.players));
+            // A red card: suspended for the next match day.
+            for (n, e) in m.events.iter().enumerate() {
+                if e.kind != EventKind::Red {
+                    continue;
+                }
+                let h = usize::from(n as u32 >= m.first_half_events);
+                if let Some(t) = m.elevens[2 * h + usize::from(!e.home)].get(e.player as usize)
+                    && self.players.contains_key(t)
+                {
+                    self.suspended.insert((t.clone(), day + 1));
+                }
+            }
             for (club, side) in [(m.home.clone(), 0usize), (m.away.clone(), 1usize)] {
                 let mut xi: Vec<String> = m.elevens[side]
                     .iter()
@@ -1766,6 +1875,22 @@ impl League {
         results
     }
 
+    /// Whether `who` leads `club` on the pitch: its captain, or its manager
+    /// while it has none.
+    fn leads(&self, club_id: &AccountId, who: &AccountId) -> bool {
+        let Some(club) = self.clubs.get(club_id) else {
+            env::panic_str("no such club")
+        };
+        match self.captain(club_id.clone()) {
+            Some(c) => self
+                .players
+                .get(&c.token_id)
+                .map(|p| p.beneficiary() == who)
+                .unwrap_or(false),
+            None => &club.manager == who,
+        }
+    }
+
     fn formation_of(&self, club: &AccountId) -> Formation {
         self.formations
             .get(club)
@@ -1796,25 +1921,47 @@ impl League {
     }
 
     /// A club on the pitch for a half, with its eleven by slot and formation.
-    fn side_of(&self, club: &AccountId, half: u8) -> (live::Side, Vec<String>, Formation) {
+    /// For the second half, `first` is that club's first half: who was
+    /// booked, and who was sent off (his slot stays empty, nobody comes on).
+    /// Other empty slots get an academy kid (`BOT`).
+    fn side_of(
+        &self,
+        club: &AccountId,
+        half: u8,
+        first: Option<FirstHalf>,
+    ) -> (live::Side, Vec<String>, Formation) {
         let formation = self.formation_of(club);
-        let xi = self.eleven_of(club);
-        let mut skills = [None; ELEVEN];
-        for (k, t) in xi.iter().enumerate() {
-            skills[k] = t
-                .as_ref()
-                .and_then(|t| self.players.get(t))
-                .map(|p| p.skills);
+        let first = first.unwrap_or_default();
+        let mut xi = self.eleven_of_without(club, &first.off);
+        for &k in &first.off_slots {
+            if let Some(slot) = xi.get_mut(k) {
+                *slot = None;
+            }
         }
-        (
-            live::Side {
-                roles: formation.roles(),
-                skills,
-                strategy: self.strategy_of(club, half),
-            },
-            xi.into_iter().map(|t| t.unwrap_or_default()).collect(),
-            formation,
-        )
+        let mut skills = [None; ELEVEN];
+        let mut booked = [false; ELEVEN];
+        let mut names: Vec<String> = Vec::with_capacity(ELEVEN);
+        for (k, t) in xi.iter().enumerate() {
+            match t.as_ref().and_then(|t| self.players.get(t)) {
+                Some(p) => {
+                    skills[k] = Some(p.skills);
+                    booked[k] = first.booked.contains(&p.token_id);
+                    names.push(p.token_id.clone());
+                }
+                None if first.off_slots.contains(&k) => names.push(String::new()),
+                None => {
+                    skills[k] = Some(BOT_SKILLS);
+                    names.push(BOT.to_string());
+                }
+            }
+        }
+        let named = self.takers.get(club).cloned().unwrap_or_default();
+        let slot_of =
+            |t: &Option<String>| t.as_ref().and_then(|t| names.iter().position(|n| n == t));
+        let mut side = live::Side::new(formation.roles(), skills, self.strategy_of(club, half));
+        side.booked = booked;
+        side.takers = [slot_of(&named.free_kick), slot_of(&named.penalty)];
+        (side, names, formation)
     }
 
     /// The caller's footballer and the club he plays for.
@@ -1999,14 +2146,11 @@ impl League {
         }
     }
 
-    /// Whether a player can play today: academy players always, people only
-    /// when they reported.
+    /// Whether a player can play today: everyone in the squad does, unless
+    /// suspended after a red card.
     fn available(&self, token: &String) -> bool {
-        match self.players.get(token) {
-            Some(p) if p.controller.is_none() => true,
-            Some(_) => self.reported.contains(&(token.clone(), self.match_day)),
-            None => false,
-        }
+        self.players.contains_key(token)
+            && !self.suspended.contains(&(token.clone(), self.match_day))
     }
 
     /// The eleven of a club for the next half, by slot of its formation:
@@ -2014,7 +2158,20 @@ impl League {
     /// then, slot by slot from the keeper up, the best available player of
     /// the squad for that role. `None` when the squad runs short.
     fn eleven_of(&self, club: &AccountId) -> Vec<Option<String>> {
-        let squad = self.squads.get(club).cloned().unwrap_or_default();
+        self.eleven_of_without(club, &[])
+    }
+
+    /// The same, never picking the players in `out` (sent off). Who is
+    /// available is read once per player: those reads are most of the gas.
+    fn eleven_of_without(&self, club: &AccountId, out: &[String]) -> Vec<Option<String>> {
+        let squad: Vec<String> = self
+            .squads
+            .get(club)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| !out.contains(t) && self.available(t))
+            .collect();
         let roles = self.formation_of(club).roles();
         let mut xi: Vec<Option<String>> = self
             .slots
@@ -2022,7 +2179,7 @@ impl League {
             .cloned()
             .unwrap_or_else(|| vec![None; ELEVEN])
             .into_iter()
-            .map(|t| t.filter(|t| squad.contains(t) && self.available(t)))
+            .map(|t| t.filter(|t| squad.contains(t)))
             .collect();
         xi.resize(ELEVEN, None);
         for k in 0..ELEVEN {
@@ -2031,7 +2188,7 @@ impl League {
             }
             let best = squad
                 .iter()
-                .filter(|t| self.available(t) && !xi.contains(&Some((*t).clone())))
+                .filter(|t| !xi.contains(&Some((*t).clone())))
                 .filter_map(|t| self.players.get(t))
                 .max_by_key(|p| {
                     // Keepers keep goal, outfield players stay outfield.
@@ -2239,6 +2396,10 @@ fn sheet(m: &MatchResult, players: Option<&LookupMap<String, Player>>) -> MatchS
         away_corners: count(false, &[EventKind::Corner]),
         home_fouls: count(true, &[EventKind::Foul]),
         away_fouls: count(false, &[EventKind::Foul]),
+        home_yellows: count(true, &[EventKind::Yellow]),
+        away_yellows: count(false, &[EventKind::Yellow]),
+        home_reds: count(true, &[EventKind::Red]),
+        away_reds: count(false, &[EventKind::Red]),
         man_of_the_match: players.and_then(|ps| star(m, ps)),
     }
 }
@@ -2248,7 +2409,7 @@ fn star(m: &MatchResult, players: &LookupMap<String, Player>) -> Option<Star> {
     let mut rating: std::collections::BTreeMap<String, (i32, bool)> = Default::default();
     for (i, xi) in m.elevens.iter().enumerate() {
         for (k, t) in xi.iter().enumerate() {
-            if t.is_empty() {
+            if t.is_empty() || t == BOT {
                 continue;
             }
             let base = players
@@ -2296,7 +2457,8 @@ fn star(m: &MatchResult, players: &LookupMap<String, Player>) -> Option<Star> {
             EventKind::Missed => add(at(side, k), -2),
             EventKind::Foul => add(at(side, k), -2),
             EventKind::Yellow => add(at(side, k), -4),
-            EventKind::Corner => {}
+            EventKind::Red => add(at(side, k), -15),
+            EventKind::Corner | EventKind::FreeKick | EventKind::Penalty => {}
         }
     }
     let won = |home: bool| match m.home_goals.cmp(&m.away_goals) {

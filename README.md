@@ -31,9 +31,9 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **You are a footballer.** `create_footballer(name, position)` mints your
   player as an NFT in your name: a free agent. Give that registration to a club
-  (an NFT transfer) and you are in its squad. Report before each match day
-  (`report_for_match`): present, you play at your rating; absent, an academy
-  player takes your place.
+  (an NFT transfer) and you are in its squad. A squad is twelve, eleven and
+  one more, so everyone plays by default: past twelve, the weakest academy
+  player leaves the squad, and a club with twelve people is full.
 - **Six skills, a rating out of 100.** Every player has pace, shooting,
   passing, dribbling, defending and physical (1 to 99). His card rating weighs
   them by position, like a striker's shooting and pace or a defender's
@@ -41,15 +41,17 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   match engine's attack and defence come from the same skills.
 - **Clubs are full from day one.** A new club signs eleven academy players (a
   4-4-2, ratings 25 to 65), played by the league, so there is always eleven a
-  side however few people play. People replace them as they join.
+  side however few people play. People replace them as they join; if a squad
+  still runs short, an academy kid (rated 35, not an NFT) fills the gap.
 - **Teammates elect a captain every week, on chain.** Each person in the squad
   has one vote (`vote_captain`), changeable until the week ends; the last match
   day of the week counts it (ties go to the better-rated player) and keeps the
   result as history. The captain (or, without one, the manager) picks the
-  formation: 4-4-2, 4-3-3, 3-5-2 or 4-2-3-1 (`set_formation`).
+  formation: 4-4-2, 4-3-3, 3-5-2 or 4-2-3-1 (`set_formation`), and names who
+  takes free kicks and penalties (`set_takers`; else the best shooter on the
+  pitch).
 - **You take your place on the pitch.** Before kick-off and at half-time, each
-  person picks his slot in the formation (`take_slot`, which also reports him
-  fit) and votes the strategy: defend, balanced or attack (`vote_strategy`,
+  person picks his slot in the formation (`take_slot`) and votes the strategy: defend, balanced or attack (`vote_strategy`,
   most votes wins). Free slots go to the best squad player for the role:
   every role (keeper, full-back, centre-back, holding, central, wide or
   attacking midfielder, winger, striker) weighs the six skills its own way.
@@ -58,7 +60,11 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   half of every fixture with the action engine of the original Star du Foot:
   the ball is at one player's feet, who passes, takes a man on, is fouled or
   shoots, with odds from his role, his skills, the opponent marking him and
-  the strategy; time and possession run as it goes. After five minutes of
+  the strategy; time and possession run as it goes. A foul in the attacking
+  third can give a direct free kick or a penalty. A second yellow or a
+  straight red sends a man off: his side plays on with ten (more space for
+  the other side, nobody comes on after the break) and he is suspended for
+  the next match day. After five minutes of
   half-time, the same call plays the second half and settles the day. The app
   replays each half over ten real minutes, its clock running at 45 minutes a
   half: score, shots, saves, corners, fouls, cards, possession, then the man
