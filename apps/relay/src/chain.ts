@@ -6,6 +6,8 @@ export interface Chain {
   /** Spendable balance in yoctoNEAR, or null if the account does not exist. */
   balance(accountId: string): Promise<bigint | null>;
   hasKey(accountId: string, publicKey: string): Promise<boolean>;
+  /** Balance not locked by storage, in yoctoNEAR, or null if the account does not exist. */
+  freeBalance(accountId: string): Promise<bigint | null>;
   /** Signed by the parent account. Each returns the transaction hash. */
   createAccount(accountId: string, publicKey: string, yocto: bigint): Promise<string>;
   transfer(receiverId: string, yocto: bigint): Promise<string>;
@@ -32,6 +34,14 @@ export function rpcChain(url: string, signer?: { accountId: string; privateKey: 
         return null;
       }
     },
+    async freeBalance(accountId) {
+      try {
+        const a = await provider.viewAccount({ accountId });
+        return BigInt(a.amount) - BigInt(a.storage_usage) * 10n ** 19n;
+      } catch {
+        return null;
+      }
+    },
     async hasKey(accountId, publicKey) {
       try {
         await provider.viewAccessKey({ accountId, publicKey });
@@ -50,6 +60,11 @@ export function rpcChain(url: string, signer?: { accountId: string; privateKey: 
     },
     async call(contractId, methodName, args, tgas) {
       const r = await parent().callFunctionRaw({ contractId, methodName, args, gas: BigInt(tgas) * 10n ** 12n });
+      const status = r.status as { Failure?: unknown };
+      if (status.Failure) {
+        const m = JSON.stringify(status.Failure).match(/Smart contract panicked: ([^"\\]+)/);
+        throw new Error(m?.[1] ?? "the transaction failed");
+      }
       return r.transaction.hash;
     },
   };

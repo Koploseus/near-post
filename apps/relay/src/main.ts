@@ -4,6 +4,8 @@ import { createApp } from "./app.js";
 import { consoleMailer, resendMailer } from "./auth.js";
 import { rpcChain } from "./chain.js";
 import { loadConfig } from "./config.js";
+import { near } from "./chain.js";
+import { parseCrowd } from "./crowd.js";
 import { startScheduler } from "./schedule.js";
 
 const config = loadConfig();
@@ -25,7 +27,25 @@ if (config.WEB_DIST) {
 }
 
 if (config.INSECURE_DEV_RETURN_CODE) console.warn("INSECURE_DEV_RETURN_CODE is on: codes are returned in responses");
-if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) startScheduler(chain, config.LEAGUE_ID);
+if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
+  const crowdKey = config.CROWD_PRIVATE_KEY;
+  const clubs = parseCrowd(config.CROWD, config.PARENT_ACCOUNT_ID);
+  startScheduler(chain, config.LEAGUE_ID, {
+    ...(crowdKey && clubs.length
+      ? { crowd: { clubs, every: config.CROWD_EVERY, asFan: (fan: string) => rpcChain(config.NEAR_RPC_URL, { accountId: fan, privateKey: crowdKey }) } }
+      : {}),
+    ...(config.KEEP_FUNDED
+      ? {
+          keep: {
+            contracts: config.KEEP_FUNDED.split(",").map((s) => s.trim()).filter(Boolean),
+            minFree: near(config.KEEP_MIN_FREE_NEAR),
+            topUp: near(config.KEEP_TOPUP_NEAR),
+          },
+        }
+      : {}),
+  });
+  console.log(`scheduler on${crowdKey && clubs.length ? `, crowd of ${clubs.reduce((n, c) => n + c.fans.length, 0)} fans` : ""}`);
+}
 
 serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   console.log(

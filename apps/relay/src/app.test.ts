@@ -4,7 +4,8 @@ import { createApp } from "./app.js";
 import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount } from "./auth.js";
 import { type Chain, near } from "./chain.js";
 import { loadConfig } from "./config.js";
-import { tick } from "./schedule.js";
+import { parseCrowd, seatedBy } from "./crowd.js";
+import { crowdTick, keepFunded, tick } from "./schedule.js";
 
 const PARENT = "near-post.testnet";
 
@@ -12,6 +13,7 @@ class FakeChain implements Chain {
   calls: string[] = [];
   accounts = new Map<string, { balance: bigint; keys: string[] }>();
   state: Record<string, unknown> = {};
+  refuse: string | null = null;
   async view<T>(contractId: string, method: string, args?: Record<string, unknown>) {
     this.calls.push(`view ${contractId}.${method}(${JSON.stringify(args ?? {})})`);
     if (method === "fail") throw new Error("rpc down");
@@ -22,6 +24,9 @@ class FakeChain implements Chain {
   }
   async hasKey(id: string, key: string) {
     return this.accounts.get(id)?.keys.includes(key) ?? false;
+  }
+  async freeBalance(id: string) {
+    return this.accounts.get(id)?.balance ?? null;
   }
   async createAccount(id: string, key: string, yocto: bigint) {
     this.calls.push(`create ${id}`);
@@ -35,6 +40,7 @@ class FakeChain implements Chain {
     return "tx-transfer";
   }
   async call(contractId: string, method: string) {
+    if (this.refuse) throw new Error(this.refuse);
     this.calls.push(`call ${contractId}.${method}`);
     return "tx-call";
   }
@@ -202,6 +208,56 @@ describe("match days", () => {
     expect(await tick(chain, "league", 999)).toBeNull();
     expect(await tick(chain, "league", 1000)).toBe("tx-call");
     expect(chain.calls.at(-1)).toBe("call league.play_match_day");
+  });
+});
+
+describe("demo crowd", () => {
+  const clubs = parseCrowd("rive-nord:5,port-lune:3", PARENT);
+
+  it("parses the crowd spec into club and fan accounts", () => {
+    expect(clubs[0]).toEqual({
+      club: "rive-nord.near-post.testnet",
+      fans: [1, 2, 3, 4, 5].map((n) => `rive-nord-f${n}.near-post.testnet`),
+    });
+    expect(() => parseCrowd("evil.club:2", PARENT)).toThrow();
+    expect(() => parseCrowd("ok:0", PARENT)).toThrow();
+  });
+
+  it("fans arrive through the day, all of them seated by 80%, none on off days", () => {
+    const day = 9;
+    const early = seatedBy(clubs[0]!, day, 0.1, 3);
+    const late = seatedBy(clubs[0]!, day, 0.8, 3);
+    expect(late.length).toBeGreaterThanOrEqual(early.length);
+    expect(early.every((f) => late.includes(f))).toBe(true);
+    expect(seatedBy(clubs[0]!, day, 1, 3)).toEqual(late);
+    expect(seatedBy(clubs[0]!, 10, 1, 3)).toEqual([]);
+  });
+
+  it("moods differ between clubs and days", () => {
+    const sizes = new Set<number>();
+    for (let d = 3; d <= 60; d += 3) sizes.add(seatedBy(parseCrowd("x:20", PARENT)[0]!, d, 1, 3).length);
+    expect(sizes.size).toBeGreaterThan(3);
+  });
+
+  it("seats each fan once per day, signed as that fan", async () => {
+    const chain = new FakeChain();
+    chain.state.schedule = { match_day: 9, next_match_at_ms: "1000", interval_ms: "1000" };
+    const fanChains = new Map<string, FakeChain>();
+    const asFan = (f: string) => fanChains.get(f) ?? (fanChains.set(f, new FakeChain()), fanChains.get(f)!);
+    const done = new Set<string>();
+    const first = await crowdTick(chain, asFan, "league", clubs, 3, done, 1000);
+    const again = await crowdTick(chain, asFan, "league", clubs, 3, done, 1000);
+    expect(first.length).toBeGreaterThan(0);
+    expect(again).toEqual([]);
+    for (const f of first) expect(fanChains.get(f)!.calls).toEqual(["call league.check_in"]);
+  });
+
+  it("tops up a contract whose free storage balance runs low", async () => {
+    const chain = new FakeChain();
+    chain.accounts.set("league", { balance: near("1"), keys: [] });
+    chain.accounts.set("players", { balance: near("9"), keys: [] });
+    expect(await keepFunded(chain, ["league", "players", "missing"], near("2"), near("5"))).toEqual(["league"]);
+    expect(chain.calls).toEqual([`transfer league ${near("5")}`]);
   });
 });
 

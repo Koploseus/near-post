@@ -8,7 +8,7 @@ const require = createRequire(new URL("../apps/relay/package.json", import.meta.
 const { Account, JsonRpcProvider, KeyPair } = require("near-api-js");
 
 const [keys, repo, version, intervalMs] = process.argv.slice(2);
-const provider = new JsonRpcProvider({ url: "https://rpc.testnet.near.org" });
+const provider = new JsonRpcProvider({ url: "https://test.rpc.fastnear.com" });
 const PARENT = "near-post.testnet";
 const near = (n) => BigInt(Math.round(n * 1000)) * 10n ** 21n;
 const load = (id) => JSON.parse(readFileSync(`${keys}/${id}.json`, "utf8"));

@@ -175,6 +175,7 @@ email codes and rate limits are in memory, and the scheduler plays match days.
 
 ```bash
 fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
+fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
 fly deploy
 ```
 
@@ -182,6 +183,14 @@ For the hackathon, `fly.toml` turns the email check off
 (`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.
 For real players, set it to `"false"`, and `EMAIL_MODE=resend` with a
 `RESEND_API_KEY` secret and a verified sending domain.
+
+The league on testnet has 8 fictional clubs paired as rivals, and a demo
+crowd of 26 fan accounts (`scripts/seed-demo.mjs`). The relay seats that
+crowd one match day in three: each club gets a mood for the day and each fan
+an arrival time, both from a hash of the day, so some tifos complete and
+others do not. A check-in stores about 180 bytes in the league; the relay
+tops up the contracts' storage balance from the parent (`KEEP_FUNDED`).
+These are ordinary transfers: no contract has an admin method.
 
 Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
 `X-Forwarded-For` entry, which a client can write.
