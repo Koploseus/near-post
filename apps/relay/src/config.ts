@@ -41,6 +41,11 @@ const Env = z.object({
    * can come from the client.
    */
   CLIENT_IP_HEADER: z.string().toLowerCase().default("x-forwarded-for"),
+  /**
+   * The drill attester: signs training scores the league accepts (its public
+   * key is fixed in the league at init). Secret.
+   */
+  ATTESTER_PRIVATE_KEY: z.string().startsWith("ed25519:").optional(),
   /** Demo crowd, "club:count,...": fan accounts <club>-f<n>.<parent> sharing CROWD_PRIVATE_KEY. */
   CROWD: z.string().optional(),
   CROWD_PRIVATE_KEY: z.string().startsWith("ed25519:").optional(),

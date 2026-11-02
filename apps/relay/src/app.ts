@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { PublicKey } from "near-api-js";
+import { KeyPair, PublicKey } from "near-api-js";
 import { z } from "zod";
 import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount, normalizeEmail } from "./auth.js";
 import { type Chain, near } from "./chain.js";
 import type { Config } from "./config.js";
+import { drill, duration, hits, implausible, points } from "./drill.js";
 
 const AccountId = z
   .string()
@@ -12,6 +13,17 @@ const AccountId = z
   .regex(/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/, "not a NEAR account id");
 
 const Start = z.object({ email: z.email().max(254) });
+const TokenId = z.string().regex(/^p\d{1,12}$/);
+const Attest = z.object({ token_id: TokenId, clicks: z.array(z.unknown()).max(60) });
+
+interface Ticket {
+  id: number;
+  token_id: string;
+  skill: "pace" | "shooting" | "passing" | "dribbling" | "defending" | "physical";
+  match_day: number;
+  seed: string;
+}
+
 const Verify = z.object({
   email: z.email().max(254),
   code: z.string().regex(/^\d{6}$/),
@@ -96,6 +108,65 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!topups.allow(id.data)) return c.json({ error: "too_many_topups" }, 429);
     const tx = await chain.transfer(id.data, funding);
     return c.json({ account_id: id.data, tx });
+  });
+
+  // ---- Training drill ----
+  //
+  // The league opens a ticket when a player pays for training. The browser
+  // tells the relay it starts the drill, plays it, and sends its clicks. The
+  // relay replays them against the ticket's seed, checks the drill really
+  // lasted, and signs the points; the player submits that signature to
+  // finish_training. One signature per ticket.
+
+  const attester = config.ATTESTER_PRIVATE_KEY ? KeyPair.fromString(config.ATTESTER_PRIVATE_KEY as `ed25519:${string}`) : null;
+  const started = new Map<number, number>();
+  const signed = new Set<number>();
+  const drillsByIp = new Limiter(30, 60 * 60_000, now);
+
+  async function openTicket(tokenId: string) {
+    const t = await chain.view<Ticket | null>(config.LEAGUE_ID!, "training_ticket", { token_id: tokenId });
+    if (!t) return null;
+    const p = await chain.view<{ skills: Record<Ticket["skill"], number> } | null>(config.LEAGUE_ID!, "get_player", { token_id: tokenId });
+    return p ? { ticket: t, level: p.skills[t.skill] } : null;
+  }
+
+  app.use("/v1/training/*", async (c, next) => {
+    if (!config.LEAGUE_ID || !attester) return c.json({ error: "training_not_available" }, 503);
+    if (!drillsByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    await next();
+  });
+
+  app.post("/v1/training/start", async (c) => {
+    const body = z.object({ token_id: TokenId }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    const open = await openTicket(body.data.token_id);
+    if (!open) return c.json({ error: "no_open_training" }, 404);
+    if (signed.has(open.ticket.id)) return c.json({ error: "already_attested" }, 409);
+    if (!started.has(open.ticket.id)) started.set(open.ticket.id, now());
+    return c.json({ ticket: open.ticket, level: open.level });
+  });
+
+  app.post("/v1/training/attest", async (c) => {
+    const body = Attest.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    const bad = implausible(body.data.clicks);
+    if (bad) return c.json({ error: "implausible", reason: bad }, 422);
+    const open = await openTicket(body.data.token_id);
+    if (!open) return c.json({ error: "no_open_training" }, 404);
+    const { ticket, level } = open;
+    if (signed.has(ticket.id)) return c.json({ error: "already_attested" }, 409);
+    const start = started.get(ticket.id);
+    const targets = drill(ticket.seed, level);
+    if (start === undefined || now() - start < duration(targets) - 500) {
+      return c.json({ error: "implausible", reason: "the drill did not last that long" }, 422);
+    }
+    signed.add(ticket.id);
+    started.delete(ticket.id);
+    const hit = hits(targets, body.data.clicks as Parameters<typeof hits>[1]);
+    const pts = points(hit);
+    const message = `near-post:train:${config.LEAGUE_ID}:${ticket.token_id}:${ticket.id}:${pts}`;
+    const signature = Buffer.from(attester!.sign(new TextEncoder().encode(message)).signature).toString("base64");
+    return c.json({ token_id: ticket.token_id, ticket: ticket.id, hits: hit, points: pts, signature });
   });
 
   // ---- League reads ----
