@@ -14,20 +14,15 @@ const near = (n) => BigInt(Math.round(n * 1000)) * 10n ** 21n;
 const load = (id) => JSON.parse(readFileSync(`${keys}/${id}.json`, "utf8"));
 const accountOf = (id) => new Account(id, provider, load(id).private_key);
 
-// Top up the parent from the relay account (both faucet-created).
-const relay = accountOf("near-post-relay.testnet");
 const parent = accountOf(PARENT);
-const parentBalance = BigInt((await provider.viewAccount({ accountId: PARENT })).amount);
-if (parentBalance < near(14)) {
-  const r = await relay.transfer({ receiverId: PARENT, amount: near(5) });
-  console.log("top-up parent", r.transaction.hash);
-}
 
+// NEAR per contract account: code storage (1 NEAR per 100 kB) plus room for
+// state. Players also pays storage for every NFT it mints.
 const plan = [
-  ["league", 3.2],
-  ["goalars", 2.2],
-  ["players", 2.8],
-  ["items", 1.9],
+  ["league", 4.0],
+  ["goalars", 2.0],
+  ["players", 3.6],
+  ["items", 1.8],
 ];
 const manifest = { network: "testnet", version, deployed_at: new Date().toISOString(), contracts: {} };
 for (const [name, fund] of plan) {

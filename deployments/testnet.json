@@ -1,31 +1,31 @@
 {
   "network": "testnet",
-  "version": "v1",
-  "deployed_at": "2026-11-01T21:43:45.173Z",
+  "version": "v2",
+  "deployed_at": "2026-11-02T09:19:26.181Z",
   "contracts": {
     "league": {
-      "account_id": "league-v1.near-post.testnet",
-      "wasm_sha256": "652cca45cfa1fa9ff8c1c97c0720bba10ceb4e04dbe2a826db5b6c44b9f62daa",
-      "deploy_tx": "C4qPooTgUBnRfzJ8HPF24CWs3Nb9CwFQjssngzgkrNzJ",
-      "init_tx": "6j7Y1KoXxt1APUu6oYEktyt21RsZjj72JVTsnFs1ABX6"
+      "account_id": "league-v2.near-post.testnet",
+      "wasm_sha256": "8d303c95830de739156e7627af839721a9357e0916701bd6174a377feae760da",
+      "deploy_tx": "DuHP6JV13cJRh8MCenyTrFi48mZgXVwW2smsUFy8Y66U",
+      "init_tx": "FafYUXY7MByRS2Cp71Rx7ZrFaHsUxUudyrhchDk5AAfF"
     },
     "goalars": {
-      "account_id": "goalars-v1.near-post.testnet",
-      "wasm_sha256": "feca54f200139603fa874b675808d616fe283562d3ecfa2f54ede46b6ac78596",
-      "deploy_tx": "3gNKQnkGyAnqfPrKssmWM2GDp1oKJdF8s87qwa5sqzH7",
-      "init_tx": "HBvvLzn7jr34i8nKjmxSphwfWCWdMywuGDgh1Ub3MdQA"
+      "account_id": "goalars-v2.near-post.testnet",
+      "wasm_sha256": "43a1787022ed40db1c0b2fdb6d75e9d301aa2f2f7d9f3f6c9870c41405b7679b",
+      "deploy_tx": "HZdKJ2U6JChY5UMaWeiw67Rd48ugNLR4BUeHtXJjews9",
+      "init_tx": "FTg2BL7tX9kMAk3M4Br66GAw59CCHhYP419PDmV6kdgf"
     },
     "players": {
-      "account_id": "players-v1.near-post.testnet",
-      "wasm_sha256": "1d281348d894e3a78cc4e4627199a935005a3c6af71ac6ffe84c52349eb3cb4c",
-      "deploy_tx": "B865BX2MouATfZzjigc5JqUciZrUF3tTHdQY8AcQtHRY",
-      "init_tx": "9bnVpNiZJNch5r9oos1T33BhTbcaL4MfnqVLfMZKcfda"
+      "account_id": "players-v2.near-post.testnet",
+      "wasm_sha256": "71bfbb49299251073577dbe363ebc976de061aff6721134746f46c9666be1256",
+      "deploy_tx": "GmzPmbTh8p185ZY89tUimXZ9D2XPqEzXVNnSx6zgQ1cg",
+      "init_tx": "FVctjBy17hvqhtySTUcLb47SWNz59WCcg7mvDQcnp6cg"
     },
     "items": {
-      "account_id": "items-v1.near-post.testnet",
+      "account_id": "items-v2.near-post.testnet",
       "wasm_sha256": "418c1b2ace81c011ddc27658cd5153d56335b6f105e37b234c807a99c73ba603",
-      "deploy_tx": "EXQbgr2LoyU8ryqGgVJbvSYfieGmxRSuMYMiEwf1rNpV",
-      "init_tx": "k7SXL7z7iqiQRWNkNE1SpaGrEcVZi1pkQacVy5fGtKN"
+      "deploy_tx": "4EtE9Qjiycyaa467tQjHt9L1Mk8R2hgtBQSR9nQk4uX1",
+      "init_tx": "Lu5kDw874aqsZbTNWwEKBVntQqc6619r7qXHUaDo6RG"
     }
   }
 }
