@@ -47,7 +47,7 @@ async function relay<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
-export const startSignIn = (email: string) => relay<{ sent: boolean; account_id: string }>("/v1/auth/start", { email });
+export const startSignIn = (email: string) => relay<{ sent: boolean; account_id: string; code?: string }>("/v1/auth/start", { email });
 
 /**
  * Finishes sign-in: a new key pair is made here; the relay creates the account

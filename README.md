@@ -175,9 +175,13 @@ email codes and rate limits are in memory, and the scheduler plays match days.
 
 ```bash
 fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
-fly secrets set EMAIL_MODE=resend RESEND_API_KEY=...   # real emails; "console" only logs the codes
 fly deploy
 ```
+
+For the hackathon, `fly.toml` turns the email check off
+(`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.
+For real players, set it to `"false"`, and `EMAIL_MODE=resend` with a
+`RESEND_API_KEY` secret and a verified sending domain.
 
 Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
 `X-Forwarded-For` entry, which a client can write.
