@@ -1,40 +1,38 @@
-# NEAR Post relay + web app on Fly.io.
-# Secrets (never here): fly secrets set PARENT_PRIVATE_KEY=... RESEND_API_KEY=...
-app = "near-post"
-primary_region = "cdg"
+# fly.toml app configuration file generated for near-post on 2026-11-02T11:30:38Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'near-post'
+primary_region = 'cdg'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  NEAR_NETWORK = "testnet"
-  NEAR_RPC_URL = "https://rpc.testnet.near.org"
-  LEAGUE_ID = "league-v3.near-post.testnet"
-  PARENT_ACCOUNT_ID = "near-post.testnet"
-  EMAIL_MODE = "console"
-  PLAY_MATCH_DAYS = "true"
-  CLIENT_IP_HEADER = "fly-client-ip"
-  # Hackathon demo: no email check. The relay returns the code and the web app
-  # signs in at once, so anyone can open an account with any email address.
-  # Rate limits still apply. Set to "false" with EMAIL_MODE = "resend" for real.
-  INSECURE_DEV_RETURN_CODE = "true"
+  CLIENT_IP_HEADER = 'fly-client-ip'
+  EMAIL_MODE = 'console'
+  INSECURE_DEV_RETURN_CODE = 'true'
+  LEAGUE_ID = 'league-v3.near-post.testnet'
+  NEAR_NETWORK = 'testnet'
+  NEAR_RPC_URL = 'https://rpc.testnet.near.org'
+  PARENT_ACCOUNT_ID = 'near-post.testnet'
+  PLAY_MATCH_DAYS = 'true'
 
-# One machine, always on: email codes and rate limits live in memory, and the
-# scheduler plays match days.
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
-[[http_service.checks]]
-  grace_period = "10s"
-  interval = "30s"
-  method = "GET"
-  timeout = "5s"
-  path = "/health"
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
