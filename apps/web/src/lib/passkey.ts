@@ -46,28 +46,41 @@ async function aesKey(prf: ArrayBuffer): Promise<CryptoKey> {
   );
 }
 
-/** Asks the passkey for its PRF secret for `salt` (one prompt). */
-async function prfSecret(ids: { id: string; salt: string }[]): Promise<{ id: string; secret: ArrayBuffer }> {
-  const evalByCredential: Record<string, { first: Uint8Array }> = {};
-  for (const x of ids) evalByCredential[x.id] = { first: fromB64u(x.salt) };
+/** One PRF input per account: the same for all its passkeys, so a plain `eval` works everywhere. */
+async function accountSalt(accountId: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`near-post prf v1:${accountId}`)));
+}
+
+/**
+ * Asks the passkey for its PRF secret (one prompt). With one salt for all,
+ * a plain `eval` (what every browser supports); older backups with their
+ * own salts need `evalByCredential`.
+ */
+async function prfSecret(ids: { id: string; salt: string }[]): Promise<{ id: string; secret: ArrayBuffer | null }> {
+  const same = ids.every((x) => x.salt === ids[0]!.salt);
+  const prf = same
+    ? { eval: { first: fromB64u(ids[0]!.salt) } }
+    : { evalByCredential: Object.fromEntries(ids.map((x) => [x.id, { first: fromB64u(x.salt) }])) };
   const a = (await navigator.credentials.get({
     publicKey: {
       challenge: random(32),
       rpId: location.hostname,
       allowCredentials: ids.map((x) => ({ type: "public-key" as const, id: fromB64u(x.id) })),
       userVerification: "required",
-      extensions: { prf: { evalByCredential } } as AuthenticationExtensionsClientInputs,
+      extensions: { prf } as AuthenticationExtensionsClientInputs,
     },
   })) as PublicKeyCredential | null;
-  const secret = a ? prfOf(a)?.results?.first : undefined;
-  if (!a || !secret) throw new Error("This passkey doesn't work on this device.");
-  return { id: b64u(a.rawId), secret };
+  if (!a) throw new Error("Cancelled.");
+  return { id: b64u(a.rawId), secret: prfOf(a)?.results?.first ?? null };
 }
+
+/** The passkey worked, but its provider cannot do this (e.g. a browser profile or some password managers). */
+const NO_PRF = "This passkey can't be used to sign in elsewhere. Save it in iCloud Keychain or Google Password Manager.";
 
 /** Creates a passkey for this site and stores the key, encrypted by it, with the relay. */
 export async function saveWithPasskey(s: Session, label: string): Promise<void> {
   if (!passkeysAvailable()) throw new Error("This browser has no passkeys.");
-  const salt = random(32);
+  const salt = await accountSalt(s.accountId);
   const cred = (await navigator.credentials.create({
     publicKey: {
       rp: { name: "NEAR Post", id: location.hostname },
@@ -84,11 +97,12 @@ export async function saveWithPasskey(s: Session, label: string): Promise<void> 
   if (!cred) throw new Error("No passkey was created.");
   const id = b64u(cred.rawId);
   // Some platforms only say PRF is on at creation: ask once more to get the secret.
-  let secret = prfOf(cred)?.results?.first;
+  let secret: ArrayBuffer | null = prfOf(cred)?.results?.first ?? null;
   if (!secret) {
-    if (prfOf(cred)?.enabled === false) throw new Error("Passkeys aren't supported on this device.");
+    if (prfOf(cred)?.enabled === false) throw new Error(NO_PRF);
     secret = (await prfSecret([{ id, salt: b64u(salt) }])).secret;
   }
+  if (!secret) throw new Error(NO_PRF);
   const iv = random(12);
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: enc.encode(s.accountId) }, await aesKey(secret), enc.encode(s.privateKey));
   const entry: Backup = { credential_id: id, salt: b64u(salt), iv: b64u(iv), ciphertext: b64u(ciphertext) };
@@ -108,6 +122,7 @@ export async function unlockWithPasskey(accountId: string, backups: Backup[]): P
   const { id, secret } = await prfSecret(backups.map((b) => ({ id: b.credential_id, salt: b.salt })));
   const b = backups.find((x) => x.credential_id === id);
   if (!b) throw new Error("This passkey doesn't match this account.");
+  if (!secret) throw new Error("This passkey can't sign you in on this browser. Try Safari on Apple devices, or Chrome.");
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: fromB64u(b.iv), additionalData: enc.encode(accountId) },
     await aesKey(secret),
