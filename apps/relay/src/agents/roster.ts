@@ -15,6 +15,8 @@ export interface CoachAgent {
   account: string;
   name: string;
   style: Style;
+  /** The name he gives his club. */
+  clubName: string;
 }
 export interface FootballerAgent {
   kind: "footballer";
@@ -29,7 +31,7 @@ export type Agent = CoachAgent | FootballerAgent;
 
 export function roster(parent: string): Agent[] {
   return [
-    ...COACHES.map((c): CoachAgent => ({ kind: "coach", account: `${c.club}.${parent}`, name: c.name, style: c.style })),
+    ...COACHES.map((c): CoachAgent => ({ kind: "coach", account: `${c.club}.${parent}`, name: c.name, style: c.style, clubName: c.club_name })),
     ...FOOTBALLERS.map(
       (f): FootballerAgent => ({
         kind: "footballer",

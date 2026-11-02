@@ -34,6 +34,7 @@ function world(firstHalfPlayed = false) {
   const ai: LeaguePlayer = { ...ours[9]!, token_id: "p900", controller: AI, name: "Remi Corbin" };
   ours[9] = ai;
   const calls: { signer: string; contract: string; method: string; args: Record<string, unknown> }[] = [];
+  let clubName = "Olympique Rive Nord";
   const views: Record<string, (a: Record<string, unknown>) => unknown> = {
     schedule: () => ({ match_day: 3, first_half_played: firstHalfPlayed }),
     table: () => [
@@ -41,6 +42,7 @@ function world(firstHalfPlayed = false) {
       { name: EVIL, manager: HUMAN, division: 1, treasury: G(1_000_000), points: 9 },
     ],
     fixtures_of: () => [[COACH, HUMAN]],
+    get_club: (a) => (a.club_id === COACH ? { name: clubName, manager: COACH, division: 1, treasury: G(20_000_000), points: 6 } : null),
     results: () => [{ home: COACH, away: HUMAN, home_goals: 0, away_goals: 1 }],
     squad: (a) => (a.account_id === COACH ? ours : theirs),
     lineup: () => ({ formation: "4-4-2" }),
@@ -67,7 +69,11 @@ function world(firstHalfPlayed = false) {
     createAccount: async () => "tx",
     transfer: async () => "tx",
     relay: async () => ({ hash: "tx", value: null, error: null }),
-    call: async (contract, method, args) => (calls.push({ signer, contract, method, args }), `tx-${calls.length}`),
+    call: async (contract, method, args) => {
+      if (method === "rename_club") clubName = String(args.name);
+      calls.push({ signer, contract, method, args });
+      return `tx-${calls.length}`;
+    },
     callChecked: async (contract, method, args) => (calls.push({ signer, contract, method, args }), `tx-${calls.length}`),
   });
   const agents = roster(P).filter((a) => a.account === COACH || a.account === AI);
@@ -98,6 +104,7 @@ const ALLOWED = new Set([
   "equip",
   "nft_transfer",
   "create_footballer",
+  "rename_club",
 ]);
 
 const run = async (w: ReturnType<typeof world>, ask: Ask) => {
@@ -142,7 +149,8 @@ describe("agents runner", () => {
     expect(by("report_for_match")[0]!.signer).toBe(AI);
     expect(by("vote_strategy")[0]!.args).toEqual({ strategy: "attack" });
     expect(by("vote_captain")[0]!.args).toEqual({ candidate: "p900" });
-    expect(journal.feed(10).map((e) => e.kind).sort()).toEqual(["day", "market", "tactic"]);
+    expect(by("rename_club")).toEqual([{ signer: COACH, contract: "league", method: "rename_club", args: { name: "Northbank Rovers" } }]);
+    expect(journal.feed(10).map((e) => e.kind).sort()).toEqual(["day", "market", "setup", "tactic"]);
 
     // Done once: a second look does nothing more.
     const before = w.calls.length;

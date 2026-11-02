@@ -217,6 +217,32 @@ fn a_twenty_club_division_meets_everyone_once_a_season() {
 }
 
 #[test]
+fn a_manager_renames_his_club_and_nobody_else_can() {
+    let mut l = league();
+    as_caller("koplo.testnet");
+    l.create_club("Olympique Rive Nord".into());
+    l.rename_club("  Northbank Rovers ".into());
+    assert_eq!(
+        l.get_club(acc("koplo.testnet")).unwrap().name,
+        "Northbank Rovers"
+    );
+    as_caller("someone.testnet");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        l.rename_club("Mine now".into())
+    }));
+    assert!(r.is_err());
+    as_caller("koplo.testnet");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        l.rename_club("x".repeat(33))
+    }));
+    assert!(r.is_err());
+    assert_eq!(
+        l.get_club(acc("koplo.testnet")).unwrap().name,
+        "Northbank Rovers"
+    );
+}
+
+#[test]
 #[should_panic(expected = "you already manage a club")]
 fn no_second_club() {
     let mut l = league();

@@ -5,9 +5,11 @@
   "contracts": {
     "league": {
       "account_id": "league-v6.near-post.testnet",
-      "wasm_sha256": "44fdf955dbac236f55a5159ac538cf8a1563b5b0a641f7fcaeb9afdc56f79c81",
-      "deploy_tx": "HuYRmBkcq6xmr5UqTLoS2MNH4iK4RcsE54B3b2MNXRNY",
-      "init_tx": "6dZYNkt4zouPxcmmQksm8fGnvQvEVqQqrABTsApgiwdZ"
+      "wasm_sha256": "79a80b404991b5fbe85b02b34e57f317b4765befc47b909b903922c38705ba26",
+      "deploy_tx": "524ruSFCFXkGQ4v6tx1wS88s9LcicmmTHaT2mmQyZ9vV",
+      "init_tx": "6dZYNkt4zouPxcmmQksm8fGnvQvEVqQqrABTsApgiwdZ",
+      "redeployed_at": "2026-11-02T23:34:26.359Z",
+      "note": "Code redeployed on the same account (state unchanged): adds rename_club."
     },
     "goalars": {
       "account_id": "goalars-v6.near-post.testnet",

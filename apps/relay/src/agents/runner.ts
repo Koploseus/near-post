@@ -82,6 +82,8 @@ const APPROVAL_DEPOSIT = 10n ** 22n; // 0.01 NEAR, the approval's storage
 const LOW_NEAR = near("0.1");
 const TOP_UP_NEAR = near("0.2");
 const STALE_BID_DAYS = 3;
+/** A player's earnings are collected from 50k G (fewer transactions). */
+const CLAIM_FROM = 50_000n * ONE_G;
 
 const whole = (v: string | bigint) => Number(BigInt(v) / ONE_G);
 
@@ -89,6 +91,8 @@ export class Agents {
   private coaches: CoachAgent[];
   private footballers: FootballerAgent[];
   private cantSign = new Set<string>();
+  /** Bids made in this run, by day and player (the journal's offers are read at the start of the day). */
+  private bidsToday = new Map<string, number>();
   private topUps = new Map<string, number>();
 
   constructor(
@@ -166,6 +170,13 @@ export class Agents {
           console.error(`agents: ${a.account} has no agent key (run scripts/agents-keys.mjs); it sits out`);
           continue;
         }
+        if (a.kind === "coach") {
+          const club = await this.league<Club | null>("get_club", { club_id: a.account });
+          if (club && club.name !== a.clubName) {
+            const tx = await this.d.as(a).call(this.d.leagueId, "rename_club", { name: a.clubName }, 30);
+            this.log(a, 0, "setup", { acts: [{ what: "renamed", name: a.clubName }], txs: [tx], quote: "" });
+          }
+        }
         if (a.kind === "footballer") {
           const fb = await this.league<LeaguePlayer | null>("footballer_of", { account_id: a.account });
           if (!fb) {
@@ -226,7 +237,7 @@ export class Agents {
     if (owed > 0n) await this.act(c, out, () => me.call(this.d.leagueId, "collect", {}, 50), { what: "collected" });
     const squad = await this.squad(ctx, c.account);
     for (const p of squad as LeaguePlayer[]) {
-      if (p.controller === null && (BigInt(p.wallet) > 0n || BigInt(p.salary) > 0n)) {
+      if (p.controller === null && BigInt(p.wallet) + BigInt(p.salary) >= CLAIM_FROM) {
         await this.act(c, out, () => me.call(this.d.leagueId, "claim_player", { token_id: p.token_id }, 60), { what: "collected" });
       }
     }
@@ -241,6 +252,12 @@ export class Agents {
     const received = (await Promise.all(squad.map((p) => this.league<Offer[]>("offers_for", { token_id: p.token_id })))).flat();
     const others = await this.others(ctx, c.account);
     const bidding = new Set(offers.filter((o) => o.buyer === c.account && o.state === "Open").map((o) => o.token_id));
+    const contested = new Map<string, number>();
+    for (const o of offers) if (o.buyer !== c.account && o.state === "Open") contested.set(o.token_id, (contested.get(o.token_id) ?? 0) + 1);
+    for (const [k, n] of this.bidsToday) {
+      const [d, token] = k.split(":");
+      if (Number(d) === ctx.day && !bidding.has(token!)) contested.set(token!, (contested.get(token!) ?? 0) + n);
+    }
     const wallet = BigInt(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: c.account }));
     const formation = (await this.lineup(ctx, c.account)).formation;
     const s = marketSituation({
@@ -252,6 +269,7 @@ export class Agents {
       offers: received,
       others,
       bidding,
+      contested,
       market: this.marketData(ctx.day),
       table: { position: this.rank(ctx, c.account), clubs: this.divisionSize(ctx, c.account) },
     });
@@ -278,6 +296,8 @@ export class Agents {
             me.callChecked!(this.d.goalarsId, "ft_transfer_call", { receiver_id: this.d.leagueId, amount: amount.toString(), msg: JSON.stringify({ bid: buy.token_id }) }, 100, ONE_YOCTO),
           { what: "bid", token_id: buy.token_id, price: d.decision.buy.price },
         );
+        const k = `${ctx.day}:${buy.token_id}`;
+        this.bidsToday.set(k, (this.bidsToday.get(k) ?? 0) + 1);
       } else out.errors!.push("not enough G in the wallet yet");
     }
     this.log(c, ctx.day, "market", { ...out, source: d.source, refused: d.refused, evidence: d.evidence });
@@ -297,7 +317,7 @@ export class Agents {
       const reported = await this.league<boolean>("is_reported", { token_id: fb.token_id, match_day: ctx.day });
       if (!reported) await this.act(f, out, () => me.call(this.d.leagueId, "report_for_match", {}, 30), { what: "reported" });
     }
-    if (BigInt(fb.wallet) > 0n || BigInt(fb.salary) > 0n) {
+    if (BigInt(fb.wallet) + BigInt(fb.salary) >= CLAIM_FROM) {
       await this.act(f, out, () => me.call(this.d.leagueId, "claim_player", { token_id: fb.token_id }, 60), { what: "collected" });
     }
     const rules = await this.league<{ pack_price: string; week_length: number }>("rules");
@@ -581,7 +601,7 @@ export class Agents {
 
   private async pool<T>(items: T[], run: (x: T) => Promise<void>) {
     const queue = [...items];
-    const n = Math.max(1, this.d.concurrency ?? 4);
+    const n = Math.max(1, this.d.concurrency ?? 2);
     await Promise.all(
       Array.from({ length: Math.min(n, queue.length) }, async () => {
         for (let x = queue.shift(); x !== undefined; x = queue.shift()) await run(x);

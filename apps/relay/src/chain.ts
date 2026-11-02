@@ -20,6 +20,9 @@ export interface Chain {
 
 export const near = (amount: string): bigint => BigInt(nearToYocto(amount as `${number}`));
 
+/** The RPC says the account (or key) does not exist, as opposed to an error (rate limit, network). */
+const missing = (e: unknown) => /does not exist|UNKNOWN_ACCOUNT|UNKNOWN_ACCESS_KEY|doesn't exist/i.test(e instanceof Error ? `${e.name} ${e.message}` : String(e));
+
 export function rpcChain(url: string, signer?: { accountId: string; privateKey: string }): Chain {
   const provider = new JsonRpcProvider({ url });
   const parent = () => {
@@ -34,24 +37,27 @@ export function rpcChain(url: string, signer?: { accountId: string; privateKey: 
       try {
         const a = await provider.viewAccount({ accountId });
         return BigInt(a.amount) - BigInt(a.locked ?? 0);
-      } catch {
-        return null;
+      } catch (e) {
+        if (missing(e)) return null;
+        throw e;
       }
     },
     async freeBalance(accountId) {
       try {
         const a = await provider.viewAccount({ accountId });
         return BigInt(a.amount) - BigInt(a.storage_usage) * 10n ** 19n;
-      } catch {
-        return null;
+      } catch (e) {
+        if (missing(e)) return null;
+        throw e;
       }
     },
     async hasKey(accountId, publicKey) {
       try {
         await provider.viewAccessKey({ accountId, publicKey });
         return true;
-      } catch {
-        return false;
+      } catch (e) {
+        if (missing(e)) return false;
+        throw e;
       }
     },
     async createAccount(accountId, publicKey, yocto) {

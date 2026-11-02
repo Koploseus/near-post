@@ -26,6 +26,9 @@ describe("club names", () => {
   it("drops the prefix people do not say", () => {
     expect(clubName("FC Port-Lune")).toBe("Port-Lune");
     expect(clubName("Stade des Marais")).toBe("Marais");
+    expect(clubName("Moonhaven FC")).toBe("Moonhaven");
+    expect(clubName("Northbank Rovers")).toBe("Northbank Rovers");
+    expect(clubName("FC")).toBe("FC");
     expect(clubName("Olympique Rive Nord")).toBe("Rive Nord");
     expect(clubName("Sporting Val-d'Ombre")).toBe("Val-d'Ombre");
     expect(clubName("Les Canaris")).toBe("Les Canaris");

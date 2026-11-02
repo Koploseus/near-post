@@ -20,7 +20,8 @@ export type Act =
   | { what: "joined"; club: string; price: number }
   | { what: "reported" }
   | { what: "collected" }
-  | { what: "created"; token_id?: string };
+  | { what: "created"; token_id?: string }
+  | { what: "renamed"; name: string };
 
 export interface Entry {
   at: number;

@@ -10,6 +10,7 @@ import { Journal } from "./agents/journal.js";
 import { askWith } from "./agents/minds.js";
 import { agentKey, roster } from "./agents/roster.js";
 import { Agents } from "./agents/runner.js";
+import { Limiter, throttle } from "./agents/throttle.js";
 import { Kickoffs, startScheduler } from "./schedule.js";
 import { Vaults } from "./vault.js";
 
@@ -60,10 +61,12 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
 if (agents && config.AGENTS_SEED) {
   const seed = config.AGENTS_SEED;
   const brain = config.NEAR_AI_API_KEY ? { url: config.NEAR_AI_URL, key: config.NEAR_AI_API_KEY, model: config.NEAR_AI_MODEL } : null;
+  // One budget of RPC requests for all agents, so the scheduler keeps its share.
+  const limiter = new Limiter(config.AGENTS_RPS);
   const runner = new Agents(
     {
-      chain,
-      as: (a) => rpcChain(config.NEAR_RPC_URL, { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey }),
+      chain: throttle(chain, limiter),
+      as: (a) => throttle(rpcChain(config.NEAR_RPC_URL, { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey }), limiter),
       publicKeyOf: (a) => agentKey(seed, a.account).publicKey,
       leagueId: config.LEAGUE_ID!,
       goalarsId: config.GOALARS_ID!,

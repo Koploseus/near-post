@@ -67,6 +67,8 @@ const Env = z.object({
    */
   AGENTS_SEED: z.string().min(32).optional(),
   AGENTS_EVERY_MS: z.coerce.number().int().min(1000).default(15_000),
+  /** RPC requests a second the agents may make, all together. */
+  AGENTS_RPS: z.coerce.number().positive().default(4),
   /** NEAR AI Cloud (OpenAI-compatible). Without a key the agents follow their rules only. */
   NEAR_AI_API_KEY: z.string().startsWith("sk-").optional(),
   NEAR_AI_URL: z.url().default("https://cloud-api.near.ai/v1"),

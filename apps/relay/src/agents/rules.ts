@@ -61,36 +61,38 @@ export type Style = "builder" | "gambler" | "careful" | "tactician";
 export interface Coach {
   /** Account prefix of the club (under the parent account). */
   club: string;
+  /** The club's name (the coach renames it if it differs). */
+  club_name: string;
   name: string;
   style: Style;
 }
 
-/** Fictional coaches of the fictional clubs (see scripts/seed-demo.mjs). */
+/** Fictional coaches of the fictional clubs (see scripts/seed-demo.mjs), and the club names they give them. */
 export const COACHES: Coach[] = [
-  { club: "rive-nord", name: "Lucien Varenne", style: "gambler" },
-  { club: "port-lune", name: "Odile Marchal", style: "builder" },
-  { club: "pont-levant", name: "Bastien Corlay", style: "tactician" },
-  { club: "haute-ville", name: "Helene Rouviere", style: "careful" },
-  { club: "marais", name: "Gaston Pellerin", style: "careful" },
-  { club: "vieux-phare", name: "Yvonne Kerbrat", style: "gambler" },
-  { club: "saint-cendre", name: "Aurele Fontanet", style: "builder" },
-  { club: "cote-rouge", name: "Mathis Delorge", style: "tactician" },
-  { club: "val-ombre", name: "Suzanne Ardouin", style: "tactician" },
-  { club: "pierrefeu", name: "Firmin Lacoste-Vey", style: "gambler" },
-  { club: "docks", name: "Rosalie Tessandier", style: "careful" },
-  { club: "clairbois", name: "Anatole Brivet", style: "builder" },
-  { club: "mont-gris", name: "Colette Ravaud", style: "careful" },
-  { club: "bellerive", name: "Edmond Sauvaget", style: "gambler" },
-  { club: "lavandier", name: "Ines Marouzeau", style: "builder" },
-  { club: "bois-joli", name: "Prosper Callens", style: "tactician" },
-  { club: "fontaine-rouge", name: "Mireille Dussaud", style: "gambler" },
-  { club: "quais", name: "Hector Lemarquis", style: "careful" },
-  { club: "hautes-herbes", name: "Clemence Vautrin", style: "builder" },
-  { club: "rocheblanche", name: "Achille Fervaques", style: "tactician" },
-  { club: "grand-pre", name: "Leonie Castagnol", style: "careful" },
-  { club: "tour-neuve", name: "Baptiste Ormesson-Ley", style: "gambler" },
-  { club: "maree-basse", name: "Josephine Arlanc", style: "builder" },
-  { club: "lune-rousse", name: "Valentin Desgranges", style: "tactician" },
+  { club: "rive-nord", club_name: "Northbank Rovers", name: "Arthur Penhale", style: "gambler" },
+  { club: "port-lune", club_name: "Moonhaven FC", name: "Edith Calloway", style: "builder" },
+  { club: "pont-levant", club_name: "Drawbridge Athletic", name: "Rupert Hollins", style: "tactician" },
+  { club: "haute-ville", club_name: "Highcastle City", name: "Margaret Thornbury", style: "careful" },
+  { club: "marais", club_name: "Marshwick Town", name: "Douglas Fenwright", style: "careful" },
+  { club: "vieux-phare", club_name: "Lanternpoint FC", name: "Agnes Kilbride", style: "gambler" },
+  { club: "saint-cendre", club_name: "St Cinder Albion", name: "Cecil Ashcombe", style: "builder" },
+  { club: "cote-rouge", club_name: "Redcliff Wanderers", name: "Harriet Dunmore", style: "tactician" },
+  { club: "val-ombre", club_name: "Shadowvale Sporting", name: "Winifred Lockyer", style: "tactician" },
+  { club: "pierrefeu", club_name: "Emberstone AFC", name: "Bertram Quayle", style: "gambler" },
+  { club: "docks", club_name: "Dockside Stars", name: "Florence Pengelly", style: "careful" },
+  { club: "clairbois", club_name: "Brightwood FC", name: "Oswald Tremayne", style: "builder" },
+  { club: "mont-gris", club_name: "Greymount Olympic", name: "Mabel Strickland", style: "careful" },
+  { club: "bellerive", club_name: "Fairbank Rangers", name: "Horace Wetherby", style: "gambler" },
+  { club: "lavandier", club_name: "Lavenmere FC", name: "Imogen Ashdown", style: "builder" },
+  { club: "bois-joli", club_name: "Bramblewood Racing", name: "Percival Croft", style: "tactician" },
+  { club: "fontaine-rouge", club_name: "Redwell Athletic", name: "Dorothy Halloran", style: "gambler" },
+  { club: "quais", club_name: "Quayside Union", name: "Neville Ormsby", style: "careful" },
+  { club: "hautes-herbes", club_name: "Tallgrass Town", name: "Beatrice Carrow", style: "builder" },
+  { club: "rocheblanche", club_name: "Chalkstone Rovers", name: "Ambrose Leckie", style: "tactician" },
+  { club: "grand-pre", club_name: "Meadowmere SC", name: "Constance Pryor", style: "careful" },
+  { club: "tour-neuve", club_name: "Newtower Athletic", name: "Reginald Burrows", style: "gambler" },
+  { club: "maree-basse", club_name: "Lowtide FC", name: "Philippa Tanner", style: "builder" },
+  { club: "lune-rousse", club_name: "Copper Moon FC", name: "Lionel Ashworth", style: "tactician" },
 ];
 
 /** How each style handles money. Shares of the wallet, ratios of the reference price. */
@@ -297,10 +299,13 @@ export function marketSituation(args: {
   others: Player[];
   /** Players the club already bid on. */
   bidding: Set<string>;
+  /** Open bids by other clubs, by player: a coach does not join a crowd (a gambler joins one rival at most). */
+  contested?: Map<string, number>;
   market: Market;
   table: MarketSituation["table"];
 }): MarketSituation {
   const { style, club, wallet, squad, formation, offers, others, bidding, market, table } = args;
+  const rivals = (token: string) => args.contested?.get(token) ?? 0;
   const money = MONEY[style];
   const starters = new Set(eleven(squad, formation).filter((p): p is Player => !!p).map((p) => p.token_id));
   const broke = wallet < money.reserve;
@@ -328,7 +333,7 @@ export function marketSituation(args: {
   const buys: BuyOption[] = broke
     ? []
     : others
-        .filter((p) => p.owner !== club && !bidding.has(p.token_id))
+        .filter((p) => p.owner !== club && !bidding.has(p.token_id) && rivals(p.token_id) < (style === "gambler" ? 2 : 1))
         .map((p) => {
           const mine = squad.filter((x) => x.position === p.position && starters.has(x.token_id));
           const worst = mine.length ? Math.min(...mine.map((x) => x.overall)) : 0;
@@ -477,14 +482,16 @@ export interface Footballer {
 
 /** Fictional footballers: two per fictional club, and four free agents anyone can sign. */
 export const FOOTBALLERS: Footballer[] = (() => {
-  const first = ["Remi", "Noa", "Ilan", "Sacha", "Theo", "Elias", "Malo", "Aaron", "Yanis", "Lino", "Oscar", "Nael", "Gabin", "Mael", "Timeo", "Ewen"];
-  const last = ["Corbin", "Lestrade", "Vallon", "Duperray", "Mazelle", "Fourcade", "Brunel", "Kervella", "Sorel", "Garance", "Tavernier", "Moulard", "Belcour", "Rivolier"];
+  const first = ["Jack", "Harry", "Alfie", "Charlie", "George", "Freddie", "Archie", "Oliver", "Toby", "Reggie", "Jamie", "Callum", "Ronnie", "Billy", "Danny", "Kieran"];
+  const last = ["Hartley", "Pemberton", "Ashby", "Rowntree", "Gallagher", "Whitlock", "Barraclough", "Fenn", "Holloway", "Marsden", "Crabtree", "Ellery", "Thwaite", "Brackley"];
   const characters: Character[] = ["leader", "showman", "loyal", "mercenary"];
   const positions: Position[] = ["Fw", "Mf", "Df", "Fw", "Mf", "Gk"];
   const out: Footballer[] = [];
   const clubs = [...COACHES.map((c) => c.club), ...COACHES.map((c) => c.club), null, null, null, null];
+  // Already on chain before the names went English (a footballer's name is in his NFT): French imports.
+  const signed: Record<number, string> = { 0: "Remi Duperray", 1: "Noa Sorel", 24: "Yanis Moulard", 48: "Remi Fourcade" };
   clubs.forEach((club, i) => {
-    const name = `${first[i % first.length]} ${last[(i * 5 + 3) % last.length]}`;
+    const name = signed[i] ?? `${first[i % first.length]} ${last[(i * 5 + 3) % last.length]}`;
     out.push({ id: `ai-${i + 1}`, name, position: positions[i % positions.length]!, character: characters[(i * 3 + 1) % 4]!, starts_at: club });
   });
   return out;
