@@ -8,8 +8,8 @@
  * it harder as the skill rises; the score depends only on the click times
  * and places, so the relay can replay it exactly.
  *
- * - Penalties (shooting, physical): ten kicks. Click a spot in the goal; the
- *   keeper dives after a moment. Wait too long and he reads you.
+ * - Penalties (shooting, physical): five kicks from behind the ball; see
+ *   penalty.ts.
  * - Through balls (passing): a teammate runs across, defenders stand in the
  *   way. Click where the pass should go: it must reach him, not them.
  * - Slalom (dribbling, pace): you run up the pitch between cones. Click to
@@ -17,6 +17,8 @@
  * - Tackles (defending): an attacker runs at you pushing the ball. Click when
  *   the ball is furthest from his feet.
  */
+
+import { type PenaltySetup, goals, penalties, penaltySetup } from "./penalty.js";
 
 export const FIELD = { w: 1000, h: 600 } as const;
 export const REACTION_MS = 120;
@@ -30,6 +32,8 @@ export interface Click {
   t: number;
   x: number;
   y: number;
+  /** Penalties: true when the button is released (presses have no flag). */
+  up?: boolean;
 }
 
 export const GAME_OF: Record<Skill, Game> = {
@@ -41,10 +45,6 @@ export const GAME_OF: Record<Skill, Game> = {
   defending: "tackles",
 };
 
-/** The goal on the pitch (penalties), in field units. */
-export const GOAL = { left: 220, right: 780, top: 110, bottom: 400 } as const;
-const KEEPER_REACH_X = 95;
-const BALL_FLIGHT_MS = 380;
 /** Where a pass starts (through balls). */
 export const PASSER = { x: 500, y: 560 } as const;
 const PASS_SPEED = 1.3; // field units per millisecond
@@ -52,12 +52,6 @@ const PASS_SPEED = 1.3; // field units per millisecond
 export const LANES = [380, 620] as const;
 const SWITCH_MS = 160;
 
-export interface Kick {
-  start: number;
-  window: number;
-  diveAt: number;
-  diveX: number;
-}
 export interface Pass {
   start: number;
   window: number;
@@ -77,7 +71,7 @@ export interface Duel {
 }
 
 export type Drill =
-  | { game: "penalties"; rounds: Kick[]; end: number }
+  | { game: "penalties"; setup: PenaltySetup; rounds: unknown[]; end: number }
   | { game: "passes"; rounds: Pass[]; end: number }
   | { game: "slalom"; rounds: Cone[]; end: number }
   | { game: "tackles"; rounds: Duel[]; end: number };
@@ -102,17 +96,9 @@ export function drill(seedHex: string, level: number, skill: Skill): Drill {
   const hard = l / 99; // 0 easy … 1 hard
   switch (GAME_OF[skill]) {
     case "penalties": {
-      const rounds: Kick[] = [];
-      let t = 1200;
-      for (let i = 0; i < 10; i++) {
-        const window = 1600;
-        // The keeper commits sooner on a better player: less time to read him.
-        const diveAt = t + Math.round(900 - 450 * hard + r() * 300);
-        const diveX = GOAL.left + 60 + Math.round(r() * (GOAL.right - GOAL.left - 120));
-        rounds.push({ start: t, window, diveAt, diveX });
-        t += window + 900;
-      }
-      return { game: "penalties", rounds, end: t };
+      const setup = penaltySetup(seedHex, l);
+      // The longest it can last; the real end depends on when you shoot.
+      return { game: "penalties", setup, rounds: setup.kicks, end: 5 * 14_000 };
     }
     case "passes": {
       const rounds: Pass[] = [];
@@ -157,11 +143,6 @@ export function drill(seedHex: string, level: number, skill: Skill): Drill {
   }
 }
 
-/** Where the keeper stands at `t` on a kick. */
-export function keeperX(k: Kick, t: number): number {
-  return t < k.diveAt ? (GOAL.left + GOAL.right) / 2 : k.diveX;
-}
-
 /** Where the running teammate is at `t`. */
 export function mateAt(p: Pass, t: number): { x: number; y: number } {
   return { x: p.mate.x0 + p.mate.vx * (t - p.start), y: p.mate.y };
@@ -197,12 +178,7 @@ export function outcomes(d: Drill, clicks: Click[]): boolean[] {
   const cs = clicks.slice(0, MAX_CLICKS);
   switch (d.game) {
     case "penalties":
-      return d.rounds.map((k) => {
-        const c = tryIn(cs, k.start, k.start + k.window);
-        if (!c) return false;
-        const inGoal = c.x > GOAL.left + 8 && c.x < GOAL.right - 8 && c.y > GOAL.top + 8 && c.y < GOAL.bottom;
-        return inGoal && Math.abs(c.x - keeperX(k, c.t + BALL_FLIGHT_MS)) > KEEPER_REACH_X;
-      });
+      return penalties(d.setup, cs).map((k) => k.shot?.result === "goal");
     case "passes":
       return d.rounds.map((p) => {
         const c = tryIn(cs, p.start, p.start + p.window);
@@ -223,8 +199,16 @@ export function outcomes(d: Drill, clicks: Click[]): boolean[] {
   }
 }
 
+/** When a played drill is over (penalties end with the last kick). */
+export function drillEnd(d: Drill, clicks: Click[]): number {
+  if (d.game !== "penalties") return d.end;
+  const kicks = penalties(d.setup, clicks.slice(0, MAX_CLICKS));
+  return kicks[kicks.length - 1]!.end;
+}
+
 /** Successful rounds. */
 export function hits(d: Drill, clicks: Click[]): number {
+  if (d.game === "penalties") return goals(penalties(d.setup, clicks.slice(0, MAX_CLICKS)));
   return outcomes(d, clicks).filter(Boolean).length;
 }
 

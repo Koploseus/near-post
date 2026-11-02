@@ -377,3 +377,9 @@ a.result:hover, a.result:focus-visible { background: rgba(242,183,5,.18); }
 .verdict { top: 18% !important; left: 50% !important; font-family: var(--display); font-size: clamp(28px, 6vw, 56px); color: var(--yellow); text-shadow: 0 4px 0 var(--ink); animation: zoom .35s cubic-bezier(.2,1.6,.4,1) both; z-index: 4; }
 .verdict.no { color: var(--paper); }
 .hint { top: 8% !important; left: 50% !important; font-weight: 800; color: var(--paper); background: rgba(18,25,51,.6); padding: 4px 12px; border-radius: 4px; }
+.pen-canvas { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 600; border: 4px solid var(--paper); border-radius: 6px; touch-action: none; cursor: grab; background: #1B2340; }
+.pen-dots { display: inline-flex; gap: 8px; align-items: center; }
+.pen-dots i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--paper); }
+.pen-dots i.in { background: #45d483; }
+.pen-dots i.out { background: var(--red); }
+.pen-help { color: var(--muted-on-ink) !important; margin-top: 8px; }

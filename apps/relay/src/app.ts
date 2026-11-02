@@ -4,7 +4,7 @@ import { z } from "zod";
 import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount, normalizeEmail } from "./auth.js";
 import { type Chain, near } from "./chain.js";
 import type { Config } from "./config.js";
-import { drill, hits, implausible, points } from "./drill.js";
+import { drill, drillEnd, hits, implausible, points } from "./drill.js";
 import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
 
 const AccountId = z
@@ -190,7 +190,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (signed.has(ticket.id)) return c.json({ error: "already_attested" }, 409);
     const start = started.get(ticket.id);
     const d = drill(ticket.seed, level, ticket.skill);
-    if (start === undefined || now() - start < d.end - 500) {
+    if (start === undefined || now() - start < drillEnd(d, body.data.clicks as Parameters<typeof hits>[1]) - 500) {
       return c.json({ error: "implausible", reason: "the drill did not last that long" }, 422);
     }
     signed.add(ticket.id);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { type Click, type Drill as DrillT, FIELD, GOAL, LANES, PASSER, ballOut, drill, hits, keeperX, laneAt, mateAt, outcomes, points } from "../../../relay/src/drill.js";
+import { type Click, type Drill as DrillT, FIELD, LANES, PASSER, ballOut, drill, hits, laneAt, mateAt, outcomes, points } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
+import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { attestDrill, finishTraining, league, startDrill, train } from "../lib/near.js";
@@ -54,22 +55,18 @@ export function Training({ me }: { me: Player }) {
   const skillName = (k: Skill) => SKILLS.find(([s]) => s === k)![2];
 
   if (run && ticket) {
-    return (
-      <Drill
-        d={run.drill}
-        onDone={async (clicks) => {
-          setRun(null);
-          try {
-            const a = await attestDrill(me.token_id, clicks);
-            const saved = { ticket: ticket.id, ...a };
-            saveAttested(saved);
-            setAttested(saved);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-          }
-        }}
-      />
-    );
+    const finish = async (clicks: Click[]) => {
+      setRun(null);
+      try {
+        const a = await attestDrill(me.token_id, clicks);
+        const saved = { ticket: ticket.id, ...a };
+        saveAttested(saved);
+        setAttested(saved);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    return run.drill.game === "penalties" ? <PenaltyGame setup={run.drill.setup} onDone={finish} /> : <Drill d={run.drill} onDone={finish} />;
   }
 
   return (
@@ -95,7 +92,7 @@ export function Training({ me }: { me: Player }) {
         ) : (
           <>
             <p className="note">
-              Paid: {HOW[ticket.skill]} 90% of the rounds give 3 points, 70% give 2, 50% give 1. It gets harder as the skill rises.
+              Paid: {HOW[ticket.skill]} Score 90% to gain 3 points, 70% for 2, 50% for 1. It gets harder as the skill rises.
             </p>
             <Action
               label="START THE DRILL"
@@ -139,8 +136,8 @@ export function Training({ me }: { me: Player }) {
 }
 
 const HOW: Record<string, string> = {
-  shooting: "a penalty session. Click a spot in the goal; the keeper dives after a moment, so wait to read him, but not too long.",
-  physical: "a penalty session. Click a spot in the goal; the keeper dives after a moment, so wait to read him, but not too long.",
+  shooting: "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.",
+  physical: "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.",
   passing: "through balls. Click where the pass should go: in front of your running teammate, away from the defenders.",
   dribbling: "a slalom. Click to switch side and pass each cone on the free side.",
   pace: "a slalom at speed. Click to switch side and pass each cone on the free side.",
@@ -205,33 +202,7 @@ function Drill({ d, onDone }: { d: DrillT; onDone: (clicks: Click[]) => void }) 
 
 function Scene({ d, t, clicks, res }: { d: DrillT; t: number; clicks: Click[]; res: boolean[] }) {
   const at = (x: number, y: number) => ({ left: pct(x, FIELD.w), top: pct(y, FIELD.h) });
-  if (d.game === "penalties") {
-    const i = d.rounds.findIndex((k) => t < k.start + k.window + 900);
-    const k = d.rounds[Math.max(0, i)]!;
-    const shot = clicks.find((c) => c.t >= k.start + 120 && c.t <= k.start + k.window);
-    const flight = shot ? Math.min(1, (t - shot.t) / 380) : 0;
-    const ball = shot ? { x: 500 + (shot.x - 500) * flight, y: 520 + (shot.y - 520) * flight } : { x: 500, y: 520 };
-    const over = shot && flight >= 1;
-    return (
-      <>
-        <span className="goal-frame" style={{ ...at(GOAL.left, GOAL.top), width: pct(GOAL.right - GOAL.left, FIELD.w), height: pct(GOAL.bottom - GOAL.top, FIELD.h) }} />
-        <span className="pen-spot" style={at(500, 520)} />
-        <span className={`keeper${t >= k.diveAt ? (k.diveX < 500 ? " dive left" : " dive right") : ""}`} style={{ ...at(keeperX(k, t), GOAL.bottom - 4), width: pct(190, FIELD.w) }}>
-          <svg viewBox="0 0 190 150" aria-hidden="true">
-            <path d="M20 40 L70 70 M170 40 L120 70" stroke="#F2B705" strokeWidth="16" strokeLinecap="round" />
-            <circle cx="16" cy="36" r="13" fill="#fffaf0" stroke="#1B2340" strokeWidth="4" />
-            <circle cx="174" cy="36" r="13" fill="#fffaf0" stroke="#1B2340" strokeWidth="4" />
-            <rect x="66" y="56" width="58" height="60" rx="14" fill="#F2B705" stroke="#1B2340" strokeWidth="5" />
-            <circle cx="95" cy="36" r="20" fill="#C68B5E" stroke="#1B2340" strokeWidth="4" />
-            <path d="M76 116 L70 148 M114 116 L120 148" stroke="#1B2340" strokeWidth="14" strokeLinecap="round" />
-          </svg>
-        </span>
-        <span className="d-ball" style={at(ball.x, ball.y)} />
-        {over && i >= 0 && <span className={`verdict ${res[i] ? "ok" : "no"}`}>{res[i] ? "GOAL!" : "SAVED"}</span>}
-        {!shot && t >= k.start && t <= k.start + k.window && <span className="hint">Shoot!</span>}
-      </>
-    );
-  }
+  if (d.game === "penalties") return null;
   if (d.game === "passes") {
     const i = d.rounds.findIndex((p) => t < p.start + p.window + 800);
     const p = d.rounds[Math.max(0, i)]!;

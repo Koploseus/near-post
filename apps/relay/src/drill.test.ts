@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import type { Chain } from "./chain.js";
 import { loadConfig } from "./config.js";
+import { BALL, GOAL_M, goals, penalties, penaltySetup, toScreen } from "./penalty.js";
 import {
   type Click,
   type Drill,
-  GOAL,
   PASSER,
   REACTION_MS,
   ballOut,
@@ -22,11 +22,28 @@ import {
 const SEED = "a3".repeat(32);
 const OTHER = "b4".repeat(32);
 
+/**
+ * A penalty taker who shoots each kick at x metres (and `y` up), with a
+ * steady 400 ms swipe, waiting 600 ms between the start of a kick and his run-up.
+ */
+function kickAll(n: number, x: (k: number) => number, y: number, swipeMs = 400): Click[] {
+  const trace: Click[] = [];
+  let start = 900;
+  for (let k = 0; k < n; k++) {
+    const down = start + 600;
+    const aim = toScreen(x(k), y);
+    trace.push({ t: down, x: BALL.x, y: BALL.y }, { t: down + swipeMs, x: aim.x, y: aim.y, up: true });
+    // The next kick starts after the flight and the replay (at most 850 + 1900 ms).
+    start = down + swipeMs + 3000;
+  }
+  return trace;
+}
+
 /** A perfect player for each drill (what a strong human aims at). */
 function play(d: Drill): Click[] {
   switch (d.game) {
     case "penalties":
-      return d.rounds.map((k) => ({ t: k.diveAt + 60, x: k.diveX < 500 ? GOAL.right - 40 : GOAL.left + 40, y: 200 }));
+      return kickAll(d.setup.kicks.length, (k) => (k % 2 ? 2.9 : -2.9), 0.7);
     case "passes":
       return d.rounds.map((p) => {
         const t = p.start + 300;
@@ -58,25 +75,37 @@ describe("football drills", () => {
   });
 
   it("a perfect player scores in every drill, a lazy one does not", () => {
-    for (const skill of ["shooting", "passing", "dribbling", "defending"] as const) {
+    for (const skill of ["passing", "dribbling", "defending"] as const) {
       const d = drill(SEED, 60, skill);
       const best = hits(d, play(d));
-      expect(best, skill).toBeGreaterThanOrEqual(Math.ceil(d.rounds.length * 0.6));
+      expect(best, skill).toBeGreaterThanOrEqual(Math.ceil(d.rounds.length * (skill === "shooting" ? 0.4 : 0.6)));
       expect(hits(d, []), skill).toBeLessThan(d.rounds.length / 2 + 1);
     }
-    const pens = drill(SEED, 60, "shooting");
-    expect(hits(pens, play(pens))).toBe(10);
+
   });
 
-  it("penalties: the keeper saves what he reaches, the post stops the rest", () => {
-    const d = drill(SEED, 50, "shooting");
-    if (d.game !== "penalties") throw new Error("not penalties");
-    const k = d.rounds[0]!;
-    const centre = (GOAL.left + GOAL.right) / 2;
-    expect(outcomes({ ...d, rounds: [k] }, [{ t: k.start + 200, x: centre, y: 200 }])).toEqual([false]);
-    expect(outcomes({ ...d, rounds: [k] }, [{ t: k.diveAt + 50, x: k.diveX, y: 200 }])).toEqual([false]);
-    expect(outcomes({ ...d, rounds: [k] }, [{ t: k.start + 200, x: GOAL.left - 5, y: 200 }])).toEqual([false]);
-    expect(outcomes({ ...d, rounds: [k] }, [{ t: k.start + REACTION_MS - 1, x: GOAL.left + 30, y: 200 }])).toEqual([false]);
+  it("penalties: corners beat the keeper more often than the middle", () => {
+    let corners = 0;
+    let middle = 0;
+    for (let i = 0; i < 40; i++) {
+      const seed = (i.toString(16).padStart(2, "0") + "c7").repeat(16);
+      const setup = penaltySetup(seed, 50);
+      corners += goals(penalties(setup, kickAll(5, (k) => (k % 2 ? 2.9 : -2.9), 0.7)));
+      middle += goals(penalties(setup, kickAll(5, () => 0, 0.8)));
+    }
+    expect(corners / 200).toBeGreaterThan(0.55);
+    expect(middle / 200).toBeLessThan(corners / 200 - 0.2);
+  });
+
+  it("penalties: a flick drifts, a press off the ball does nothing, kicks follow one another", () => {
+    const setup = penaltySetup(SEED, 50);
+    const wild = penalties(setup, kickAll(5, () => GOAL_M.halfWidth - 0.1, GOAL_M.height - 0.1, 60));
+    expect(wild.some((k) => k.shot!.result === "wide" || k.shot!.result === "over" || k.shot!.result === "post")).toBe(true);
+    const off = penalties(setup, [{ t: 1_500, x: 100, y: 100 }, { t: 1_600, x: 500, y: 200, up: true }]);
+    expect(off[0]!.shot).toBeNull();
+    const ks = penalties(setup, kickAll(5, () => 2.9, 0.7));
+    expect(ks.every((k, i) => i === 0 || k.start === ks[i - 1]!.end)).toBe(true);
+    expect(ks.every((k) => k.shot && k.shot.flight > 300 && k.shot.flight < 900)).toBe(true);
   });
 
   it("tackles: only when the ball is away from his feet", () => {
@@ -89,11 +118,15 @@ describe("football drills", () => {
   });
 
   it("gets harder as the skill rises", () => {
-    const [easy, hard] = [drill(SEED, 20, "shooting"), drill(SEED, 95, "shooting")];
-    if (easy.game === "penalties" && hard.game === "penalties") {
-      const read = (d: typeof easy) => d.rounds.reduce((s, k) => s + (k.diveAt - k.start), 0);
-      expect(read(hard)).toBeLessThan(read(easy));
+    let easy = 0;
+    let hard = 0;
+    for (let i = 0; i < 40; i++) {
+      const seed = (i.toString(16).padStart(2, "0") + "d1").repeat(16);
+      const trace = kickAll(5, (k) => (k % 2 ? 2.4 : -2.4), 0.9);
+      easy += goals(penalties(penaltySetup(seed, 20), trace));
+      hard += goals(penalties(penaltySetup(seed, 95), trace));
     }
+    expect(hard).toBeLessThan(easy);
     const [s1, s2] = [drill(SEED, 20, "pace"), drill(SEED, 95, "pace")];
     expect(s2.end).toBeLessThan(s1.end);
   });
@@ -136,11 +169,13 @@ describe("drill attestation", () => {
   it("signs the replayed score of a drill that really lasted", async () => {
     const { post, wait } = setup();
     expect((await post("/v1/training/start", { token_id: "p12" })).status).toBe(200);
-    wait(d.end);
+    wait(play(d).at(-1)!.t + 3_000);
     const r = await post("/v1/training/attest", { token_id: "p12", clicks: play(d) });
     const body = (await r.json()) as { points: number; signature: string; hits: number; rounds: number };
-    expect(body).toMatchObject({ points: 3, hits: 10, rounds: 10 });
-    const message = `near-post:train:${LEAGUE}:p12:7:3`;
+    expect(body.rounds).toBe(5);
+    expect(body.hits).toBe(hits(d, play(d)));
+    expect(body.points).toBe(points(body.hits, 5));
+    const message = `near-post:train:${LEAGUE}:p12:7:${body.points}`;
     expect(key.verify(new TextEncoder().encode(message), Buffer.from(body.signature, "base64"))).toBe(true);
     expect((await post("/v1/training/attest", { token_id: "p12", clicks: [] })).status).toBe(409);
   });
