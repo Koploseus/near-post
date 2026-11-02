@@ -54,7 +54,7 @@ export function Album() {
             )}
             <p className="note">If he is sold: 10% to his trainer, 2% to each of his last 3 clubs, 5% to the person who plays him, 3% burned.</p>
             {session && me && sel.controller && me.owner === clubId && (
-              <Action className="cta small" label={`VOTE ${sel.name.toUpperCase()} CAPTAIN`} run={() => leagueCall(session, "vote_captain", { candidate: sel.token_id }, 30)} />
+              <Action className="cta small" label={`VOTE ${sel.name.toUpperCase()} CAPTAIN`} run={() => leagueCall(session, "vote_captain", { candidate: sel.token_id }, 30)} success={`Your vote: ${sel.name} for captain`} />
             )}
           </div>
         )}

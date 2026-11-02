@@ -28,3 +28,11 @@ export const SKILLS = [
   ["defending", "DEF", "Defending"],
   ["physical", "PHY", "Physical"],
 ] as const;
+
+const PREFIX = /^(FC|AS|US|SC|AC|Olympique|Racing|Stade|Union|Sporting|Athletic|Etoile|Entente|Real)\s+(des\s+|de\s+|du\s+)?/i;
+
+/** A club's short name, as people say it: "FC Port-Lune" → "Port-Lune". */
+export function clubName(name: string): string {
+  const s = name.replace(PREFIX, "");
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : name;
+}

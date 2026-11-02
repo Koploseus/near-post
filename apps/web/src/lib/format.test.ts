@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { g, minute, short, tier } from "./format.js";
+import { clubName, g, minute, short, tier } from "./format.js";
 
 describe("format", () => {
   it("shows goalars the way the game talks about them", () => {
@@ -19,5 +19,15 @@ describe("format", () => {
     expect(tier(65)).toBe("silver");
     expect(tier(74)).toBe("silver");
     expect(tier(75)).toBe("gold");
+  });
+});
+
+describe("club names", () => {
+  it("drops the prefix people do not say", () => {
+    expect(clubName("FC Port-Lune")).toBe("Port-Lune");
+    expect(clubName("Stade des Marais")).toBe("Marais");
+    expect(clubName("Olympique Rive Nord")).toBe("Rive Nord");
+    expect(clubName("Sporting Val-d'Ombre")).toBe("Val-d'Ombre");
+    expect(clubName("Les Canaris")).toBe("Les Canaris");
   });
 });

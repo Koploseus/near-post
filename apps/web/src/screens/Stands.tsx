@@ -86,8 +86,8 @@ export function Stands() {
           {session && current ? (
             <>
               <div className="buttons">
-                <Action label="TAKE YOUR SEAT" run={() => leagueCall(session, "check_in", {}, 60)} done={reload} />
-                <Action label="BECOME A FAN" className="cta small" run={() => leagueCall(session, "follow", { club_id: current }, 30)} done={reload} />
+                <Action label="TAKE YOUR SEAT" run={() => leagueCall(session, "check_in", {}, 60)} done={reload} success="You are in the stand" />
+                <Action label="BECOME A FAN" className="cta small" run={() => leagueCall(session, "follow", { club_id: current }, 30)} done={reload} success="You are a fan now" />
               </div>
               {last > 0 && (
                 <div className="buttons">

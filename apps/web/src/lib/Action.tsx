@@ -1,7 +1,11 @@
 import { type ReactNode, useState } from "react";
 import { EXPLORER } from "./config.js";
+import { toast } from "./toast.js";
 
-/** A button that runs a transaction and shows its outcome, with a link to the explorer. */
+/**
+ * A button that runs a transaction. On success it says so in game terms (a
+ * toast), with a small link to the transaction; on failure, why.
+ */
 export function Action({
   label,
   run,
@@ -9,7 +13,10 @@ export function Action({
   className = "cta",
   disabled,
   aria,
+  success,
 }: {
+  /** What the player sees when it worked, e.g. "You start at left midfield". */
+  success?: string;
   label: ReactNode;
   aria?: string;
   run: () => Promise<{ hash: string } | unknown>;
@@ -31,7 +38,8 @@ export function Action({
           setMsg(null);
           try {
             const r = (await run()) as { hash?: string } | undefined;
-            setMsg({ ok: true, text: "Done", ...(r?.hash ? { hash: r.hash } : {}) });
+            setMsg({ ok: true, text: "", ...(r?.hash ? { hash: r.hash } : {}) });
+            toast(success ?? "Done");
             done?.();
           } catch (e) {
             setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -46,12 +54,9 @@ export function Action({
         <span className={msg.ok ? "ok" : "err"} role="status">
           {msg.text}
           {msg.hash && (
-            <>
-              {" · "}
-              <a href={`${EXPLORER}/txns/${msg.hash}`} target="_blank" rel="noreferrer">
-                View on NEAR ↗
-              </a>
-            </>
+            <a className="tx" href={`${EXPLORER}/txns/${msg.hash}`} target="_blank" rel="noreferrer">
+              on chain ↗
+            </a>
           )}
         </span>
       )}

@@ -73,6 +73,7 @@ export const topUp = (accountId: string) => relay(`/v1/accounts/${accountId}/top
 
 /** Accounts the relay made for email sign-in: it pays their gas. */
 const PLAYER_ACCOUNT = /^u[0-9a-f]{16}\./;
+export const isGasless = (accountId: string) => PLAYER_ACCOUNT.test(accountId);
 
 /** Calls a contract with the player's own key. Returns the tx hash and the decoded return value. */
 export async function call<T = unknown>(
