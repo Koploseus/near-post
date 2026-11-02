@@ -1,57 +1,216 @@
+import { KeyPair } from "near-api-js";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
-import type { Chain } from "./chain.js";
+import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount } from "./auth.js";
+import { type Chain, near } from "./chain.js";
 import { loadConfig } from "./config.js";
+import { tick } from "./schedule.js";
 
-function fakeChain(state: Record<string, unknown>): Chain & { calls: string[] } {
-  const calls: string[] = [];
-  return {
-    calls,
-    async view<T>(contractId: string, method: string, args?: Record<string, unknown>) {
-      calls.push(`${contractId}.${method}(${JSON.stringify(args ?? {})})`);
-      if (method === "fail") throw new Error("rpc down");
-      return (state[method] ?? null) as T;
-    },
-  };
+const PARENT = "near-post.testnet";
+
+class FakeChain implements Chain {
+  calls: string[] = [];
+  accounts = new Map<string, { balance: bigint; keys: string[] }>();
+  state: Record<string, unknown> = {};
+  async view<T>(contractId: string, method: string, args?: Record<string, unknown>) {
+    this.calls.push(`view ${contractId}.${method}(${JSON.stringify(args ?? {})})`);
+    if (method === "fail") throw new Error("rpc down");
+    return (this.state[method] ?? null) as T;
+  }
+  async balance(id: string) {
+    return this.accounts.get(id)?.balance ?? null;
+  }
+  async hasKey(id: string, key: string) {
+    return this.accounts.get(id)?.keys.includes(key) ?? false;
+  }
+  async createAccount(id: string, key: string, yocto: bigint) {
+    this.calls.push(`create ${id}`);
+    this.accounts.set(id, { balance: yocto, keys: [key] });
+    return "tx-create";
+  }
+  async transfer(id: string, yocto: bigint) {
+    this.calls.push(`transfer ${id} ${yocto}`);
+    const a = this.accounts.get(id)!;
+    a.balance += yocto;
+    return "tx-transfer";
+  }
+  async call(contractId: string, method: string) {
+    this.calls.push(`call ${contractId}.${method}`);
+    return "tx-call";
+  }
 }
 
-const config = loadConfig({ LEAGUE_ID: "league.near-post.testnet" });
+function mailbox() {
+  const sent: { to: string; text: string }[] = [];
+  const mailer: Mailer = {
+    async send(to, _subject, text) {
+      sent.push({ to, text });
+    },
+  };
+  const lastCode = () => sent.at(-1)!.text.match(/\d{6}/)![0];
+  return { sent, mailer, lastCode };
+}
 
-describe("relay", () => {
-  it("answers health without a league", async () => {
-    const app = createApp(loadConfig({}), fakeChain({}));
-    const res = await app.request("/health");
-    expect(await res.json()).toEqual({ status: "ok", network: "testnet" });
+const config = loadConfig({ LEAGUE_ID: "league-v3.near-post.testnet" });
+const post = (app: ReturnType<typeof createApp>, path: string, body: unknown, ip = "1.2.3.4") =>
+  app.request(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": ip },
+    body: JSON.stringify(body),
+  });
+const newKey = () => KeyPair.fromRandom("ed25519").getPublicKey().toString();
+
+describe("email login", () => {
+  it("derives one account per email, case-insensitive, without the email on chain", () => {
+    const a = accountIdFor(" Koplo@Example.com ", PARENT);
+    expect(a).toBe(accountIdFor("koplo@example.com", PARENT));
+    expect(a).not.toContain("koplo");
+    expect(isPlayerAccount(a, PARENT)).toBe(true);
+    expect(isPlayerAccount("near-post.testnet", PARENT)).toBe(false);
+    expect(isPlayerAccount("u0123456789abcdef.evil.testnet", PARENT)).toBe(false);
   });
 
-  it("says when the league is not deployed", async () => {
-    const res = await createApp(loadConfig({}), fakeChain({})).request("/v1/rules");
-    expect(res.status).toBe(503);
+  it("sends a code, then creates the account with the browser's key and some gas", async () => {
+    const chain = new FakeChain();
+    const box = mailbox();
+    const app = createApp(config, chain, { mailer: box.mailer });
+    const start = await post(app, "/v1/auth/start", { email: "koplo@example.com" });
+    expect(start.status).toBe(200);
+    const { account_id, code } = (await start.json()) as { account_id: string; code?: string };
+    expect(code).toBeUndefined(); // never in the response by default
+    expect(box.sent[0]!.to).toBe("koplo@example.com");
+    const key = newKey();
+    const verify = await post(app, "/v1/auth/verify", { email: "koplo@example.com", code: box.lastCode(), public_key: key });
+    expect(await verify.json()).toEqual({ account_id, created: true, tx: "tx-create" });
+    expect(chain.accounts.get(account_id)).toEqual({ balance: near("0.3"), keys: [key] });
   });
 
-  it("reads the rules from the league contract", async () => {
-    const chain = fakeChain({ rules: { stadium_target_bps: 6000 } });
-    const res = await createApp(config, chain).request("/v1/rules");
-    expect(await res.json()).toEqual({ stadium_target_bps: 6000 });
-    expect(chain.calls).toEqual(["league.near-post.testnet.rules({})"]);
+  it("a returning player gets his account back, and learns if this browser holds its key", async () => {
+    const chain = new FakeChain();
+    const box = mailbox();
+    const app = createApp(config, chain, { mailer: box.mailer });
+    const key = newKey();
+    for (const k of [key, newKey()]) {
+      await post(app, "/v1/auth/start", { email: "a@b.co" });
+      const r = (await (await post(app, "/v1/auth/verify", { email: "a@b.co", code: box.lastCode(), public_key: k })).json()) as Record<string, unknown>;
+      if (k === key) expect(r.created).toBe(true);
+      else expect(r).toMatchObject({ created: false, key_on_account: false });
+    }
+    expect(chain.calls.filter((c) => c.startsWith("create"))).toHaveLength(1);
   });
 
-  it("rejects a malformed club id before touching the chain", async () => {
-    const chain = fakeChain({});
-    const res = await createApp(config, chain).request("/v1/clubs/NOT%20AN%20ID/stand");
-    expect(res.status).toBe(400);
+  it("refuses a wrong code, and the code dies after five tries", async () => {
+    const box = mailbox();
+    const app = createApp(config, new FakeChain(), { mailer: box.mailer });
+    await post(app, "/v1/auth/start", { email: "a@b.co" });
+    const right = box.lastCode();
+    const wrong = right === "000000" ? "111111" : "000000";
+    for (let i = 0; i < 5; i++) {
+      const r = await post(app, "/v1/auth/verify", { email: "a@b.co", code: wrong, public_key: newKey() });
+      expect(r.status).toBe(401);
+    }
+    const late = await post(app, "/v1/auth/verify", { email: "a@b.co", code: right, public_key: newKey() });
+    expect(late.status).toBe(401);
+  });
+
+  it("codes expire", () => {
+    let t = 0;
+    const codes = new Codes(1_000, 5, () => t);
+    const code = codes.issue("a@b.co");
+    t = 1_001;
+    expect(codes.verify("a@b.co", code)).toBe(false);
+  });
+
+  it("a code works once", () => {
+    const codes = new Codes(60_000);
+    const code = codes.issue("a@b.co");
+    expect(codes.verify("A@B.co", code)).toBe(true);
+    expect(codes.verify("a@b.co", code)).toBe(false);
+  });
+
+  it("rejects bad input before touching the chain", async () => {
+    const chain = new FakeChain();
+    const app = createApp(config, chain, { mailer: mailbox().mailer });
+    expect((await post(app, "/v1/auth/start", { email: "not an email" })).status).toBe(400);
+    const r = await post(app, "/v1/auth/verify", { email: "a@b.co", code: "123456", public_key: "ed25519:nope" });
+    expect(r.status).toBe(400);
     expect(chain.calls).toEqual([]);
   });
 
-  it("returns 404 for an unknown club", async () => {
-    const res = await createApp(config, fakeChain({ get_club: null })).request("/v1/clubs/nobody.testnet/stand");
-    expect(res.status).toBe(404);
+  it("limits code requests per email", async () => {
+    const app = createApp(config, new FakeChain(), { mailer: mailbox().mailer });
+    const codes = [];
+    for (let i = 0; i < 4; i++) codes.push((await post(app, "/v1/auth/start", { email: "spam@b.co" }, `10.0.0.${i}`)).status);
+    expect(codes).toEqual([200, 200, 200, 429]);
   });
 
-  it("returns the stand of a club", async () => {
-    const stand = { match_day: 1, present: 3, fans: 5, target: 3, full_house: true };
-    const chain = fakeChain({ get_club: { name: "Rive Nord" }, stand });
-    const res = await createApp(config, chain).request("/v1/clubs/koplo.testnet/stand");
-    expect(await res.json()).toEqual(stand);
+  it("returns the code only when the insecure dev flag is on", async () => {
+    const dev = loadConfig({ INSECURE_DEV_RETURN_CODE: "true" });
+    const r = await post(createApp(dev, new FakeChain(), { mailer: mailbox().mailer }), "/v1/auth/start", { email: "a@b.co" });
+    expect(((await r.json()) as { code?: string }).code).toMatch(/^\d{6}$/);
+  });
+});
+
+describe("gas top-up", () => {
+  async function player(chain: FakeChain, balance: bigint) {
+    const id = accountIdFor("p@b.co", PARENT);
+    chain.accounts.set(id, { balance, keys: [] });
+    return id;
+  }
+
+  it("tops up a nearly empty player account, a few times a day", async () => {
+    const chain = new FakeChain();
+    const app = createApp(config, chain, { mailer: mailbox().mailer });
+    const id = await player(chain, near("0.01"));
+    expect((await post(app, `/v1/accounts/${id}/topup`, {})).status).toBe(200);
+    chain.accounts.get(id)!.balance = near("0.01");
+    expect((await post(app, `/v1/accounts/${id}/topup`, {})).status).toBe(200);
+    chain.accounts.get(id)!.balance = near("0.01");
+    expect((await post(app, `/v1/accounts/${id}/topup`, {})).status).toBe(429);
+  });
+
+  it("does not top up an account that has enough, or one that is not a player's", async () => {
+    const chain = new FakeChain();
+    const app = createApp(config, chain, { mailer: mailbox().mailer });
+    const id = await player(chain, near("0.2"));
+    expect((await post(app, `/v1/accounts/${id}/topup`, {})).status).toBe(409);
+    chain.accounts.set("league-v3.near-post.testnet", { balance: 0n, keys: [] });
+    expect((await post(app, "/v1/accounts/league-v3.near-post.testnet/topup", {})).status).toBe(400);
+    expect(chain.calls.filter((c) => c.startsWith("transfer"))).toEqual([]);
+  });
+});
+
+describe("match days", () => {
+  it("plays the match day only when it is due", async () => {
+    const chain = new FakeChain();
+    chain.state.schedule = { next_match_at_ms: "1000" };
+    expect(await tick(chain, "league", 999)).toBeNull();
+    expect(await tick(chain, "league", 1000)).toBe("tx-call");
+    expect(chain.calls.at(-1)).toBe("call league.play_match_day");
+  });
+});
+
+describe("league reads", () => {
+  it("answers health without a league", async () => {
+    const app = createApp(loadConfig({}), new FakeChain(), { mailer: mailbox().mailer });
+    expect(await (await app.request("/health")).json()).toEqual({ status: "ok", network: "testnet" });
+    expect((await app.request("/v1/rules")).status).toBe(503);
+  });
+
+  it("reads rules and stands, rejecting malformed ids", async () => {
+    const chain = new FakeChain();
+    chain.state = { rules: { stadium_target_bps: 6000 }, get_club: { name: "Rive Nord" }, stand: { full_house: true } };
+    const app = createApp(config, chain, { mailer: mailbox().mailer });
+    expect(await (await app.request("/v1/rules")).json()).toEqual({ stadium_target_bps: 6000 });
+    expect((await app.request("/v1/clubs/NOT%20AN%20ID/stand")).status).toBe(400);
+    expect(await (await app.request("/v1/clubs/rive-nord.near-post.testnet/stand")).json()).toEqual({ full_house: true });
+  });
+
+  it("limiter windows reset", () => {
+    let t = 0;
+    const l = new Limiter(1, 10, () => t);
+    expect([l.allow("k"), l.allow("k")]).toEqual([true, false]);
+    t = 10;
+    expect(l.allow("k")).toBe(true);
   });
 });

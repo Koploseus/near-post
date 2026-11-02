@@ -17,7 +17,11 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
 ## The game in one minute
 
-- **Sign in with email.** No wallet, no seed phrase, no gas prompt. (Not built yet.)
+- **Sign in with email.** No wallet, no seed phrase, no gas prompt. The browser
+  makes a key pair and keeps the private key; after a six-digit email code, the
+  relay creates your NEAR account (`u<hash>.near-post.testnet`, derived from
+  your email, which never goes on chain) with that public key and 0.3 NEAR for
+  gas. The relay never holds your key: it can fund you, never act for you.
 - **Your club starts in Division 3.** Every new account gets 1M G, then 1M more
   on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **You are a footballer.** `create_footballer(name, position)` mints your
@@ -187,7 +191,7 @@ mint. That is the cap working, and it is intended.
 | `contracts/players` | Players as NFTs: sell-on clause as a payout, enumeration, approvals. Only the league creates players; every transfer is reported to the league. | NEP-171, NEP-178, NEP-181, NEP-199 |
 | `contracts/items` | Boots, kits, training passes. Only the league mints. | NEP-245 (core) |
 | `contracts/league` | The rules: clubs and academies, people's footballers, lineups and captains, fans and stadium, match days (fixtures, rating-driven scores, scorers, stands), salaries, training, the transfer market, claims, table. | — |
-| `apps/relay` | TypeScript API. Today: reads rules and stands from chain. Next: email login, session keys, gas relaying, match-day trigger. | — |
+| `apps/relay` | TypeScript API: email login (codes by email, account creation with the browser's key), gas top-ups, match days played on schedule, league reads. | — |
 | `apps/web` | The game in the browser (React). Sticker-album and tifo look. | — |
 | `apps/sim` | Supply simulation with the contract's rules. | — |
 | `scripts/deploy-testnet.mjs` | Deploys the checked-in wasm and writes `deployments/testnet.json`. Keys stay outside the repo. | — |
@@ -199,15 +203,41 @@ The rules are readable on chain with the league's `rules()` view.
 All game logic and all balances live in the contracts. The relay exists
 because a contract cannot check an email or pay gas for a player.
 
-- It can: create a player's NEAR account after email login, give it a session
-  key limited to the game contracts, pay gas, and call "play match day" on
-  schedule (anyone else can call it too).
-- It cannot: mint G, change a result, move a player's NFT or G, or change a
-  rule. A session key cannot transfer NEAR.
-- If it goes down, every NFT and every G stays on chain.
+- It can: send a code to an email, create the player's NEAR account with the
+  public key his browser made, give it NEAR for gas (0.3 at creation, then a
+  top-up when below 0.15, twice a day at most), and call `play_match_day` when
+  it is due (anyone else can call it too).
+- It cannot: sign for a player (it never sees his private key), mint G, change
+  a result, move a player's NFT or G, or change a rule.
+- If it goes down, every NFT and every G stays on chain, and players keep
+  playing with their keys through any RPC.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/auth/start {email}` | Sends a six-digit code (10 minutes, single use, 5 tries). Rate limited per IP and per email. |
+| `POST /v1/auth/verify {email, code, public_key}` | Creates `u<hash>.near-post.testnet` with that key and 0.3 NEAR, or says the account exists and whether this key is on it. |
+| `POST /v1/accounts/:id/topup` | Gas for a player account below 0.15 NEAR, twice a day at most. |
+| `GET /v1/rules`, `GET /v1/clubs/:id/stand` | League reads. |
+
+Run it: `cp apps/relay/.env.example apps/relay/.env`, set `PARENT_PRIVATE_KEY`
+(the key of the account that creates players' accounts; never commit it),
+then `pnpm dev:relay`. Without `RESEND_API_KEY`, codes are printed in the
+relay's log (`EMAIL_MODE=console`).
+
+Tested on testnet on 2 November 2026 (`scripts/email-e2e.mjs`): a relay run
+locally signed in `ines.e2e@example.com`, created
+[`uf610696bf5b9d4b8.near-post.testnet`](https://testnet.nearblocks.io/txns/GSMNtSnnsaQNKetwdNDrFP87gHohVbdD3CJsgeuL13p7)
+with the browser's key, and that key then created a footballer
+([create_footballer](https://testnet.nearblocks.io/txns/BVaKMB2syKBShMiaKGkpFRFRBPZAXAGQ8nfeVhhLQXup)),
+signed for Port-Lune and reported, for 0.002 NEAR of gas.
 
 ## Limits
 
+- **Your key lives in your browser.** Lose it (cleared storage, new device)
+  and the relay cannot add a new one, because it holds no key on your account:
+  export your key, or start a new account. This is the price of no custody.
+- Gas funding can be farmed with many emails; codes, rate limits and small
+  amounts keep it cheap on testnet. A mainnet relay would need stronger limits.
 - **Testnet contract accounts still hold their deploy keys** while the game is
   being built, so we can redeploy. They will be deleted before submission;
   after that, a new version means new accounts (v2), not an upgrade.
