@@ -1,31 +1,31 @@
 {
   "network": "testnet",
-  "version": "v2",
-  "deployed_at": "2026-11-02T09:19:26.181Z",
+  "version": "v3",
+  "deployed_at": "2026-11-02T10:03:13.676Z",
   "contracts": {
     "league": {
-      "account_id": "league-v2.near-post.testnet",
-      "wasm_sha256": "8d303c95830de739156e7627af839721a9357e0916701bd6174a377feae760da",
-      "deploy_tx": "DuHP6JV13cJRh8MCenyTrFi48mZgXVwW2smsUFy8Y66U",
-      "init_tx": "FafYUXY7MByRS2Cp71Rx7ZrFaHsUxUudyrhchDk5AAfF"
+      "account_id": "league-v3.near-post.testnet",
+      "wasm_sha256": "1a1bfa3275bfd5bb596e60098b9397fb431d638af3b03935e853d02e85b8210e",
+      "deploy_tx": "98z2VdrU191XeyRjXAHUVF9EdUswjYYBw64BJVNGbPBJ",
+      "init_tx": "oFRuugqfGJZhS6d69SZutD2N9HBuV2rHGptPhY6cNJs"
     },
     "goalars": {
-      "account_id": "goalars-v2.near-post.testnet",
+      "account_id": "goalars-v3.near-post.testnet",
       "wasm_sha256": "43a1787022ed40db1c0b2fdb6d75e9d301aa2f2f7d9f3f6c9870c41405b7679b",
-      "deploy_tx": "HZdKJ2U6JChY5UMaWeiw67Rd48ugNLR4BUeHtXJjews9",
-      "init_tx": "FTg2BL7tX9kMAk3M4Br66GAw59CCHhYP419PDmV6kdgf"
+      "deploy_tx": "3wUdoJfyZQq1tzJSXvBfNA5DLthVNSJTyN1RXm6rwzoP",
+      "init_tx": "DNCdsWknb5ih4QRjN4YXHGSqbU8CNNsxuyauhC9etEeU"
     },
     "players": {
-      "account_id": "players-v2.near-post.testnet",
-      "wasm_sha256": "71bfbb49299251073577dbe363ebc976de061aff6721134746f46c9666be1256",
-      "deploy_tx": "GmzPmbTh8p185ZY89tUimXZ9D2XPqEzXVNnSx6zgQ1cg",
-      "init_tx": "FVctjBy17hvqhtySTUcLb47SWNz59WCcg7mvDQcnp6cg"
+      "account_id": "players-v3.near-post.testnet",
+      "wasm_sha256": "dbf6f7d0397aef9a0dbaa36ff565b5fc54a2add2f68b40e20a56000a5523b1bd",
+      "deploy_tx": "FLjyBCDEvNiz2rN3c8tAD8rCoNfGVMbufUifkQyGGW5S",
+      "init_tx": "7vZfaTaFNLmpFjYghrLh1Y5Xn9YwdsAA7PqWVGucW4pA"
     },
     "items": {
-      "account_id": "items-v2.near-post.testnet",
+      "account_id": "items-v3.near-post.testnet",
       "wasm_sha256": "418c1b2ace81c011ddc27658cd5153d56335b6f105e37b234c807a99c73ba603",
-      "deploy_tx": "4EtE9Qjiycyaa467tQjHt9L1Mk8R2hgtBQSR9nQk4uX1",
-      "init_tx": "Lu5kDw874aqsZbTNWwEKBVntQqc6619r7qXHUaDo6RG"
+      "deploy_tx": "5RFgJD5cZUdpPFYYugxwRh7R2GDEwTqzY1RkoDNAJsgz",
+      "init_tx": "6tsUJ9mSHJRbyJfm8feJKe658xrc4kos88tx7LRukqDV"
     }
   }
 }
