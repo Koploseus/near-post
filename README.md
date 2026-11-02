@@ -57,9 +57,17 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 - **The stadium is a tifo.** Each fan who checks in paints part of it. At 60% of
   the club's fans the tifo is complete and every fan present gets 100k G. If it is
   not complete at kick-off, 2% of the club treasury burns. Derbies double both.
+- **The transfer market is on chain.** A club bids for a player by sending G
+  to the league (`ft_transfer_call`, `msg {"bid": "<token_id>"}`); the league
+  holds them. The owner accepts by approving the league on the players contract
+  (`nft_approve`, `msg {"accept": <offer id>}`, NEP-178); the league transfers
+  the registration with its NEP-199 payout and shares the price. The bidder can
+  cancel an open offer; everyone withdraws what the league holds for them with
+  `collect`.
 - **The sell-on clause is in the token.** On every sale: 10% to the club that
   trained the player, 2% to each of his last 3 clubs, 5% to the person who
-  plays him, 3% burned, the rest to the seller. Any NEP-199 market pays it.
+  plays him, 3% burned, the rest to the seller. Any NEP-199 market pays it,
+  ours included.
 - **10 billion G, ever.** Supply starts at zero and every mint is scaled by
   the room left: `minted = amount × (10B − supply) / 10B`. At 5B a goal mints
   3M instead of 6M; at 9B, 600k. Burns free room for new mints. The goalars
@@ -169,9 +177,9 @@ mint. That is the cap working, and it is intended.
 | Part | What it does | Standard |
 | --- | --- | --- |
 | `contracts/goalars` | The G token. Only the league can mint, within the 10B curve; anyone can burn their own. | NEP-141 |
-| `contracts/players` | Players as NFTs, with the sell-on clause as a payout and enumeration. Only the league creates players; every transfer is reported to the league. | NEP-171, NEP-181, NEP-199 |
+| `contracts/players` | Players as NFTs: sell-on clause as a payout, enumeration, approvals. Only the league creates players; every transfer is reported to the league. | NEP-171, NEP-178, NEP-181, NEP-199 |
 | `contracts/items` | Boots, kits, training passes. Only the league mints. | NEP-245 (core) |
-| `contracts/league` | The rules: clubs and their academies, lineups, fans, stadium check-in, match days (fixtures, rating-driven scores, scorers, stands), player wallets, claims, table. | — |
+| `contracts/league` | The rules: clubs and academies, people's footballers, lineups and captains, fans and stadium, match days (fixtures, rating-driven scores, scorers, stands), salaries, training, the transfer market, claims, table. | — |
 | `apps/relay` | TypeScript API. Today: reads rules and stands from chain. Next: email login, session keys, gas relaying, match-day trigger. | — |
 | `apps/web` | The game in the browser (React). Sticker-album and tifo look. | — |
 | `apps/sim` | Supply simulation with the contract's rules. | — |
@@ -217,9 +225,8 @@ because a contract cannot check an email or pay gas for a player.
   `mt_transfer_call` and approvals are not implemented yet.
 - In `players`, a `nft_transfer_call` that the receiver refuses when the
   player already had 3 past clubs forgets the oldest one.
-- No transfer market yet: registrations move by NFT transfer (free) or any
-  NEP-199 market; the sell-on payout is computed but nothing in the game pays
-  it yet.
+- A registration can also move by plain NFT transfer (a gift, a free signing):
+  no price, so no sell-on share. Offers have no expiry; the bidder cancels.
 - Salaries are paid while the treasury lasts, starter by starter: when it runs
   dry, the later starters of that match day are not paid.
 - The stadium screen runs on example data marked "Preview".
