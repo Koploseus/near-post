@@ -1,7 +1,11 @@
 /**
- * The AI coaches' rules, in one file. Each fictional club of the demo league
- * has a coach: an agent with the club's own NEAR account and G wallet, and
- * no right in the contracts that a human manager does not have.
+ * The AI agents' rules, in one file. Two kinds of agents play the demo league,
+ * each with its own NEAR account and G wallet, and no right in the contracts
+ * that a human does not have:
+ * - coaches of the fictional clubs: formation, transfers;
+ * - footballers, who play like people do: report, vote the strategy and the
+ *   captain, spend their salary, choose a club. They play in any club, human
+ *   or not, and are treated like anyone else.
  *
  * The code here does the football and the money: it reads the squads, prices
  * every player, and lists what a coach may do (with a price range). The
@@ -385,7 +389,7 @@ export function checkMarket(s: MarketSituation, d: unknown): { ok: MarketDecisio
   }
   let buy: MarketDecision["buy"] = null;
   const b = x.buy as { id?: unknown; price?: unknown } | null | undefined;
-  if (b && typeof b === "object" && typeof b.id === "string") {
+  if (b && typeof b === "object" && typeof b.id === "string" && b.id !== "none") {
     const o = s.buys.find((o) => o.id === b.id);
     const price = typeof b.price === "number" && Number.isFinite(b.price) ? Math.round(b.price) : NaN;
     if (!o) refused.push(`buy ${b.id} is not an option`);
@@ -448,3 +452,145 @@ export function fallbackMarket(s: MarketSituation): MarketDecision {
 }
 
 export const fmt = (g: number) => (g >= 1_000_000 ? `${(g / 1_000_000).toFixed(1)}M G` : `${Math.round(g / 1000)}k G`);
+
+// ---- Footballers ----
+
+/**
+ * leader: wants the armband, votes for himself when he is among the best.
+ * showman: attacks, spends on looks.
+ * loyal: stays where he plays, saves.
+ * mercenary: goes where the money is.
+ */
+export type Character = "leader" | "showman" | "loyal" | "mercenary";
+export type Strategy = "defend" | "balanced" | "attack";
+export const STRATEGIES: Strategy[] = ["defend", "balanced", "attack"];
+
+export interface Footballer {
+  /** Account prefix (under the parent account). */
+  id: string;
+  name: string;
+  position: Position;
+  character: Character;
+  /** The fictional club he signs for at the start (a prefix of COACHES), or null: a free agent. */
+  starts_at: string | null;
+}
+
+/** Fictional footballers: two per fictional club, and four free agents anyone can sign. */
+export const FOOTBALLERS: Footballer[] = (() => {
+  const first = ["Remi", "Noa", "Ilan", "Sacha", "Theo", "Elias", "Malo", "Aaron", "Yanis", "Lino", "Oscar", "Nael", "Gabin", "Mael", "Timeo", "Ewen"];
+  const last = ["Corbin", "Lestrade", "Vallon", "Duperray", "Mazelle", "Fourcade", "Brunel", "Kervella", "Sorel", "Garance", "Tavernier", "Moulard", "Belcour", "Rivolier"];
+  const characters: Character[] = ["leader", "showman", "loyal", "mercenary"];
+  const positions: Position[] = ["Fw", "Mf", "Df", "Fw", "Mf", "Gk"];
+  const out: Footballer[] = [];
+  const clubs = [...COACHES.map((c) => c.club), ...COACHES.map((c) => c.club), null, null, null, null];
+  clubs.forEach((club, i) => {
+    const name = `${first[i % first.length]} ${last[(i * 5 + 3) % last.length]}`;
+    out.push({ id: `ai-${i + 1}`, name, position: positions[i % positions.length]!, character: characters[(i * 3 + 1) % 4]!, starts_at: club });
+  });
+  return out;
+})();
+
+/** Before a half: what the footballer sees to vote the club's strategy. */
+export interface StrategySituation {
+  character: Character;
+  half: 1 | 2;
+  score: [number, number];
+  ours: Zones;
+  theirs: Zones;
+}
+
+export function fallbackStrategy(s: StrategySituation): { strategy: Strategy; quote: string } {
+  const [us, them] = s.score;
+  if (s.half === 2 && us < them) return { strategy: "attack", quote: `${us}-${them}. We have to go and get it.` };
+  if (s.half === 2 && us > them && s.character !== "showman") return { strategy: "defend", quote: `${us}-${them}. Keep it tight.` };
+  if (s.character === "showman") return { strategy: "attack", quote: "Give me the ball." };
+  const edge = s.ours.front - s.theirs.back + (s.ours.back - s.theirs.front);
+  const strategy: Strategy = edge > 6 ? "attack" : edge < -6 ? "defend" : "balanced";
+  return { strategy, quote: strategy === "balanced" ? "One game at a time." : strategy === "attack" ? "They are there to be beaten." : "Stay compact, hit them on the break." };
+}
+
+/** A teammate one could vote for as captain: a person in the club. */
+export interface Candidate {
+  /** Alias: `player_1`, `player_2`... (`me` for himself). */
+  id: string;
+  overall: number;
+  goals: number;
+}
+
+export function fallbackCaptain(character: Character, me: Candidate, others: Candidate[]): { vote: string; quote: string } {
+  const all = [me, ...others];
+  const best = [...all].sort((a, b) => b.overall + b.goals * 2 - (a.overall + a.goals * 2) || a.id.localeCompare(b.id))[0]!;
+  if (character === "leader" && me.overall >= best.overall - 3) return { vote: "me", quote: "I want the armband." };
+  return { vote: best.id, quote: best.id === "me" ? "Someone has to lead." : "He leads by example." };
+}
+
+export interface SpendSituation {
+  character: Character;
+  wallet: number;
+  pack_price: number;
+}
+
+/** What a footballer keeps in his wallet before he buys a pack (whole G). */
+export const SAVINGS: Record<Character, number> = { leader: 300_000, showman: 50_000, loyal: 800_000, mercenary: 500_000 };
+
+export function fallbackSpend(s: SpendSituation): { pack: boolean } {
+  return { pack: s.wallet >= s.pack_price + SAVINGS[s.character] };
+}
+
+/** A free agent's choices: offers he received, and clubs he can join for free. */
+export interface ClubChoice {
+  /** `offer-<id>` for an offer, `join-<alias>` to join for free. */
+  id: string;
+  /** Club alias: `club_1`, `club_2`... */
+  club: string;
+  /** G he gets on accepting (whole G; 0 to join for free). */
+  price: number;
+  division: number;
+  /** Position in its division. */
+  rank: number;
+  /** Would he start: how many players of his position are better. */
+  better_at_position: number;
+  /** Salaries the treasury can pay at the current rate (days). */
+  salary_days: number;
+}
+
+export function fallbackMove(character: Character, choices: ClubChoice[]): { choice: string | null; quote: string } {
+  if (!choices.length) return { choice: null, quote: "" };
+  const score = (c: ClubChoice) =>
+    (character === "mercenary" ? c.price / 50_000 : c.price / 200_000) +
+    (c.better_at_position === 0 ? 6 : c.better_at_position === 1 ? 2 : -4) +
+    (c.salary_days >= 10 ? 3 : 0) +
+    (3 - c.division) * 2 -
+    c.rank / 5;
+  const best = [...choices].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id))[0]!;
+  return { choice: best.id, quote: best.price > 0 ? `${fmt(best.price)}. I sign.` : "I want to play. I join." };
+}
+
+/** Checks a footballer's answer: each field must be one of its options. */
+export function checkFootballer(
+  options: { strategies?: boolean; candidates?: string[]; pack?: boolean; choices?: string[] },
+  d: unknown,
+): { ok: { strategy?: Strategy; vote?: string; pack?: boolean; choice?: string | null; quote: string } | null; refused: string[] } {
+  const x = d as Record<string, unknown> | null;
+  if (!x || typeof x !== "object") return { ok: null, refused: ["not an object"] };
+  const refused: string[] = [];
+  const ok: { strategy?: Strategy; vote?: string; pack?: boolean; choice?: string | null; quote: string } = { quote: cleanQuote(x.quote) };
+  if (options.strategies && x.strategy !== undefined) {
+    if (STRATEGIES.includes(x.strategy as Strategy)) ok.strategy = x.strategy as Strategy;
+    else refused.push(`strategy ${String(x.strategy)} is not an option`);
+  }
+  if (options.candidates && x.vote !== undefined) {
+    if (options.candidates.includes(x.vote as string)) ok.vote = x.vote as string;
+    else refused.push(`vote ${String(x.vote)} is not a candidate`);
+  }
+  if (options.pack && x.pack !== undefined) {
+    if (typeof x.pack === "boolean") ok.pack = x.pack;
+    else refused.push("pack must be true or false");
+  }
+  if (options.choices && x.choice !== undefined) {
+    if (x.choice === null || x.choice === "none") ok.choice = null;
+    else if (options.choices.includes(x.choice as string)) ok.choice = x.choice as string;
+    else refused.push(`choice ${String(x.choice)} is not an option`);
+  }
+  return { ok, refused };
+}
