@@ -2,6 +2,7 @@
 //! from the checked-in wasm in contracts/res.
 
 use anyhow::Result;
+use ed25519_dalek::{Signer, SigningKey};
 use near_workspaces::network::Sandbox;
 use near_workspaces::types::{Gas, NearToken};
 use near_workspaces::{Account, Contract, Worker};
@@ -9,6 +10,18 @@ use serde_json::{Value, json};
 
 const MATCH_INTERVAL_MS: u64 = 60_000;
 const ONE_G: u128 = 1_000_000;
+
+/// The drill attester of these tests (the relay holds the real one).
+fn attester() -> SigningKey {
+    SigningKey::from_bytes(&[7; 32])
+}
+
+fn attester_public_key() -> String {
+    format!(
+        "ed25519:{}",
+        bs58::encode(attester().verifying_key().as_bytes()).into_string()
+    )
+}
 
 struct Game {
     worker: Worker<Sandbox>,
@@ -39,6 +52,7 @@ async fn deploy() -> Result<Game> {
             "players_id": players.id(),
             "items_id": items.id(),
             "match_interval_ms": MATCH_INTERVAL_MS.to_string(),
+            "attester": attester_public_key(),
         }))
         .transact()
         .await?
@@ -425,7 +439,8 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
         .await?;
     assert_eq!(squad.as_array().unwrap().len(), 12);
 
-    // He trains: 400k G sent to the league, burned, +1 attack.
+    // He trains his pace: 400k G sent to the league and burned, a ticket
+    // opens; the attester signs his drill score (3) and the points land.
     let before = game
         .view("get_player", json!({ "token_id": token }))
         .await?;
@@ -435,20 +450,44 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
         .args_json(json!({
             "receiver_id": game.league.id(),
             "amount": (400_000 * ONE_G).to_string(),
-            "msg": json!({ "train": token }).to_string(),
+            "msg": json!({ "train": { "token_id": token, "skill": "pace" } }).to_string(),
         }))
         .deposit(NearToken::from_yoctonear(1))
         .gas(Gas::from_tgas(150))
         .transact()
         .await?
         .into_result()?;
+    let ticket = game
+        .view("training_ticket", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(ticket["skill"], json!("pace"));
+    let message = format!(
+        "near-post:train:{}:{}:{}:3",
+        game.league.id(),
+        token,
+        ticket["id"]
+    );
+    let signature = attester().sign(message.as_bytes()).to_bytes();
+    let anyone = game.account().await?;
+    game.call(
+        &anyone,
+        "finish_training",
+        json!({
+            "token_id": token,
+            "points": 3,
+            "signature": base64_encode(&signature),
+        }),
+    )
+    .await?
+    .into_result()?;
     let after = game
         .view("get_player", json!({ "token_id": token }))
         .await?;
     assert_eq!(
-        after["attack"].as_u64().unwrap(),
-        before["attack"].as_u64().unwrap() + 1
+        after["skills"]["pace"].as_u64().unwrap(),
+        before["skills"]["pace"].as_u64().unwrap() + 3
     );
+    assert!(after["overall"].as_u64().unwrap() >= before["overall"].as_u64().unwrap());
     assert_eq!(supply - game.supply().await?, 400_000 * ONE_G);
 
     // The manager (no captain yet) puts him in the eleven; he reports; he plays.
@@ -580,4 +619,23 @@ async fn a_club_buys_a_player_and_the_price_is_shared() -> Result<()> {
         .json()?;
     assert_eq!(career["past_clubs"], json!([seller.id()]));
     Ok(())
+}
+
+/// Standard base64 with padding, for `Base64VecU8` arguments.
+fn base64_encode(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16
+            | (*c.get(1).unwrap_or(&0) as u32) << 8
+            | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= c.len() {
+                out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

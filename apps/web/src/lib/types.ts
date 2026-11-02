@@ -1,9 +1,37 @@
 export type Position = "Gk" | "Df" | "Mf" | "Fw";
 
+export type Skill = "pace" | "shooting" | "passing" | "dribbling" | "defending" | "physical";
+export type Skills = Record<Skill, number>;
+
+export interface Ticket {
+  id: number;
+  token_id: string;
+  skill: Skill;
+  match_day: number;
+  seed: string;
+}
+
+export interface Star {
+  player: string;
+  name: string;
+  /** Rating × 10. */
+  rating: number;
+}
+
+export interface MatchStats {
+  home_shots: number;
+  away_shots: number;
+  home_on_target: number;
+  away_on_target: number;
+  man_of_the_match: Star | null;
+}
+
 export interface Player {
   token_id: string;
   name: string;
   position: Position;
+  skills: Skills;
+  overall: number;
   attack: number;
   defence: number;
   owner: string;
@@ -47,6 +75,7 @@ export interface MatchResult {
   away_goals: number;
   derby: boolean;
   goals: Goal[];
+  stats: MatchStats;
 }
 
 export interface Stand {

@@ -1,6 +1,23 @@
 use super::*;
+use ed25519_dalek::{Signer, SigningKey};
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::testing_env;
+
+/// The drill attester of the tests.
+fn attester() -> SigningKey {
+    SigningKey::from_bytes(&[7; 32])
+}
+
+fn attester_pk() -> PublicKey {
+    let mut bytes = vec![0u8];
+    bytes.extend_from_slice(attester().verifying_key().as_bytes());
+    PublicKey::try_from(bytes).unwrap()
+}
+
+fn sign_drill(token: &str, ticket: u64, points: u8) -> Base64VecU8 {
+    let msg = training_message(&acc("league.testnet"), token, ticket, points);
+    Base64VecU8(attester().sign(msg.as_bytes()).to_bytes().to_vec())
+}
 
 fn acc(s: &str) -> AccountId {
     s.parse().unwrap()
@@ -31,6 +48,7 @@ fn league() -> League {
         acc("players.testnet"),
         acc("items.testnet"),
         U64(10 * MINUTE_MS),
+        attester_pk(),
     )
 }
 
@@ -354,6 +372,8 @@ fn a_new_club_signs_an_academy_of_eleven() {
     for p in &squad {
         assert_eq!(p.owner, acc("c0.testnet"));
         assert!((10..=60).contains(&p.attack) && (20..=60).contains(&p.defence));
+        assert_eq!(p.overall, p.skills.overall(p.position));
+        assert!((25..=65).contains(&p.overall), "{p:?}");
         assert!(p.name.contains(' '));
     }
     assert_eq!(l.starting_eleven(acc("c0.testnet")).len(), 11);
@@ -444,7 +464,7 @@ fn a_sold_player_changes_squad_keeps_his_wallet_and_leaves_the_eleven() {
 }
 
 #[test]
-fn goals_fill_the_scorers_wallets_and_raise_their_attack() {
+fn goals_fill_the_scorers_wallets_and_raise_their_shooting() {
     let mut l = league_with(2, 0);
     let before: Vec<Player> = [l.squad(acc("c0.testnet")), l.squad(acc("c1.testnet"))].concat();
     let r = the_rules();
@@ -474,7 +494,11 @@ fn goals_fill_the_scorers_wallets_and_raise_their_attack() {
         let (wallet, goals) = expected.get(&p.token_id).copied().unwrap_or_default();
         assert_eq!(now.wallet.0, wallet);
         assert_eq!(now.goals, goals);
-        assert_eq!(now.attack as u32, (p.attack as u32 + goals).min(99));
+        assert_eq!(
+            now.skills.shooting as u32,
+            (p.skills.shooting as u32 + goals).min(99)
+        );
+        assert_eq!(now.attack, now.skills.attack());
     }
 }
 
@@ -583,7 +607,7 @@ fn a_free_agent_cannot_report() {
 fn a_person_plays_only_when_he_reports() {
     let mut l = league_with(2, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
-    l.players.get_mut(&token).unwrap().attack = 99; // the best forward of the squad
+    l.players.get_mut(&token).unwrap().overall = 99; // the best player of the squad
     let plays = |l: &League| {
         l.starting_eleven(acc("c0.testnet"))
             .iter()
@@ -604,7 +628,7 @@ fn a_person_plays_only_when_he_reports() {
 fn starters_who_are_people_get_a_salary_from_the_treasury() {
     let mut l = league_with(2, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
-    l.players.get_mut(&token).unwrap().attack = 99;
+    l.players.get_mut(&token).unwrap().overall = 99;
     let salary = the_rules().salary.0;
     l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(salary + 5);
     as_caller("koplo.testnet");
@@ -730,21 +754,110 @@ fn train(l: &mut League, from: &str, token: &str, amount: u128) -> PromiseOrValu
     l.ft_on_transfer(
         acc(from),
         U128(amount),
-        format!("{{\"train\":\"{token}\"}}"),
+        format!("{{\"train\":{{\"token_id\":\"{token}\",\"skill\":\"pace\"}}}}"),
     )
 }
 
 #[test]
-fn training_burns_its_cost_and_adds_a_point_once_per_day() {
+fn training_burns_its_cost_and_opens_a_ticket_for_the_skill() {
     let mut l = league_with(1, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
-    let before = l.get_player(token.clone()).unwrap().attack;
+    let before = l.get_player(token.clone()).unwrap();
     let cost = the_rules().training_cost.0;
     match train(&mut l, "koplo.testnet", &token, cost) {
         PromiseOrValue::Value(unused) => assert_eq!(unused, U128(0)),
         _ => panic!("expected a value"),
     }
-    assert_eq!(l.get_player(token).unwrap().attack, before + 1);
+    assert_eq!(
+        l.get_player(token.clone()).unwrap(),
+        before.clone().with_trained(1)
+    );
+    let t = l.training_ticket(token.clone()).unwrap();
+    assert_eq!((t.skill, t.match_day, t.seed.len()), (Skill::Pace, 1, 64));
+}
+
+#[test]
+fn a_signed_drill_score_adds_the_points_once() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let before = l.get_player(token.clone()).unwrap();
+    let _ = train(&mut l, "koplo.testnet", &token, the_rules().training_cost.0);
+    let id = l.training_ticket(token.clone()).unwrap().id;
+    as_caller("anyone.testnet");
+    let after = l.finish_training(token.clone(), 3, sign_drill(&token, id, 3));
+    assert_eq!(after.skills.pace, before.skills.pace + 3);
+    assert_eq!(after.overall, after.skills.overall(after.position));
+    assert!(l.training_ticket(token).is_none());
+}
+
+#[test]
+#[should_panic(expected = "the drill score is not signed by the attester")]
+fn a_forged_score_is_refused() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let _ = train(&mut l, "koplo.testnet", &token, the_rules().training_cost.0);
+    let id = l.training_ticket(token.clone()).unwrap().id;
+    as_caller("koplo.testnet");
+    // Signed for 1 point, claimed for 3.
+    l.finish_training(token.clone(), 3, sign_drill(&token, id, 1));
+}
+
+#[test]
+#[should_panic(expected = "no open training for that player")]
+fn a_signature_works_once() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let _ = train(&mut l, "koplo.testnet", &token, the_rules().training_cost.0);
+    let id = l.training_ticket(token.clone()).unwrap().id;
+    let sig = sign_drill(&token, id, 2);
+    l.finish_training(token.clone(), 2, sig.clone());
+    l.finish_training(token, 2, sig);
+}
+
+#[test]
+#[should_panic(expected = "that training ended with its match day")]
+fn a_ticket_ends_with_its_match_day() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let _ = train(&mut l, "koplo.testnet", &token, the_rules().training_cost.0);
+    let id = l.training_ticket(token.clone()).unwrap().id;
+    at("anyone.testnet", due(&l), 1);
+    l.play_match_day();
+    l.finish_training(token.clone(), 1, sign_drill(&token, id, 1));
+}
+
+#[test]
+fn training_is_harder_at_the_top() {
+    assert_eq!(play::training_gain(50, 3, 3), 3);
+    assert_eq!(play::training_gain(80, 3, 3), 2);
+    assert_eq!(play::training_gain(90, 3, 3), 1);
+    assert_eq!(play::training_gain(98, 3, 3), 1);
+    assert_eq!(play::training_gain(99, 3, 3), 0);
+    assert_eq!(play::training_gain(50, 0, 3), 0);
+}
+
+#[test]
+fn the_attester_key_is_readable() {
+    assert_eq!(league().attester(), attester_pk());
+}
+
+#[test]
+fn a_match_sheet_has_shots_and_a_man_of_the_match() {
+    let mut l = league_with(2, 0);
+    at("anyone.testnet", due(&l), 3);
+    for m in l.play_match_day() {
+        let s = &m.stats;
+        let real = |home: bool| {
+            m.goals
+                .iter()
+                .filter(|g| g.for_home == home && g.kind != GoalKind::Own)
+                .count() as u8
+        };
+        assert!(s.home_on_target >= real(true) && s.home_shots > s.home_on_target);
+        assert!(s.away_on_target >= real(false) && s.away_shots > s.away_on_target);
+        let star = s.man_of_the_match.as_ref().unwrap();
+        assert!((30..=99).contains(&star.rating) && !star.name.is_empty());
+    }
 }
 
 #[test]
@@ -774,7 +887,7 @@ fn training_is_paid_in_goalars_only() {
     let _ = l.ft_on_transfer(
         acc("koplo.testnet"),
         the_rules().training_cost,
-        format!("{{\"train\":\"{token}\"}}"),
+        format!("{{\"train\":{{\"token_id\":\"{token}\",\"skill\":\"pace\"}}}}"),
     );
 }
 
@@ -920,4 +1033,12 @@ fn a_payout_never_pays_more_than_the_price() {
     let shares = settle_payout(&payout, 1_000, &acc("league.testnet"));
     let total: u128 = shares.iter().map(|(_, a)| a).sum();
     assert_eq!(total, 1_000);
+}
+
+impl Player {
+    /// This player after a training opened on `day` (no points yet).
+    fn with_trained(mut self, day: u32) -> Self {
+        self.last_trained_day = day;
+        self
+    }
 }

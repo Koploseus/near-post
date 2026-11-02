@@ -11,4 +11,6 @@ publish = false
 anyhow = "1.0.100"
 near-workspaces = "=0.24.0"
 serde_json = "1.0"
+ed25519-dalek = "=2.2.0"
+bs58 = "=0.5.1"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }

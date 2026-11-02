@@ -5,7 +5,7 @@ import { g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { league, leagueCall, view } from "../lib/near.js";
 import type { Career, Player } from "../lib/types.js";
-import { Sticker } from "./Sticker.js";
+import { SkillBars, Sticker } from "./Sticker.js";
 
 export function Album() {
   const { session, me, club, clubId } = useGame();
@@ -38,9 +38,10 @@ export function Album() {
             <span className="k">BACK OF THE STICKER</span>
             <h3>{sel.name}</h3>
             <p className="note">
-              {positionLabel[sel.position]} · attack {sel.attack} · defence {sel.defence} · {sel.goals} goals
+              {positionLabel[sel.position]} · rated {sel.overall} · {sel.goals} goals
               {sel.controller ? ` · played by ${short(sel.controller)}` : " · academy player"}
             </p>
+            <SkillBars p={sel} />
             {career && (
               <dl className="stats">
                 <dt>Trained by</dt>

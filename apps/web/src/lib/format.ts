@@ -16,5 +16,15 @@ export const short = (account: string) => account.split(".")[0] ?? account;
 
 export const positionLabel: Record<string, string> = { Gk: "GK", Df: "DF", Mf: "MF", Fw: "FW" };
 
-/** Gold from 75, like the sticker album. */
-export const tier = (attack: number, defence: number) => (Math.max(attack, defence) >= 75 ? "gold" : "silver");
+/** Card tiers by rating out of 100: bronze, silver from 65, gold from 75. */
+export const tier = (overall: number) => (overall >= 75 ? "gold" : overall >= 65 ? "silver" : "bronze");
+
+/** The six skills in card order, with their three-letter labels. */
+export const SKILLS = [
+  ["pace", "PAC", "Pace"],
+  ["shooting", "SHO", "Shooting"],
+  ["passing", "PAS", "Passing"],
+  ["dribbling", "DRI", "Dribbling"],
+  ["defending", "DEF", "Defending"],
+  ["physical", "PHY", "Physical"],
+] as const;
