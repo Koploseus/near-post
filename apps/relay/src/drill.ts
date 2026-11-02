@@ -1,27 +1,29 @@
 /**
- * The training drill, shared by the web app (which plays it) and the relay
- * (which replays the clicks and signs the score). No imports: it runs the same
- * in the browser and in Node.
+ * The training drills, shared by the web app (which plays them) and the relay
+ * (which replays the clicks and signs the score). No imports: they run the
+ * same in the browser and in Node.
  *
- * Targets pop up one after another on a pitch of FIELD.w × FIELD.h. Hit a
- * target inside its circle while it is up. The ticket's seed (from the chain)
- * fixes where and when; the trained skill's level makes targets smaller and
- * shorter-lived. A click that lands less than REACTION_MS after a target
- * appears does not count: humans are not that fast.
+ * Four football drills, one per family of skills. Each is fully set by the
+ * ticket's seed (from the chain) and the trained skill's level, which makes
+ * it harder as the skill rises; the score depends only on the click times
+ * and places, so the relay can replay it exactly.
+ *
+ * - Penalties (shooting, physical): ten kicks. Click a spot in the goal; the
+ *   keeper dives after a moment. Wait too long and he reads you.
+ * - Through balls (passing): a teammate runs across, defenders stand in the
+ *   way. Click where the pass should go: it must reach him, not them.
+ * - Slalom (dribbling, pace): you run up the pitch between cones. Click to
+ *   switch side and pass each cone on the free side.
+ * - Tackles (defending): an attacker runs at you pushing the ball. Click when
+ *   the ball is furthest from his feet.
  */
 
 export const FIELD = { w: 1000, h: 600 } as const;
-export const TARGETS = 12;
 export const REACTION_MS = 120;
-export const MAX_CLICKS = 60;
+export const MAX_CLICKS = 80;
 
-export interface Target {
-  appearAt: number;
-  x: number;
-  y: number;
-  r: number;
-  ttl: number;
-}
+export type Skill = "pace" | "shooting" | "passing" | "dribbling" | "defending" | "physical";
+export type Game = "penalties" | "passes" | "slalom" | "tackles";
 
 export interface Click {
   /** Milliseconds since the drill started. */
@@ -30,7 +32,57 @@ export interface Click {
   y: number;
 }
 
-/** A small seeded PRNG (mulberry32), seeded with an FNV-1a hash of the whole seed. */
+export const GAME_OF: Record<Skill, Game> = {
+  shooting: "penalties",
+  physical: "penalties",
+  passing: "passes",
+  dribbling: "slalom",
+  pace: "slalom",
+  defending: "tackles",
+};
+
+/** The goal on the pitch (penalties), in field units. */
+export const GOAL = { left: 220, right: 780, top: 110, bottom: 400 } as const;
+const KEEPER_REACH_X = 95;
+const BALL_FLIGHT_MS = 380;
+/** Where a pass starts (through balls). */
+export const PASSER = { x: 500, y: 560 } as const;
+const PASS_SPEED = 1.3; // field units per millisecond
+/** Lanes of the slalom, and how long a switch takes. */
+export const LANES = [380, 620] as const;
+const SWITCH_MS = 160;
+
+export interface Kick {
+  start: number;
+  window: number;
+  diveAt: number;
+  diveX: number;
+}
+export interface Pass {
+  start: number;
+  window: number;
+  mate: { x0: number; y: number; vx: number };
+  defenders: { x: number; y: number }[];
+}
+export interface Cone {
+  at: number;
+  side: 0 | 1;
+}
+export interface Duel {
+  start: number;
+  window: number;
+  period: number;
+  /** Fraction of the touch (0 to 1) the ball must be out for a clean tackle. */
+  need: number;
+}
+
+export type Drill =
+  | { game: "penalties"; rounds: Kick[]; end: number }
+  | { game: "passes"; rounds: Pass[]; end: number }
+  | { game: "slalom"; rounds: Cone[]; end: number }
+  | { game: "tackles"; rounds: Duel[]; end: number };
+
+/** mulberry32 seeded with an FNV-1a hash of the whole seed. */
 function rng(seedHex: string): () => number {
   if (!/^[0-9a-f]{16,}$/.test(seedHex)) throw new Error("bad drill seed");
   let a = 0x811c9dc5;
@@ -43,46 +95,144 @@ function rng(seedHex: string): () => number {
   };
 }
 
-/** The targets of a drill. `level` is the trained skill's value (1 to 99). */
-export function drill(seedHex: string, level: number): Target[] {
-  const rand = rng(seedHex);
+/** The drill for a ticket: its game and every round, from the seed. `level` is the skill (1 to 99). */
+export function drill(seedHex: string, level: number, skill: Skill): Drill {
+  const r = rng(seedHex);
   const l = Math.min(99, Math.max(1, Math.round(level)));
-  const r = Math.round(70 - l * 0.3);
-  const ttl = Math.round(1150 - l * 4);
-  const out: Target[] = [];
-  for (let i = 0; i < TARGETS; i++) {
-    out.push({
-      appearAt: 900 + i * 1150 + Math.floor(rand() * 300),
-      x: Math.round(r + rand() * (FIELD.w - 2 * r)),
-      y: Math.round(r + rand() * (FIELD.h - 2 * r)),
-      r,
-      ttl,
-    });
+  const hard = l / 99; // 0 easy … 1 hard
+  switch (GAME_OF[skill]) {
+    case "penalties": {
+      const rounds: Kick[] = [];
+      let t = 1200;
+      for (let i = 0; i < 10; i++) {
+        const window = 1600;
+        // The keeper commits sooner on a better player: less time to read him.
+        const diveAt = t + Math.round(900 - 450 * hard + r() * 300);
+        const diveX = GOAL.left + 60 + Math.round(r() * (GOAL.right - GOAL.left - 120));
+        rounds.push({ start: t, window, diveAt, diveX });
+        t += window + 900;
+      }
+      return { game: "penalties", rounds, end: t };
+    }
+    case "passes": {
+      const rounds: Pass[] = [];
+      let t = 1200;
+      for (let i = 0; i < 10; i++) {
+        const fromLeft = r() < 0.5;
+        const speed = 0.18 + 0.17 * hard + r() * 0.06;
+        const y = 120 + Math.round(r() * 200);
+        const x0 = fromLeft ? 60 : FIELD.w - 60;
+        const defenders = Array.from({ length: 2 + Math.round(hard * 2) }, () => ({
+          x: 160 + Math.round(r() * 680),
+          y: y + 90 + Math.round(r() * 220),
+        }));
+        rounds.push({ start: t, window: 2200, mate: { x0, y, vx: fromLeft ? speed : -speed }, defenders });
+        t += 2200 + 800;
+      }
+      return { game: "passes", rounds, end: t };
+    }
+    case "slalom": {
+      const rounds: Cone[] = [];
+      const gap = Math.round(1000 - 420 * hard);
+      let t = 1500;
+      let side: 0 | 1 = 0;
+      for (let i = 0; i < 12; i++) {
+        // Mostly alternating, sometimes the same side twice.
+        side = (r() < 0.75 ? 1 - side : side) as 0 | 1;
+        rounds.push({ at: t, side });
+        t += gap + Math.round(r() * 200);
+      }
+      return { game: "slalom", rounds, end: t + 600 };
+    }
+    case "tackles": {
+      const rounds: Duel[] = [];
+      let t = 1200;
+      for (let i = 0; i < 10; i++) {
+        const period = Math.round(900 - 380 * hard + r() * 200);
+        rounds.push({ start: t, window: 2400, period, need: 0.7 + 0.15 * hard });
+        t += 2400 + 700;
+      }
+      return { game: "tackles", rounds, end: t };
+    }
   }
-  return out;
 }
 
-/** How long a drill lasts, in milliseconds. */
-export const duration = (targets: Target[]) => Math.max(...targets.map((t) => t.appearAt + t.ttl));
-
-/** Targets hit by these clicks. Each click hits at most one target, each target counts once. */
-export function hits(targets: Target[], clicks: Click[]): number {
-  const done = new Set<number>();
-  for (const c of clicks.slice(0, MAX_CLICKS)) {
-    const i = targets.findIndex(
-      (t, k) =>
-        !done.has(k) &&
-        c.t >= t.appearAt + REACTION_MS &&
-        c.t <= t.appearAt + t.ttl &&
-        (c.x - t.x) ** 2 + (c.y - t.y) ** 2 <= t.r ** 2,
-    );
-    if (i >= 0) done.add(i);
-  }
-  return done.size;
+/** Where the keeper stands at `t` on a kick. */
+export function keeperX(k: Kick, t: number): number {
+  return t < k.diveAt ? (GOAL.left + GOAL.right) / 2 : k.diveX;
 }
 
-/** Skill points for a number of hits: 11+ → 3, 9+ → 2, 6+ → 1. */
-export const points = (hit: number) => (hit >= 11 ? 3 : hit >= 9 ? 2 : hit >= 6 ? 1 : 0);
+/** Where the running teammate is at `t`. */
+export function mateAt(p: Pass, t: number): { x: number; y: number } {
+  return { x: p.mate.x0 + p.mate.vx * (t - p.start), y: p.mate.y };
+}
+
+/** How far the ball is from the attacker's feet, 0 to 1, at `t` in a duel. */
+export function ballOut(d: Duel, t: number): number {
+  return Math.abs(Math.sin((Math.PI * (t - d.start)) / d.period));
+}
+
+/** The slalom lane (0 or 1) at `t`: every click switches side, after a short move. */
+export function laneAt(clicks: Click[], t: number): 0 | 1 {
+  let lane: 0 | 1 = 0;
+  for (const c of clicks) if (c.t + SWITCH_MS <= t) lane = (1 - lane) as 0 | 1;
+  return lane;
+}
+
+/** The first click of a round's window, if any (each round takes one try). */
+function tryIn(clicks: Click[], from: number, to: number): Click | undefined {
+  return clicks.find((c) => c.t >= from + REACTION_MS && c.t <= to);
+}
+
+/** Distance from point p to the segment a-b. */
+function toSegment(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const [dx, dy] = [b.x - a.x, b.y - a.y];
+  const len = dx * dx + dy * dy || 1;
+  const u = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len));
+  return Math.hypot(p.x - (a.x + u * dx), p.y - (a.y + u * dy));
+}
+
+/** Each round's outcome: true for a goal, a pass received, a cone passed, a clean tackle. */
+export function outcomes(d: Drill, clicks: Click[]): boolean[] {
+  const cs = clicks.slice(0, MAX_CLICKS);
+  switch (d.game) {
+    case "penalties":
+      return d.rounds.map((k) => {
+        const c = tryIn(cs, k.start, k.start + k.window);
+        if (!c) return false;
+        const inGoal = c.x > GOAL.left + 8 && c.x < GOAL.right - 8 && c.y > GOAL.top + 8 && c.y < GOAL.bottom;
+        return inGoal && Math.abs(c.x - keeperX(k, c.t + BALL_FLIGHT_MS)) > KEEPER_REACH_X;
+      });
+    case "passes":
+      return d.rounds.map((p) => {
+        const c = tryIn(cs, p.start, p.start + p.window);
+        if (!c) return false;
+        const flight = Math.hypot(c.x - PASSER.x, c.y - PASSER.y) / PASS_SPEED;
+        const mate = mateAt(p, c.t + flight);
+        const reached = Math.hypot(mate.x - c.x, mate.y - c.y) <= 55;
+        const cut = p.defenders.some((df) => toSegment(df, PASSER, c) <= 34);
+        return reached && !cut;
+      });
+    case "slalom":
+      return d.rounds.map((cone) => laneAt(cs, cone.at) !== cone.side);
+    case "tackles":
+      return d.rounds.map((duel) => {
+        const c = tryIn(cs, duel.start, duel.start + duel.window);
+        return !!c && ballOut(duel, c.t) >= duel.need;
+      });
+  }
+}
+
+/** Successful rounds. */
+export function hits(d: Drill, clicks: Click[]): number {
+  return outcomes(d, clicks).filter(Boolean).length;
+}
+
+/** Skill points for a score: 90% of the rounds give 3, 70% give 2, 50% give 1. */
+export function points(hit: number, total: number): number {
+  const r = total > 0 ? hit / total : 0;
+  return r >= 0.9 ? 3 : r >= 0.7 ? 2 : r >= 0.5 ? 1 : 0;
+}
 
 /** Why a trace is not believable, or null. */
 export function implausible(clicks: unknown): string | null {
@@ -94,7 +244,7 @@ export function implausible(clicks: unknown): string | null {
       c !== null &&
       [c.t, c.x, c.y].every((v) => typeof v === "number" && Number.isFinite(v)) &&
       c.t >= last &&
-      c.t <= 30_000 &&
+      c.t <= 60_000 &&
       c.x >= 0 &&
       c.x <= FIELD.w &&
       c.y >= 0 &&
