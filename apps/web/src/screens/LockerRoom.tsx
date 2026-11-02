@@ -161,18 +161,18 @@ function Account() {
       <span className="k">ACCOUNT</span>
       {passkeys ? (
         <p className="ok">
-          <PasskeyIcon /> Saved with {passkeys === 1 ? "a passkey" : `${passkeys} passkeys`}: your email and one touch open it on any device.
+          <PasskeyIcon /> Passkey on
         </p>
       ) : (
         <>
-          <p className="note">Play on your phone too: save your account with a passkey (Face ID, fingerprint).</p>
+          <p className="note">Add a passkey to sign in on your other devices.</p>
           {passkeysAvailable() && (
             <Action
               className="cta small"
-              label="SAVE WITH A PASSKEY"
+              label="ADD A PASSKEY"
               run={() => saveWithPasskey(session, me ? `${me.name} · NEAR Post` : session.accountId)}
               done={reload}
-              success="Saved: your passkey opens your account anywhere"
+              success="Passkey added"
             />
           )}
         </>

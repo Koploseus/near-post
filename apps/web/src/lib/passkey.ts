@@ -60,7 +60,7 @@ async function prfSecret(ids: { id: string; salt: string }[]): Promise<{ id: str
     },
   })) as PublicKeyCredential | null;
   const secret = a ? prfOf(a)?.results?.first : undefined;
-  if (!a || !secret) throw new Error("This passkey cannot unlock the backup on this device.");
+  if (!a || !secret) throw new Error("This passkey doesn't work on this device.");
   return { id: b64u(a.rawId), secret };
 }
 
@@ -86,7 +86,7 @@ export async function saveWithPasskey(s: Session, label: string): Promise<void> 
   // Some platforms only say PRF is on at creation: ask once more to get the secret.
   let secret = prfOf(cred)?.results?.first;
   if (!secret) {
-    if (prfOf(cred)?.enabled === false) throw new Error("This device's passkeys cannot protect a key. Use another device to save it.");
+    if (prfOf(cred)?.enabled === false) throw new Error("Passkeys aren't supported on this device.");
     secret = (await prfSecret([{ id, salt: b64u(salt) }])).secret;
   }
   const iv = random(12);
@@ -107,7 +107,7 @@ export async function saveWithPasskey(s: Session, label: string): Promise<void> 
 export async function unlockWithPasskey(accountId: string, backups: Backup[]): Promise<Session> {
   const { id, secret } = await prfSecret(backups.map((b) => ({ id: b.credential_id, salt: b.salt })));
   const b = backups.find((x) => x.credential_id === id);
-  if (!b) throw new Error("That passkey has no backup here.");
+  if (!b) throw new Error("This passkey doesn't match this account.");
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: fromB64u(b.iv), additionalData: enc.encode(accountId) },
     await aesKey(secret),

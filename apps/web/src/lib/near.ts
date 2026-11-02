@@ -70,7 +70,7 @@ export async function finishSignIn(email: string, code: string): Promise<SignInR
   if (!r.created && !r.key_on_account) {
     if (r.vaults?.length) return { unlock: { accountId: r.account_id, backups: r.vaults } };
     throw new Error(
-      "Your key is on the device you signed up with. Open the game there once and save it with a passkey (Locker room): then you can play anywhere.",
+      "Sign in on the device you signed up with first, and add a passkey in the Locker room.",
     );
   }
   const s = { accountId: r.account_id, privateKey: kp.toString() };

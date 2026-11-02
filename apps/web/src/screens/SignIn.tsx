@@ -7,9 +7,8 @@ import { toast } from "../lib/toast.js";
 type Step = { k: "email" } | { k: "code" } | { k: "unlock"; accountId: string; backups: Backup[] } | { k: "secure" };
 
 /**
- * Email, code, done. A new player is offered to save his account with a
- * passkey (Face ID, fingerprint) so he can play on any device; on another
- * device, the passkey unlocks it after the code.
+ * Email, code, done. A new player can add a passkey to sign in on his other
+ * devices; there, the passkey opens the account after the code.
  */
 export function SignIn() {
   const { session, setSession, refresh } = useGame();
@@ -104,7 +103,7 @@ export function SignIn() {
       {step.k === "unlock" && (
         <>
           <h2 id="signin-title">Welcome back</h2>
-          <p className="lead">Your account was made on another device. Unlock it here with your passkey: Face ID, your fingerprint or your phone.</p>
+          <p className="lead">Confirm it's you.</p>
           <button
             type="button"
             className="cta passkey-cta"
@@ -115,20 +114,19 @@ export function SignIn() {
                 saveSession(s);
                 setSession(s);
                 refresh();
-                toast("Unlocked: welcome back");
+                toast("Welcome back");
               })
             }
           >
-            <PasskeyIcon /> {busy ? "…" : "UNLOCK WITH A PASSKEY"}
+            <PasskeyIcon /> {busy ? "…" : "CONTINUE WITH A PASSKEY"}
           </button>
-          <p className="note">On a computer without your passkey, your browser shows a QR code: scan it with your phone.</p>
         </>
       )}
 
       {step.k === "secure" && (
         <>
-          <h2 id="signin-title">Play on any device</h2>
-          <p className="lead">Save your account with a passkey: Face ID or your fingerprint. Then your email and one touch open it on your phone, tablet or another computer.</p>
+          <h2 id="signin-title">Play on all your devices</h2>
+          <p className="lead">Add a passkey to sign in on your phone or another computer.</p>
           <button
             type="button"
             className="cta passkey-cta"
@@ -137,13 +135,13 @@ export function SignIn() {
               void go(async () => {
                 const s = loadOrThrow(session);
                 await saveWithPasskey(s, email || s.accountId);
-                toast("Saved: your passkey opens your account anywhere");
+                toast("Passkey added");
                 setSession(s);
                 refresh();
               })
             }
           >
-            <PasskeyIcon /> {busy ? "…" : "SAVE WITH A PASSKEY"}
+            <PasskeyIcon /> {busy ? "…" : "ADD A PASSKEY"}
           </button>
           <button
             type="button"
@@ -153,7 +151,7 @@ export function SignIn() {
               refresh();
             }}
           >
-            Later (Locker room)
+            Not now
           </button>
         </>
       )}
@@ -163,10 +161,6 @@ export function SignIn() {
           {error}
         </p>
       )}
-      <p className="note">
-        Your browser makes your key and keeps it; a passkey backup is encrypted by your passkey before it leaves. We never hold
-        anything that can sign for you.
-      </p>
     </section>
   );
 }
