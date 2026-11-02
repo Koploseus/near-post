@@ -17,17 +17,26 @@
 //! goes to the club treasury, which this contract holds as real G (so penalties
 //! can burn it). Fans' full-house rewards are credits minted on `claim`. Like
 //! every mint, claims are scaled under the 10B cap at that moment.
+//!
+//! Skills (v4): six skills per player give his card rating out of 100 and the
+//! attack and defence the match engine uses. Training burns G and opens a
+//! ticket for one skill; the player then plays a drill in his browser, and
+//! `finish_training` adds 0 to 3 points when the drill's attester (an ed25519
+//! key fixed at init, held by the relay) has signed the score. That attester
+//! is the one trusted party: it can grant at most `training_max_points` per
+//! paid ticket, and nothing else.
 
 mod play;
 
-use play::{ByteStream, ELEVEN, FORMATION, derive_seed};
-pub use play::{GoalKind, OnPitch, Position, fixtures, play_match};
+use play::{ByteStream, ELEVEN, FORMATION, derive_seed, report, training_gain};
+pub use play::{GoalKind, OnPitch, Position, Skill, Skills, fixtures, play_match};
 
+use near_sdk::json_types::Base64VecU8;
 use near_sdk::json_types::{U64, U128};
 use near_sdk::store::{LookupMap, LookupSet, Vector};
 use near_sdk::{
-    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, PromiseError, PromiseOrValue, env,
-    ext_contract, near, require,
+    AccountId, BorshStorageKey, CurveType, Gas, NearToken, PanicOnDefault, PromiseError,
+    PromiseOrValue, PublicKey, env, ext_contract, near, require,
 };
 
 /// 1 G in the token's smallest unit (goalars has 6 decimals).
@@ -71,6 +80,8 @@ pub struct Rules {
     pub player_sale_bps: u32,
     /// Match days per captaincy.
     pub week_length: u32,
+    /// Most skill points one training can add (fewer from 80, see play.rs).
+    pub training_max_points: u8,
 }
 
 pub fn the_rules() -> Rules {
@@ -98,6 +109,7 @@ pub fn the_rules() -> Rules {
         salary: U128(200_000 * ONE_G),
         player_sale_bps: 500,
         week_length: 7,
+        training_max_points: 3,
     }
 }
 
@@ -160,6 +172,10 @@ pub struct Player {
     pub token_id: String,
     pub name: String,
     pub position: Position,
+    pub skills: Skills,
+    /// Card rating out of 100, from the skills and the position.
+    pub overall: u8,
+    /// What the match engine uses, from the skills.
     pub attack: u8,
     pub defence: u8,
     pub owner: AccountId,
@@ -178,8 +194,51 @@ pub struct Player {
 #[near(serializers = [json])]
 #[serde(rename_all = "snake_case")]
 pub enum Order {
-    Train(String),
+    Train(TrainOrder),
     Bid(String),
+}
+
+#[near(serializers = [json])]
+pub struct TrainOrder {
+    pub token_id: String,
+    pub skill: Skill,
+}
+
+/// A paid training session, open until the drill's score comes back or the
+/// match day is played. `seed` (hex) generates the drill.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ticket {
+    pub id: u64,
+    pub token_id: String,
+    pub skill: Skill,
+    pub match_day: u32,
+    pub seed: String,
+}
+
+/// What the attester signs for a drill: `near-post:train:<league>:<token>:<ticket id>:<points>`.
+pub fn training_message(league: &AccountId, token_id: &str, ticket: u64, points: u8) -> String {
+    format!("near-post:train:{league}:{token_id}:{ticket}:{points}")
+}
+
+/// The best player of a match, as the sheet shows him.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Star {
+    pub player: String,
+    pub name: String,
+    /// Rating × 10.
+    pub rating: u8,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct MatchStats {
+    pub home_shots: u8,
+    pub away_shots: u8,
+    pub home_on_target: u8,
+    pub away_on_target: u8,
+    pub man_of_the_match: Option<Star>,
 }
 
 /// `msg` of an approval that accepts an offer.
@@ -233,6 +292,13 @@ impl Player {
         self.controller.as_ref().unwrap_or(&self.owner)
     }
 
+    /// Recomputes the rating, attack and defence from the skills.
+    fn refresh(&mut self) {
+        self.overall = self.skills.overall(self.position);
+        self.attack = self.skills.attack();
+        self.defence = self.skills.defence();
+    }
+
     fn on_pitch(&self) -> OnPitch {
         OnPitch {
             position: self.position,
@@ -276,6 +342,7 @@ enum StorageKey {
     Offers,
     OffersByToken,
     Owed,
+    Tickets,
 }
 
 #[near(serializers = [json, borsh])]
@@ -320,6 +387,7 @@ pub struct MatchResult {
     pub away_goals: u8,
     pub derby: bool,
     pub goals: Vec<Goal>,
+    pub stats: MatchStats,
 }
 
 /// How a club's stand ended on a match day.
@@ -384,6 +452,10 @@ pub struct League {
     next_offer: u64,
     /// Real G the league holds for an account: sale shares, cancelled offers.
     owed: LookupMap<AccountId, u128>,
+    /// The drill attester's ed25519 public key. Fixed at init.
+    attester: [u8; 32],
+    tickets: LookupMap<String, Ticket>,
+    next_ticket: u64,
 }
 
 const MINT_GAS: Gas = Gas::from_tgas(10);
@@ -404,7 +476,15 @@ impl League {
         players_id: AccountId,
         items_id: AccountId,
         match_interval_ms: U64,
+        attester: PublicKey,
     ) -> Self {
+        require!(
+            attester.curve_type() == CurveType::ED25519,
+            "the attester key must be ed25519"
+        );
+        let attester: [u8; 32] = attester.as_bytes()[1..]
+            .try_into()
+            .unwrap_or_else(|_| env::panic_str("bad attester key"));
         require!(
             match_interval_ms.0 >= 60_000,
             "match interval must be at least a minute"
@@ -439,7 +519,68 @@ impl League {
             offers_by_token: LookupMap::new(StorageKey::OffersByToken),
             next_offer: 0,
             owed: LookupMap::new(StorageKey::Owed),
+            attester,
+            tickets: LookupMap::new(StorageKey::Tickets),
+            next_ticket: 0,
         }
+    }
+
+    /// The drill attester's public key.
+    pub fn attester(&self) -> PublicKey {
+        let mut bytes = vec![0u8];
+        bytes.extend_from_slice(&self.attester);
+        PublicKey::try_from(bytes).unwrap_or_else(|_| env::panic_str("bad attester key"))
+    }
+
+    /// The open training ticket of a player, if any.
+    pub fn training_ticket(&self, token_id: String) -> Option<Ticket> {
+        self.tickets.get(&token_id).cloned()
+    }
+
+    /// Ends a training: adds `points` (0 to 3, fewer from 80) to the ticket's
+    /// skill when `signature` is the attester's ed25519 signature of
+    /// `training_message`. Anyone may submit it; the points go to the player
+    /// the ticket was paid for. The ticket closes when its match day is played.
+    pub fn finish_training(
+        &mut self,
+        token_id: String,
+        points: u8,
+        signature: Base64VecU8,
+    ) -> Player {
+        let rules = the_rules();
+        require!(points <= rules.training_max_points, "too many points");
+        let ticket = self
+            .tickets
+            .get(&token_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("no open training for that player"));
+        require!(
+            ticket.match_day == self.match_day,
+            "that training ended with its match day"
+        );
+        let sig: [u8; 64] = signature
+            .0
+            .as_slice()
+            .try_into()
+            .unwrap_or_else(|_| env::panic_str("a signature is 64 bytes"));
+        let message = training_message(&env::current_account_id(), &token_id, ticket.id, points);
+        require!(
+            env::ed25519_verify(&sig, message.as_bytes(), &self.attester),
+            "the drill score is not signed by the attester"
+        );
+        self.tickets.remove(&token_id);
+        let player = self
+            .players
+            .get_mut(&token_id)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        let gain = training_gain(
+            player.skills.get(ticket.skill),
+            points,
+            rules.training_max_points,
+        );
+        player.skills.raise(ticket.skill, gain);
+        player.refresh();
+        player.clone()
     }
 
     pub fn rules(&self) -> Rules {
@@ -660,10 +801,11 @@ impl League {
     }
 
     /// Goalars sent to the league with `ft_transfer_call`. Two orders:
-    /// - `{"train": "<token_id>"}`: exactly `training_cost`, burned; the
-    ///   player gains a point (attack for midfielders and forwards, defence for
-    ///   keepers and defenders). Once per player per match day, by the person
-    ///   who plays him (or his owner for an academy player).
+    /// - `{"train": {"token_id": "<id>", "skill": "pace"}}`: exactly
+    ///   `training_cost`, burned. Opens a training ticket for that skill; the
+    ///   drill's signed score then adds 0 to 3 points (`finish_training`).
+    ///   Once per player per match day, by the person who plays him (or his
+    ///   owner for an academy player).
     /// - `{"bid": "<token_id>"}`: a club offers this amount for a player's
     ///   registration. The G stay with the league until the owner accepts
     ///   (see `nft_on_approve`) or the club cancels.
@@ -678,10 +820,12 @@ impl League {
             "only goalars is accepted"
         );
         let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
-            env::panic_str("msg must be {\"train\":\"<token_id>\"} or {\"bid\":\"<token_id>\"}")
+            env::panic_str(
+                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}} or {\"bid\":\"<token_id>\"}",
+            )
         });
         match order {
-            Order::Train(token) => self.train(sender_id, amount, token),
+            Order::Train(order) => self.train(sender_id, amount, order),
             Order::Bid(token) => {
                 self.bid(sender_id, amount, token);
             }
@@ -1112,11 +1256,38 @@ impl League {
                     .filter_map(|id| self.players.get(id).map(|p| p.on_pitch()))
                     .collect()
             };
-            let raw = play_match(
-                derive_seed(block_seed, &[day as u64, index as u64]),
-                &pitch(&home_xi),
-                &pitch(&away_xi),
+            let seed = derive_seed(block_seed, &[day as u64, index as u64]);
+            let (home_pitch, away_pitch) = (pitch(&home_xi), pitch(&away_xi));
+            let raw = play_match(seed, &home_pitch, &away_pitch);
+            let overall = |ids: &[String]| -> Vec<u8> {
+                ids.iter()
+                    .filter_map(|id| self.players.get(id).map(|p| p.overall))
+                    .collect()
+            };
+            let rep = report(
+                seed,
+                &home_pitch,
+                &away_pitch,
+                [&overall(&home_xi), &overall(&away_xi)],
+                &raw,
             );
+            let man_of_the_match = rep.man_of_the_match.and_then(|(home_side, k, rating)| {
+                let xi = if home_side { &home_xi } else { &away_xi };
+                let token = xi.get(k)?;
+                let p = self.players.get(token)?;
+                Some(Star {
+                    player: token.clone(),
+                    name: p.name.clone(),
+                    rating,
+                })
+            });
+            let stats = MatchStats {
+                home_shots: rep.shots[0],
+                away_shots: rep.shots[1],
+                home_on_target: rep.on_target[0],
+                away_on_target: rep.on_target[1],
+                man_of_the_match,
+            };
             let derby = self.are_rivals(&home, &away);
             if derby {
                 derby_clubs.push(home.clone());
@@ -1165,7 +1336,8 @@ impl League {
                         if let Some(p) = self.players.get_mut(&token) {
                             p.wallet = U128(p.wallet.0 + k * rules.goal_scorer_share.0);
                             p.goals += 1;
-                            p.attack = (p.attack + 1).min(99);
+                            p.skills.raise(Skill::Shooting, 1);
+                            p.refresh();
                         }
                         treasury_mints.push((scorer.clone(), k * rules.goal_club_share.0));
                     }
@@ -1183,6 +1355,7 @@ impl League {
                 away_goals: ag,
                 derby,
                 goals,
+                stats,
             });
         }
 
@@ -1359,12 +1532,13 @@ const LAST_NAMES: [&str; 32] = [
 ];
 
 impl League {
-    fn train(&mut self, sender_id: AccountId, amount: U128, token: String) {
+    fn train(&mut self, sender_id: AccountId, amount: U128, order: TrainOrder) {
         require!(
             amount == the_rules().training_cost,
             "training costs exactly training_cost"
         );
         let day = self.match_day;
+        let token = order.token_id;
         let player = self
             .players
             .get_mut(&token)
@@ -1378,10 +1552,20 @@ impl League {
             "already trained this match day"
         );
         player.last_trained_day = day;
-        match player.position {
-            Position::Mf | Position::Fw => player.attack = (player.attack + 1).min(99),
-            Position::Gk | Position::Df => player.defence = (player.defence + 1).min(99),
-        }
+        let id = self.next_ticket;
+        self.next_ticket += 1;
+        let seed = derive_seed(env::random_seed_array(), &[id, day as u64]);
+        let hex: String = seed.iter().map(|b| format!("{b:02x}")).collect();
+        self.tickets.insert(
+            token.clone(),
+            Ticket {
+                id,
+                token_id: token.clone(),
+                skill: order.skill,
+                match_day: day,
+                seed: hex,
+            },
+        );
         ext_goalars::ext(self.goalars_id.clone())
             .with_static_gas(BURN_GAS)
             .burn(amount, Some(format!("training {token}")))
@@ -1450,20 +1634,17 @@ impl League {
         owner: AccountId,
         controller: Option<AccountId>,
     ) -> Player {
-        let (attack, defence) = match position {
-            Position::Gk => (stream.range(10, 25), stream.range(45, 60)),
-            Position::Df => (stream.range(25, 40), stream.range(45, 60)),
-            Position::Mf => (stream.range(40, 55), stream.range(40, 55)),
-            Position::Fw => (stream.range(45, 60), stream.range(20, 35)),
-        };
+        let skills = Skills::roll(stream, position);
         let token_id = format!("p{}", self.next_player);
         self.next_player += 1;
         let player = Player {
             token_id: token_id.clone(),
             name,
             position,
-            attack,
-            defence,
+            skills,
+            overall: skills.overall(position),
+            attack: skills.attack(),
+            defence: skills.defence(),
             owner,
             goals: 0,
             wallet: U128(0),
@@ -1496,8 +1677,9 @@ impl League {
                 },
                 copies: 1,
                 extra: format!(
-                    "{{\"position\":\"{pos}\",\"attack\":{},\"defence\":{}}}",
-                    p.attack, p.defence
+                    "{{\"position\":\"{pos}\",\"overall\":{},\"skills\":{}}}",
+                    p.overall,
+                    near_sdk::serde_json::to_string(&p.skills).unwrap_or_default()
                 ),
             },
         }
@@ -1618,7 +1800,7 @@ impl League {
             .filter(|t| !xi.contains(t) && self.available(t))
             .filter_map(|t| self.players.get(t))
             .collect();
-        bench.sort_by_key(|p| std::cmp::Reverse(p.attack as u32 + p.defence as u32));
+        bench.sort_by_key(|p| std::cmp::Reverse(p.overall));
         let has = |xi: &Vec<String>, pos: Position| {
             xi.iter()
                 .filter(|t| self.players.get(*t).map(|p| p.position) == Some(pos))
