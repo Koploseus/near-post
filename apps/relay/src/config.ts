@@ -7,7 +7,7 @@ const flag = z
 const Env = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   NEAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
-  NEAR_RPC_URL: z.url().default("https://rpc.testnet.near.org"),
+  NEAR_RPC_URL: z.url().default("https://test.rpc.fastnear.com"),
   /** The league contract. Unset until the contracts are deployed. */
   LEAGUE_ID: z.string().min(2).optional(),
   /**
@@ -41,6 +41,15 @@ const Env = z.object({
    * can come from the client.
    */
   CLIENT_IP_HEADER: z.string().toLowerCase().default("x-forwarded-for"),
+  /** Demo crowd, "club:count,...": fan accounts <club>-f<n>.<parent> sharing CROWD_PRIVATE_KEY. */
+  CROWD: z.string().optional(),
+  CROWD_PRIVATE_KEY: z.string().startsWith("ed25519:").optional(),
+  /** The crowd comes one match day in CROWD_EVERY (each check-in stores about 180 bytes). */
+  CROWD_EVERY: z.coerce.number().int().min(1).default(3),
+  /** Contracts whose storage balance the parent tops up, comma-separated. */
+  KEEP_FUNDED: z.string().optional(),
+  KEEP_MIN_FREE_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("2"),
+  KEEP_TOPUP_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("5"),
   /** Serves the built web app from this folder (one origin for app and API). */
   WEB_DIST: z.string().optional(),
 });

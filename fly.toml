@@ -8,7 +8,7 @@ primary_region = "cdg"
 
 [env]
   NEAR_NETWORK = "testnet"
-  NEAR_RPC_URL = "https://rpc.testnet.near.org"
+  NEAR_RPC_URL = "https://test.rpc.fastnear.com"
   LEAGUE_ID = "league-v3.near-post.testnet"
   PARENT_ACCOUNT_ID = "near-post.testnet"
   EMAIL_MODE = "console"
@@ -18,6 +18,12 @@ primary_region = "cdg"
   # signs in at once, so anyone can open an account with any email address.
   # Rate limits still apply. Set to "false" with EMAIL_MODE = "resend" for real.
   INSECURE_DEV_RETURN_CODE = "true"
+  # Demo crowd (scripts/seed-demo.mjs): seated one match day in three.
+  # Needs the CROWD_PRIVATE_KEY secret.
+  CROWD = "rive-nord:5,port-lune:4,pont-levant:3,haute-ville:4,marais:2,vieux-phare:3,saint-cendre:2,cote-rouge:3"
+  CROWD_EVERY = "3"
+  # The parent tops up the contracts' storage balance when it runs low.
+  KEEP_FUNDED = "league-v3.near-post.testnet,players-v3.near-post.testnet,goalars-v3.near-post.testnet"
 
 # One machine, always on: email codes and rate limits live in memory, and the
 # scheduler plays match days.

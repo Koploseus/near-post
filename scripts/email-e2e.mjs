@@ -24,7 +24,7 @@ const id = verify.body.account_id;
 writeFileSync(`${keys}/${id}.json`, JSON.stringify({ account_id: id, public_key: kp.getPublicKey().toString(), private_key: kp.toString() }), { mode: 0o600 });
 
 await new Promise((s) => setTimeout(s, 3000));
-const provider = new JsonRpcProvider({ url: "https://rpc.testnet.near.org" });
+const provider = new JsonRpcProvider({ url: "https://test.rpc.fastnear.com" });
 const me = new Account(id, provider, kp.toString());
 const call = async (contractId, methodName, args, deposit = 0n, tgas = 100n) => {
   const r = await me.callFunctionRaw({ contractId, methodName, args, deposit, gas: tgas * 10n ** 12n });
