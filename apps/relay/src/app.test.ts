@@ -144,6 +144,21 @@ describe("email login", () => {
     expect(codes).toEqual([200, 200, 200, 429]);
   });
 
+  it("behind Fly, limits by Fly's client IP, not a spoofed x-forwarded-for", async () => {
+    const fly = loadConfig({ LEAGUE_ID: "league-v3.near-post.testnet", CLIENT_IP_HEADER: "Fly-Client-IP" });
+    const app = createApp(fly, new FakeChain(), { mailer: mailbox().mailer });
+    const send = (i: number) =>
+      app.request("/v1/auth/start", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": `10.9.9.${i}`, "fly-client-ip": "203.0.113.7" },
+        body: JSON.stringify({ email: `p${i}@b.co` }),
+      });
+    const statuses = [];
+    for (let i = 0; i < 11; i++) statuses.push((await send(i)).status);
+    expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+
   it("returns the code only when the insecure dev flag is on", async () => {
     const dev = loadConfig({ INSECURE_DEV_RETURN_CODE: "true" });
     const r = await post(createApp(dev, new FakeChain(), { mailer: mailbox().mailer }), "/v1/auth/start", { email: "a@b.co" });

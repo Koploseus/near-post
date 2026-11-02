@@ -167,6 +167,21 @@ cd contracts && cargo test -p tests -- --test-threads=1 --nocapture
 `build.sh` prints the sha256 of each wasm. They must equal the files in
 `contracts/res/`, which is what the CI checks on every pull request.
 
+## Deploy on Fly.io
+
+One Fly app runs the relay and serves the built web app on the same origin
+(`Dockerfile`, `fly.toml` at the root). It stays one machine, always on:
+email codes and rate limits are in memory, and the scheduler plays match days.
+
+```bash
+fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
+fly secrets set EMAIL_MODE=resend RESEND_API_KEY=...   # real emails; "console" only logs the codes
+fly deploy
+```
+
+Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
+`X-Forwarded-For` entry, which a client can write.
+
 ## The supply, simulated
 
 `pnpm sim` replays 60 match days with the contract's rules (seeded, reproducible;

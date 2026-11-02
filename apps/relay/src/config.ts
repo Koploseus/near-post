@@ -35,6 +35,14 @@ const Env = z.object({
    * Never set it on a public relay.
    */
   INSECURE_DEV_RETURN_CODE: flag.default(false),
+  /**
+   * Header that carries the client's IP for rate limits. Behind Fly, use
+   * fly-client-ip: Fly's proxy sets it, while the first x-forwarded-for entry
+   * can come from the client.
+   */
+  CLIENT_IP_HEADER: z.string().toLowerCase().default("x-forwarded-for"),
+  /** Serves the built web app from this folder (one origin for app and API). */
+  WEB_DIST: z.string().optional(),
 });
 
 export type Config = z.infer<typeof Env>;

@@ -24,8 +24,6 @@ export interface Deps {
   now?: () => number;
 }
 
-const ip = (c: { req: { header(name: string): string | undefined } }) =>
-  c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 
 /**
  * The relay's HTTP API.
@@ -44,6 +42,8 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   const verifyByIp = new Limiter(30, 60 * 60_000, now);
   const topups = new Limiter(config.TOPUPS_PER_DAY, 24 * 60 * 60_000, now);
   const funding = near(config.ACCOUNT_FUNDING_NEAR);
+  const ip = (c: { req: { header(name: string): string | undefined } }) =>
+    c.req.header(config.CLIENT_IP_HEADER)?.split(",")[0]?.trim() || "local";
 
   app.get("/health", (c) => c.json({ status: "ok", network: config.NEAR_NETWORK }));
 
