@@ -110,6 +110,8 @@ export function Stands() {
             <dd>×2</dd>
             <dt>Tifo not complete</dt>
             <dd style={{ color: "#b01e2b" }}>2% of treasury burns</dd>
+            <dt>Season ticket</dt>
+            <dd style={{ color: "#1e7a47" }}>+50k G per full house</dd>
           </dl>
           <span className="note">Fixed in the league contract at launch. No one can change them.</span>
         </aside>
