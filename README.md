@@ -76,9 +76,12 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   formation: 4-4-2, 4-3-3, 3-5-2 or 4-2-3-1 (`set_formation`), and names who
   takes free kicks and penalties (`set_takers`; else the best shooter on the
   pitch).
-- **You take your place on the pitch.** Before kick-off and at half-time, each
-  person picks his slot in the formation (`take_slot`) and votes the strategy: defend, balanced or attack (`vote_strategy`,
-  most votes wins). Free slots go to the best squad player for the role:
+- **You take your place on the pitch.** Until a minute before kick-off, each
+  person picks a free slot in the formation (`take_slot`; nobody can take a
+  slot another person chose, and the contract refuses any change in the last
+  minute). Before kick-off and at half-time he votes the strategy: defend,
+  balanced or attack (`vote_strategy`, most votes wins). A minute before
+  kick-off, the free slots go to the best squad player for the role:
   every role (keeper, full-back, centre-back, holding, central, wide or
   attacking midfielder, winger, striker) weighs the six skills its own way.
 - **Matches are live: two halves of ten real minutes.** A match day kicks off
@@ -94,7 +97,12 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   half-time, the same call plays the second half and settles the day. The app
   replays each half over ten real minutes, its clock running at 45 minutes a
   half: score, shots, saves, corners, fouls, cards, possession, then the man
-  of the match. A goal adds one point of shooting. Win 3 points, draw 1.
+  of the match. The match sheet also records the last pass before an
+  open-play goal (an assist) and every ball won off a dribbler (a tackle).
+  A goal adds one point of shooting. Win 3 points, draw 1.
+- **Season stats** (Team tab, `GET /v1/stats`): top scorer, assists, shots,
+  tackles, saves, clean sheets, man of the match, penalties, fouls and cards,
+  for your club or the league, counted from the on-chain match sheets.
 - **Goals mint G, if the fans came:** a goal mints up to 600k G, 420k to the
   scorer's own wallet and 180k to the club, in proportion to how full the
   scoring club's stand is that day (present fans over the 60% full-house

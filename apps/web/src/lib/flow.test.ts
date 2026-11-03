@@ -61,3 +61,15 @@ describe("the live pitch follows the events", () => {
     expect(Math.hypot(withBall[9]![0] - 70, withBall[9]![1] - 30)).toBeLessThan(3);
   });
 });
+
+describe("tackles and assists on the live pitch", () => {
+  const events = [ev(400, false, "tackle", 4), ev(700, true, "tackle", 6), ev(900, true, "goal", 9), ev(900, true, "assist", 7)];
+  const keys = keyframes(events, 0, 2760, 0);
+  it("a tackle gives the ball to the tackler's side, and keys stay in order", () => {
+    for (let i = 1; i < keys.length; i++) expect(keys[i]!.t).toBeGreaterThanOrEqual(keys[i - 1]!.t);
+    expect(frameAt(keys, 399).side).toBe(0); // home was running at him
+    expect(frameAt(keys, 402).side).toBe(1);
+    expect(frameAt(keys, 702).side).toBe(0);
+    expect(frameAt(keys, 900).ball[0]).toBeGreaterThan(98);
+  });
+});

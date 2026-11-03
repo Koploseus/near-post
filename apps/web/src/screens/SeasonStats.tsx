@@ -19,21 +19,32 @@ interface Line {
   reds: number;
   own_goals: number;
   motm: number;
+  assists: number;
+  tackles: number;
+  clean_sheets: number;
+  penalties: number;
+  penalties_scored: number;
 }
 interface Season {
   season: number;
   from: number;
   to: number;
+  assists_from: number | null;
   players: Line[];
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const BOARDS: { title: string; score: (l: Line) => number; show: (l: Line) => string }[] = [
-  { title: "Top scorer", score: (l) => l.goals, show: (l) => `${l.goals} goal${l.goals === 1 ? "" : "s"}` },
+  { title: "Top scorer", score: (l) => l.goals, show: (l) => plural(l.goals, "goal") },
+  { title: "Playmaker", score: (l) => l.assists, show: (l) => plural(l.assists, "assist") },
   { title: "Most shots", score: (l) => l.shots, show: (l) => `${l.shots} · ${l.on_target} on target` },
-  { title: "Safest hands", score: (l) => l.saves, show: (l) => `${l.saves} save${l.saves === 1 ? "" : "s"}` },
+  { title: "Ball winner", score: (l) => l.tackles, show: (l) => plural(l.tackles, "tackle") },
+  { title: "Safest hands", score: (l) => l.saves, show: (l) => plural(l.saves, "save") },
+  { title: "Clean sheets", score: (l) => l.clean_sheets, show: (l) => plural(l.clean_sheets, "clean sheet") },
   { title: "Man of the match", score: (l) => l.motm, show: (l) => `${l.motm}×` },
-  { title: "Hardest man", score: (l) => l.fouls, show: (l) => `${l.fouls} foul${l.fouls === 1 ? "" : "s"}` },
-  { title: "Referee's friend", score: (l) => l.yellows + 3 * l.reds, show: (l) => `${l.yellows} yellow${l.reds ? ` · ${l.reds} red` : ""}` },
+  { title: "From the spot", score: (l) => l.penalties_scored * 10 - (l.penalties - l.penalties_scored), show: (l) => `${l.penalties_scored} of ${plural(l.penalties, "penalty", "penalties")}` },
+  { title: "Hardest man", score: (l) => l.fouls, show: (l) => plural(l.fouls, "foul") },
+  { title: "Referee's friend", score: (l) => l.yellows + 3 * l.reds, show: (l) => `${plural(l.yellows, "yellow")}${l.reds ? ` · ${plural(l.reds, "red")}` : ""}` },
 ];
 
 const load = (): Promise<Season> =>
@@ -86,7 +97,9 @@ export function SeasonStats() {
             );
           })}
       </div>
-      <p className="note">Counted from the match sheets the league keeps on chain (view <code>results</code>).</p>
+      <p className="note">
+        Counted from the match sheets the league keeps on chain (view <code>results</code>). {data && data.assists_from !== data.from && (data.assists_from ? `Assists and tackles count from match day ${data.assists_from}.` : "Assists and tackles count from the next match day.")}
+      </p>
     </section>
   );
 }
