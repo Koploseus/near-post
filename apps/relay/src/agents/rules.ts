@@ -388,8 +388,8 @@ export function checkMarket(s: MarketSituation, d: unknown): { ok: MarketDecisio
   if (typeof x.sell === "string" && x.sell !== "none") {
     const o = s.sells.find((o) => o.id === x.sell);
     if (!o) refused.push(`sell ${x.sell} is not an option`);
-    else if (!s.broke && o.price < o.reference * MONEY[s.style].sellFloor * 0.85)
-      refused.push(`sell ${x.sell}: ${o.price} G is too far under the reference ${o.reference} G`);
+    else if (!s.broke && o.price < Math.round(o.reference * MONEY[s.style].sellFloor * 0.85))
+      refused.push(`sell ${x.sell}: ${o.price} G is under this coach's floor of ${Math.round(o.reference * MONEY[s.style].sellFloor * 0.85)} G (value ${o.reference} G)`);
     else sell = o.id;
   }
   let buy: MarketDecision["buy"] = null;

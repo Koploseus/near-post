@@ -42,6 +42,7 @@ function world(firstHalfPlayed = false) {
       { name: EVIL, manager: HUMAN, division: 1, treasury: G(1_000_000), points: 9 },
     ],
     fixtures_of: () => [[COACH, HUMAN]],
+    captain: () => null,
     get_club: (a) => (a.club_id === COACH ? { name: clubName, manager: COACH, division: 1, treasury: G(20_000_000), points: 6 } : null),
     results: () => [{ home: COACH, away: HUMAN, home_goals: 0, away_goals: 1 }],
     squad: (a) => (a.account_id === COACH ? ours : theirs),

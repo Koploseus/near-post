@@ -225,7 +225,9 @@ export class Agents {
     });
     const d = await decideTactic(this.d.ask, s);
     const out: Partial<Entry> = { quote: d.decision.quote, acts: [], txs: [], errors: [] };
-    if (d.decision.formation !== mine.formation) {
+    // With a captain, the formation is his call (the contract says so): the coach only talks.
+    const captain = await this.league<unknown>("captain", { club_id: c.account });
+    if (!captain && d.decision.formation !== mine.formation) {
       await this.act(c, out, () => this.d.as(c).call(this.d.leagueId, "set_formation", { club_id: c.account, formation: d.decision.formation }, 30), {
         what: "formation",
         formation: d.decision.formation,
@@ -262,6 +264,11 @@ export class Agents {
     const offers = Object.values(this.d.journal.offers);
     for (const o of offers) {
       if (o.buyer === c.account && o.state === "Open" && ctx.day - o.match_day >= STALE_BID_DAYS) {
+        const now = await this.league<Offer | null>("get_offer", { offer_id: o.id });
+        if (now && now.state !== "Open") {
+          o.state = now.state; // sold or cancelled since the morning's look
+          continue;
+        }
         await this.act(c, out, () => me.call(this.d.leagueId, "cancel_offer", { offer_id: o.id }, 30), { what: "cancelled_bid", offer_id: o.id });
         o.state = "Cancelled";
       }
@@ -306,7 +313,9 @@ export class Agents {
     const buy = d.decision.buy && s.buys.find((o) => o.id === d.decision.buy!.id);
     if (buy && d.decision.buy) {
       const amount = BigInt(d.decision.buy.price) * ONE_G;
-      if (amount <= wallet) {
+      const target = await this.league<Player | null>("get_player", { token_id: buy.token_id });
+      if (target?.owner === c.account) out.errors!.push("bid: he is ours already");
+      else if (amount <= wallet) {
         await this.act(
           c,
           out,
