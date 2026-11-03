@@ -18,7 +18,8 @@ const config = loadConfig();
 const signer = config.PARENT_PRIVATE_KEY
   ? { accountId: config.PARENT_ACCOUNT_ID, privateKey: config.PARENT_PRIVATE_KEY }
   : undefined;
-const chain = rpcChain(config.NEAR_RPC_URL, signer);
+// The scheduler's reads fall back to other public RPCs on a rate limit.
+const chain = rpcChain(config.NEAR_RPC_URL, signer, [config.AGENTS_RPC_URL, "https://testnet-rpc.intea.rs"]);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
 const kickoffs = new Kickoffs();
 const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
