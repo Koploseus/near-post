@@ -86,7 +86,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   attacking midfielder, winger, striker) weighs the six skills its own way.
 - **Matches are live: two halves of ten real minutes.** A match day kicks off
   every 30 minutes on testnet. At kick-off `play_match_day` plays the first
-  half of every fixture, division by division, with the action engine of the original Star du Foot:
+  half of every fixture, division by division, with its action engine:
   the ball is at one player's feet, who passes, takes a man on, is fouled or
   shoots, with odds from his role, his skills, the opponent marking him and
   the strategy; time and possession run as it goes. A foul in the attacking
@@ -503,12 +503,14 @@ React 19.3.1, Hono 4.13.14, near-api-js 7.4.0, Vitest 5.0.5, Zod 4.6.7.
 Hono is one patch behind the newest because pnpm's minimum-release-age policy
 refuses packages published less than a day ago.
 
-## Origin and the other project
-
-NEAR Post revives the idea of Star du Foot (stardufoot.com), a football game
-its author made years ago. No code from it is reused; everything here was
-written during the hackathon.
+## The other project
 
 The same author also submits **Euthyna** (https://github.com/Euthyna-wallets/MandateOS),
 a separate project: companies run by AI agents with keyless on-chain vaults
 that only a DAO vote can move. The two projects share no code.
+
+## License
+
+[Business Source License 1.1](LICENSE), licensor OPENWEB3: you may read,
+copy, modify and run NEAR Post for non-production use. On 2030-11-14 it
+becomes GPL-2.0-or-later. Third-party libraries keep their own licenses.
