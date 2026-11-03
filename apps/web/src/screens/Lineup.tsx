@@ -4,6 +4,7 @@ import { league, leagueCall } from "../lib/near.js";
 import { FORMATIONS, ROLE_LABEL, ROLE_NAME, SPOTS } from "../lib/pitch.js";
 import { useEffect, useState } from "react";
 import type { Captain, Lineup as LineupT, Player, Strategy, Takers } from "../lib/types.js";
+import { SeasonStats } from "./SeasonStats.js";
 
 const STRATEGIES: [Strategy, string][] = [
   ["defend", "Defend"],
@@ -22,7 +23,13 @@ export function Lineup() {
     () => (clubId ? league<Captain | null>("captain", { club_id: clubId }) : Promise.resolve(null)),
     [clubId],
   );
-  if (!club || !clubId || !lineup) return <p className="sub">Join a club to see its team sheet.</p>;
+  if (!club || !clubId || !lineup)
+    return (
+      <div className="lineup-page">
+        <p className="sub">Join a club to see its team sheet.</p>
+        <SeasonStats />
+      </div>
+    );
   const half = schedule?.first_half_played ? "second half" : "kick-off";
   const isCaptain = captain ? me?.token_id === captain.token_id : session?.accountId === clubId;
   const mine = lineup.players.findIndex((p) => p?.token_id === me?.token_id);
@@ -114,6 +121,7 @@ export function Lineup() {
           <SetPieces clubId={clubId} leader={isCaptain} />
         </aside>
       </div>
+      <SeasonStats />
     </div>
   );
 }
