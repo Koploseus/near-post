@@ -44,3 +44,22 @@ export function throttle(chain: Chain, limiter: Limiter, retries = 4): Chain {
     relay: (s) => run(() => chain.relay(s), false),
   };
 }
+
+/**
+ * Reads from one RPC, writes through another: the agents' many reads go to
+ * their own endpoint, their few transactions to the relay's (dRPC's public
+ * endpoint answers views but failed to commit transactions from Fly).
+ */
+export function readsFrom(reads: Chain, writes: Chain): Chain {
+  return {
+    view: (c, m, a) => reads.view(c, m, a),
+    balance: (a) => reads.balance(a),
+    freeBalance: (a) => reads.freeBalance(a),
+    hasKey: (a, k) => reads.hasKey(a, k),
+    createAccount: (a, k, y) => writes.createAccount(a, k, y),
+    transfer: (r, y) => writes.transfer(r, y),
+    call: (c, m, a, t, d) => writes.call(c, m, a, t, d),
+    ...(writes.callChecked ? { callChecked: (c: string, m: string, a: Record<string, unknown>, t: number, d?: bigint) => writes.callChecked!(c, m, a, t, d) } : {}),
+    relay: (s) => writes.relay(s),
+  };
+}

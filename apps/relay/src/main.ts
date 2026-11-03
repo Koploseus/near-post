@@ -10,7 +10,7 @@ import { Journal } from "./agents/journal.js";
 import { askWith } from "./agents/minds.js";
 import { agentKey, roster } from "./agents/roster.js";
 import { Agents } from "./agents/runner.js";
-import { Limiter, throttle } from "./agents/throttle.js";
+import { Limiter, readsFrom, throttle } from "./agents/throttle.js";
 import { Kickoffs, startScheduler } from "./schedule.js";
 import { Vaults } from "./vault.js";
 
@@ -65,8 +65,11 @@ if (agents && config.AGENTS_SEED) {
   const limiter = new Limiter(config.AGENTS_RPS);
   const runner = new Agents(
     {
-      chain: throttle(rpcChain(config.AGENTS_RPC_URL, signer), limiter),
-      as: (a) => throttle(rpcChain(config.AGENTS_RPC_URL, { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey }), limiter),
+      chain: throttle(readsFrom(rpcChain(config.AGENTS_RPC_URL, signer), rpcChain(config.NEAR_RPC_URL, signer)), limiter),
+      as: (a) => {
+        const k = { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey };
+        return throttle(readsFrom(rpcChain(config.AGENTS_RPC_URL, k), rpcChain(config.NEAR_RPC_URL, k)), limiter);
+      },
       publicKeyOf: (a) => agentKey(seed, a.account).publicKey,
       leagueId: config.LEAGUE_ID!,
       goalarsId: config.GOALARS_ID!,
