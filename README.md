@@ -100,9 +100,11 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   of the match. The match sheet also records the last pass before an
   open-play goal (an assist) and every ball won off a dribbler (a tackle).
   A goal adds one point of shooting. Win 3 points, draw 1.
-- **Season stats** (Team tab, `GET /v1/stats`): top scorer, assists, shots,
-  tackles, saves, clean sheets, man of the match, penalties, fouls and cards,
-  for your club or the league, counted from the on-chain match sheets.
+- **Season stats** (Team tab, `GET /v1/stats`), counted from the on-chain
+  match sheets and stands: players (goals, assists, shots, tackles, saves,
+  clean sheets, man of the match, penalties, fouls, cards), clubs (attack,
+  defence, form over the last five, winning runs, biggest wins, possession,
+  fair play) and fans (crowds, fill of the stand, full houses and their runs).
 - **Goals mint G, if the fans came:** a goal mints up to 600k G, 420k to the
   scorer's own wallet and 180k to the club, in proportion to how full the
   scoring club's stand is that day (present fans over the 60% full-house

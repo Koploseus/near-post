@@ -545,3 +545,8 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 .board-card li { font-size: 14px; }
 .board-card li.me b { color: var(--red); }
 .board-card .val { display: block; font-size: 13px; font-weight: 700; color: var(--muted-on-paper); }
+.form-strip { display: inline-flex; gap: 3px; margin-top: 2px; }
+.form-strip i { font-style: normal; font-size: 11px; font-weight: 800; width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 3px; color: #fff; }
+.form-strip i.rW { background: #1e7a47; }
+.form-strip i.rD { background: #8a8270; }
+.form-strip i.rL { background: var(--red); }

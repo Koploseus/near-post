@@ -12,12 +12,134 @@ type Kind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yell
 export interface Sheet {
   home: string;
   away: string;
+  home_goals?: number;
+  away_goals?: number;
+  derby?: boolean;
   events: { second: number; home: boolean; kind: Kind; player: number }[];
   /** First half home, first half away, second half home, second half away. */
   elevens: string[][];
   first_half_events: number;
   full_time: boolean;
-  stats: { man_of_the_match: { player: string } | null };
+  stats: {
+    man_of_the_match: { player: string } | null;
+    home_possession?: number;
+    away_possession?: number;
+    home_yellows?: number;
+    away_yellows?: number;
+    home_reds?: number;
+    away_reds?: number;
+    home_fouls?: number;
+    away_fouls?: number;
+  };
+}
+
+/** A club's season, from its match sheets and its stand each day. */
+export interface ClubLine {
+  club: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goals_for: number;
+  goals_against: number;
+  /** Last five results, oldest first: "W", "D" or "L". */
+  form: string[];
+  /** Wins in a row now, and the season's best run. */
+  win_streak: number;
+  best_win_streak: number;
+  /** Biggest win: margin, score and opponent. */
+  biggest_win: { day: number; margin: number; score: string; opponent: string } | null;
+  /** Average share of the ball, in percent. */
+  possession: number;
+  yellows: number;
+  reds: number;
+  fouls: number;
+  /** Fans present on match days at home and away alike (the stand is the club's). */
+  attendance_total: number;
+  attendance_best: number;
+  /** Average fill of the full-house target, in percent (capped at 100 per day). */
+  fill: number;
+  full_houses: number;
+  /** Runs of full houses: now, and best ever (the league's own counters). */
+  full_house_streak: number;
+  best_full_house_streak: number;
+}
+
+interface StandDay {
+  present: number;
+  fans: number;
+  full_house: boolean;
+}
+
+/** Club lines from the match sheets (days in order) and each club's stand per day. */
+export function clubLines(days: { day: number; sheets: Sheet[] }[], stands: Map<string, Map<number, StandDay>>, table: { manager: string; full_house_streak?: number; best_streak?: number }[]): ClubLine[] {
+  const lines = new Map<string, ClubLine & { poss: number[]; results: string[] }>();
+  const line = (club: string) => {
+    let l = lines.get(club);
+    if (!l) {
+      l = {
+        club, played: 0, won: 0, drawn: 0, lost: 0, goals_for: 0, goals_against: 0, form: [], win_streak: 0, best_win_streak: 0, biggest_win: null,
+        possession: 0, yellows: 0, reds: 0, fouls: 0, attendance_total: 0, attendance_best: 0, fill: 0, full_houses: 0, full_house_streak: 0,
+        best_full_house_streak: 0, poss: [], results: [],
+      };
+      lines.set(club, l);
+    }
+    return l;
+  };
+  for (const c of table) line(c.manager);
+  for (const { day, sheets } of days) {
+    for (const m of sheets) {
+      if (!m.full_time) continue;
+      const hg = m.home_goals ?? 0;
+      const ag = m.away_goals ?? 0;
+      for (const home of [true, false]) {
+        const l = line(home ? m.home : m.away);
+        const [f, a] = home ? [hg, ag] : [ag, hg];
+        l.played++;
+        l.goals_for += f;
+        l.goals_against += a;
+        const r = f > a ? "W" : f === a ? "D" : "L";
+        l.results.push(r);
+        if (r === "W") {
+          l.won++;
+          l.win_streak++;
+          l.best_win_streak = Math.max(l.best_win_streak, l.win_streak);
+          if (!l.biggest_win || f - a > l.biggest_win.margin || (f - a === l.biggest_win.margin && f > Number(l.biggest_win.score.split("-")[0]))) {
+            l.biggest_win = { day, margin: f - a, score: `${f}-${a}`, opponent: home ? m.away : m.home };
+          }
+        } else {
+          l.win_streak = 0;
+          if (r === "D") l.drawn++;
+          else l.lost++;
+        }
+        const st = m.stats;
+        const p = home ? st.home_possession : st.away_possession;
+        if (typeof p === "number") l.poss.push(p);
+        l.yellows += (home ? st.home_yellows : st.away_yellows) ?? 0;
+        l.reds += (home ? st.home_reds : st.away_reds) ?? 0;
+        l.fouls += (home ? st.home_fouls : st.away_fouls) ?? 0;
+      }
+    }
+  }
+  for (const c of table) {
+    const l = line(c.manager);
+    l.full_house_streak = c.full_house_streak ?? 0;
+    l.best_full_house_streak = c.best_streak ?? 0;
+    const fills: number[] = [];
+    for (const [, s] of stands.get(c.manager) ?? new Map<number, StandDay>()) {
+      l.attendance_total += s.present;
+      l.attendance_best = Math.max(l.attendance_best, s.present);
+      if (s.full_house) l.full_houses++;
+      const target = Math.ceil((s.fans * 60) / 100);
+      if (target > 0) fills.push(Math.min(100, (100 * s.present) / target));
+    }
+    l.fill = fills.length ? Math.round(fills.reduce((a, b) => a + b, 0) / fills.length) : 0;
+  }
+  return [...lines.values()].map(({ poss, results, ...l }) => ({
+    ...l,
+    form: results.slice(-5),
+    possession: poss.length ? Math.round(poss.reduce((a, b) => a + b, 0) / poss.length) : 0,
+  }));
 }
 
 export interface Line {
@@ -151,6 +273,7 @@ export interface SeasonStats {
   /** The first match day of the season whose sheets record assists and tackles (the engine added them mid-season), or null. */
   assists_from: number | null;
   players: (Line & { name: string })[];
+  clubs: ClubLine[];
 }
 
 interface ScheduleView {
@@ -165,6 +288,8 @@ interface ScheduleView {
  */
 export class Stats {
   private days = new Map<number, Sheet[]>();
+  /** Each club's stand on each finished match day (never changes once played). */
+  private stands = new Map<string, Map<number, StandDay>>();
   private names = new Map<string, string>();
   private namesAt = 0;
   private cached: { at: number; value: SeasonStats } | null = null;
@@ -198,15 +323,38 @@ export class Stats {
     for (let d = from; d <= to && assistsFrom === null; d++) {
       if ((this.days.get(d) ?? []).some((m) => m.events.some((e) => e.kind === "assist" || e.kind === "tackle"))) assistsFrom = d;
     }
+    const table = await this.chain.view<{ manager: string; full_house_streak?: number; best_streak?: number }[]>(this.leagueId, "table");
+    await this.loadStands(table.map((c) => c.manager), from, to);
+    const days: { day: number; sheets: Sheet[] }[] = [];
+    for (let d = from; d <= to; d++) days.push({ day: d, sheets: this.days.get(d) ?? [] });
+    const seasonStands = new Map<string, Map<number, StandDay>>();
+    for (const [club, byDay] of this.stands) seasonStands.set(club, new Map([...byDay].filter(([d]) => d >= from && d <= to)));
     const value: SeasonStats = {
       season: s.season,
       from,
       to,
       assists_from: assistsFrom,
       players: [...lines.values()].map((l) => ({ ...l, name: this.names.get(l.token_id) ?? l.token_id })),
+      clubs: clubLines(days, seasonStands, table),
     };
     this.cached = { at: this.now(), value };
     return value;
+  }
+
+  /** Reads the stands of finished days not read yet, a few at a time. */
+  private async loadStands(clubs: string[], from: number, to: number) {
+    const todo: [string, number][] = [];
+    for (const c of clubs) for (let d = from; d <= to; d++) if (!this.stands.get(c)?.has(d)) todo.push([c, d]);
+    for (let i = 0; i < todo.length; i += 4) {
+      await Promise.all(
+        todo.slice(i, i + 4).map(async ([c, d]) => {
+          const r = await this.chain.view<StandDay | null>(this.leagueId, "stand_result", { club_id: c, match_day: d }).catch(() => undefined);
+          if (r === undefined) return; // try again next time
+          if (!this.stands.has(c)) this.stands.set(c, new Map());
+          this.stands.get(c)!.set(d, r ?? { present: 0, fans: 0, full_house: false });
+        }),
+      );
+    }
   }
 
   private async loadNames() {
