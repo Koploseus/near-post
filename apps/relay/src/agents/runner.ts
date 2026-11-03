@@ -235,7 +235,18 @@ export class Agents {
     // academy players' earnings, withdraw stale bids.
     const owed = BigInt(await this.league<string>("owed_of", { account_id: c.account }));
     if (owed > 0n) await this.act(c, out, () => me.call(this.d.leagueId, "collect", {}, 50), { what: "collected" });
-    const squad = await this.squad(ctx, c.account);
+    let squad = await this.squad(ctx, c.account);
+    if (!squad.some((p) => p.position === "Gk")) {
+      // No keeper in the squad: bring back the best one the club still owns.
+      const owned = await this.view<{ token_id: string }[]>(this.d.playersId, "nft_tokens_for_owner", { account_id: c.account, limit: 100 });
+      const inSquad = new Set(squad.map((p) => p.token_id));
+      const out_ = await Promise.all(owned.filter((t) => !inSquad.has(t.token_id)).map((t) => this.league<Player | null>("get_player", { token_id: t.token_id })));
+      const keeper = out_.filter((p): p is Player => p?.position === "Gk").sort((a, b) => b.overall - a.overall)[0];
+      if (keeper && (await this.act(c, out, () => me.call(this.d.leagueId, "recall_player", { token_id: keeper.token_id }, 30), { what: "recalled", token_id: keeper.token_id }))) {
+        ctx.squads.delete(c.account);
+        squad = await this.squad(ctx, c.account);
+      }
+    }
     for (const p of squad as LeaguePlayer[]) {
       if (p.controller === null && BigInt(p.wallet) + BigInt(p.salary) >= CLAIM_FROM) {
         await this.act(c, out, () => me.call(this.d.leagueId, "claim_player", { token_id: p.token_id }, 60), { what: "collected" });
@@ -568,6 +579,7 @@ export class Agents {
     try {
       await run();
       this.d.journal.markDone(key);
+      this.d.journal.save(); // a restart (a deploy) must not lose or repeat what was done
     } catch (e) {
       console.error(`agents: ${key}: ${msg(e)}`);
     }

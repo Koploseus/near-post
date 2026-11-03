@@ -400,7 +400,8 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   being built, so we can redeploy. They will be deleted before submission;
   after that, a new version means new accounts (v2), not an upgrade. One
   exception so far: on 2 November the league's code was redeployed on
-  `league-v6` with the same state, to add `rename_club`.
+  `league-v6` with the same state, to add `rename_club`, then `recall_player`
+  and the rule that keeps a club's last keeper.
 
 - Club shares go to the club treasury, which the league holds as real G so
   that penalties can burn it.

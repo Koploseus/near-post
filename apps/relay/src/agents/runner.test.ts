@@ -105,6 +105,7 @@ const ALLOWED = new Set([
   "nft_transfer",
   "create_footballer",
   "rename_club",
+  "recall_player",
 ]);
 
 const run = async (w: ReturnType<typeof world>, ask: Ask) => {
