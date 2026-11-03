@@ -294,6 +294,7 @@ impl League {
         self.next_unbox += 1;
         let items = open_pack(derive_seed(env::random_seed_array(), &[self.next_unbox, 7]));
         self.unboxed.insert(buyer.clone(), items.clone());
+        self.log("pack", Some(buyer.clone()), amount.0, false);
         ext_goalars::ext(self.goalars_id.clone())
             .with_static_gas(BURN_GAS)
             .burn(amount, Some("pack".to_string()))

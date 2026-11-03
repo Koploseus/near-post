@@ -22,7 +22,8 @@ export type Act =
   | { what: "collected" }
   | { what: "created"; token_id?: string }
   | { what: "renamed"; name: string }
-  | { what: "recalled"; token_id: string };
+  | { what: "recalled"; token_id: string }
+  | { what: "season_ticket"; club: string; price: number };
 
 export interface Entry {
   at: number;
@@ -40,6 +41,8 @@ export interface Entry {
   errors: string[];
   evidence: Evidence | null;
   signature: Signature | null;
+  /** Only for season ticket holders (the fan zone), never in the public feed. */
+  briefing?: string;
 }
 
 export interface SeenOffer {
@@ -94,8 +97,22 @@ export class Journal {
     this.s.entries.push(e);
     if (this.s.entries.length > MAX_ENTRIES) this.s.entries.splice(0, this.s.entries.length - MAX_ENTRIES);
   }
-  /** Newest first. */
+  /** Newest first, without what is for season ticket holders. */
   feed(limit = 50, agent?: string, day?: number): Entry[] {
+    return this.all(limit, agent, day).map(({ briefing: _, ...e }) => e);
+  }
+
+  /** The coaches' briefings for these clubs (the fan zone), newest first. */
+  briefings(clubs: string[], limit = 20): Entry[] {
+    const out: Entry[] = [];
+    for (let i = this.s.entries.length - 1; i >= 0 && out.length < limit; i--) {
+      const e = this.s.entries[i]!;
+      if (e.briefing && clubs.includes(e.agent)) out.push(e);
+    }
+    return out;
+  }
+
+  private all(limit: number, agent?: string, day?: number): Entry[] {
     const out: Entry[] = [];
     for (let i = this.s.entries.length - 1; i >= 0 && out.length < limit; i--) {
       const e = this.s.entries[i]!;

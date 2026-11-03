@@ -1,5 +1,6 @@
 import { Account, FailoverRpcProvider, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
-import { GOALARS, ITEMS, LEAGUE, PLAYERS, READ_RPCS, RELAY, RPC } from "./config.js";
+import { fanzoneMessage } from "../../../relay/src/vault-message.js";
+import { GOALARS, ITEMS, LEAGUE, PLAYERS, READ_RPCS, RELAY, RPC, TICKETS } from "./config.js";
 
 /**
  * For signing: the access key's nonce and a recent block, from the first RPC
@@ -223,3 +224,55 @@ export async function itemsOf(accountId: string, ids: string[]): Promise<Map<str
 export const fuse = (s: Session, items: string[]) => leagueCall(s, "fuse", { items }, 120);
 export const equip = (s: Session, tokenId: string, item: string) => leagueCall(s, "equip", { token_id: tokenId, item }, 120);
 export const unequip = (s: Session, tokenId: string, kind: string) => leagueCall(s, "unequip", { token_id: tokenId, kind }, 60);
+
+// ---- Season tickets ----
+
+export interface SeasonTicket {
+  token_id: string;
+  owner_id: string;
+  club: string;
+  season: number;
+  number: number;
+  /** G it holds now, withdrawable by its owner. */
+  balance: string;
+  earned: string;
+}
+
+export const ticketsOf = (accountId: string) => view<SeasonTicket[]>(TICKETS, "tickets_of", { account_id: accountId });
+
+export const buySeasonTicket = (s: Session, club: string, price: string) =>
+  call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount: price, msg: JSON.stringify({ season_ticket: club }) }, { deposit: 1n, tgas: 150 });
+
+export const withdrawTicket = (s: Session, tokenId: string) => call(s, TICKETS, "withdraw", { token_id: tokenId }, { deposit: 1n, tgas: 60 });
+
+export interface Briefing {
+  club: string;
+  day: number;
+  half: number;
+  quote: string;
+  briefing: string;
+  at: number;
+}
+
+/** The fan zone: the request is signed with the player's key; the relay checks it holds a season ticket. */
+export async function fanzone(s: Session): Promise<{ tickets: SeasonTicket[]; briefings: Briefing[] } | { error: string }> {
+  const kp = KeyPair.fromString(s.privateKey as `ed25519:${string}`);
+  const { serverNow } = await import("./time.js");
+  const ts = Math.round(serverNow());
+  const signature = btoa(String.fromCharCode(...kp.sign(new TextEncoder().encode(fanzoneMessage(s.accountId, ts))).signature));
+  const r = await fetch(`${RELAY}/v1/fanzone`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ account_id: s.accountId, public_key: kp.getPublicKey().toString(), ts, signature }),
+  });
+  return (await r.json()) as { tickets: SeasonTicket[]; briefings: Briefing[] } | { error: string };
+}
+
+export interface LedgerEntry {
+  id: number;
+  match_day: number;
+  kind: string;
+  who: string | null;
+  amount: string;
+  mint: boolean;
+}

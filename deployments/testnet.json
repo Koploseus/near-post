@@ -1,33 +1,37 @@
 {
   "network": "testnet",
-  "version": "v6",
-  "deployed_at": "2026-11-02T16:29:58.401Z",
+  "version": "v7",
+  "deployed_at": "2026-11-03T09:27:47.423Z",
   "contracts": {
     "league": {
-      "account_id": "league-v6.near-post.testnet",
-      "wasm_sha256": "03ba96205982cc40454ff930ebbc4d8983e745bad1a99d52d5b171fa9e2ae657",
-      "deploy_tx": "4uet9Tft4FPV985EzSKKzYEYF9fK9WZ8kqoMkZy8f2UG",
-      "init_tx": "6dZYNkt4zouPxcmmQksm8fGnvQvEVqQqrABTsApgiwdZ",
-      "redeployed_at": "2026-11-03T00:26:46.057Z",
-      "note": "Code redeployed on the same account (state unchanged): adds rename_club, recall_player, keepers stay."
+      "account_id": "league-v7.near-post.testnet",
+      "wasm_sha256": "39088cf1442c9c4c09254fe9b3835baca940e0b8e34757f81cc9e590f7ef1fca",
+      "deploy_tx": "E7cQ8i24BjFdVYnz1dvpVHszhFXpybQ2WsUkNcniD9sB",
+      "init_tx": "GpWgzQbC5uvesTzGH6yTFMriaYqxvft5gsmUGLJmubvs"
     },
     "goalars": {
-      "account_id": "goalars-v6.near-post.testnet",
+      "account_id": "goalars-v7.near-post.testnet",
       "wasm_sha256": "43a1787022ed40db1c0b2fdb6d75e9d301aa2f2f7d9f3f6c9870c41405b7679b",
-      "deploy_tx": "6d1ybVShGsGzwN2j8eRbGwD6i9vCK8zbDS1J8HyqkYgL",
-      "init_tx": "AB8PGAzz91G6zt9Q6b4ZaTx65DogGiTSQz3Hn1iuDqsh"
+      "deploy_tx": "CJB5KTAu9PomxVZMgd4YvE9ei9bVbDobWRJ53VzyQi1w",
+      "init_tx": "8hLjbD65r5xGwkD5FSBGBVcv6U2uKsEBQnkkb7DVFjdn"
     },
     "players": {
-      "account_id": "players-v6.near-post.testnet",
+      "account_id": "players-v7.near-post.testnet",
       "wasm_sha256": "dbf6f7d0397aef9a0dbaa36ff565b5fc54a2add2f68b40e20a56000a5523b1bd",
-      "deploy_tx": "HTR8rjcU1kXZCoPKGu6L5Z6RijU7jQMogyC3i9m8U7G1",
-      "init_tx": "J1wbfJ2HvsQkhW6xzY2YZ2bWPhCeaEMbTeohFCqkiH5m"
+      "deploy_tx": "9V9F8Z1Mx6BxWjeSfdvDzV1eiLQCSBJRHfGZntNvaSsW",
+      "init_tx": "HLt571LS81ri5aSHfqodhnunwjmrMxMLAPEzscAv66Yw"
     },
     "items": {
-      "account_id": "items-v6.near-post.testnet",
+      "account_id": "items-v7.near-post.testnet",
       "wasm_sha256": "87c567ba64fce0aa45f45d663a831dd28b6bff106b044e8069b09dab91bd4bbc",
-      "deploy_tx": "CtexagL1JtDRP66eF8sWkbyxbvFwy7S96pDjbqnL7kmS",
-      "init_tx": "AEM32kzjyxuP3zfsEYD5jVfqz9Xd9ZLU2sEEMyFgCYT4"
+      "deploy_tx": "DiQpR6wFMoouFavZZcZRQHPiEzmSAS5QWtZ75BvR61Wt",
+      "init_tx": "EYmbmrSoCAVuqkX4m9z8nUEmfsrc9zrmiFLx9WknyKeR"
+    },
+    "tickets": {
+      "account_id": "tickets-v7.near-post.testnet",
+      "wasm_sha256": "7fb6614a148fafafbe3f55f84c4ec80614f3babd9c736ffb9180d4135cb35018",
+      "deploy_tx": "3NpxBL3cs7uoEx8BzgGKnHoBcZWmMfP6mfnntoXAD8sF",
+      "init_tx": "4PEUjdVBjhxCfHnATFrMvNEVEwihvH6kCnUG7ThviV9A"
     }
   },
   "attester": "ed25519:4cqYajyLcamJ9VPFLbNff3hqdwedoTQwkenqWEqsJLpc"

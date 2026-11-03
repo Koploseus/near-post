@@ -4,6 +4,8 @@ import { GameProvider, useGame } from "./lib/game.js";
 import { Toasts } from "./lib/toast.js";
 import { Agents } from "./screens/Agents.js";
 import { Album } from "./screens/Album.js";
+import { Goalars } from "./screens/Goalars.js";
+import { SeasonTickets } from "./screens/SeasonTickets.js";
 import { Dashboard } from "./screens/Dashboard.js";
 import { Game } from "./screens/Game.js";
 import { Lineup } from "./screens/Lineup.js";
@@ -20,6 +22,8 @@ const ROUTES = {
   live: { tab: "live", view: Live },
   team: { tab: "team", view: Lineup },
   stands: { tab: "stands", view: Stands },
+  g: { tab: "stands", view: Goalars },
+  tickets: { tab: "stands", view: SeasonTickets },
   match: { tab: "club", view: Match },
   album: { tab: "club", view: Album },
   market: { tab: "club", view: Market },
@@ -132,6 +136,24 @@ export function ClubTabs({ current }: { current: "match" | "album" | "market" | 
   );
 }
 
+/** The stand, the money it moves, and the season tickets: the fans' pages. */
+export function StandsTabs({ current }: { current: "stands" | "g" | "tickets" }) {
+  const tabs = [
+    ["stands", "Stand"],
+    ["g", "Goalars"],
+    ["tickets", "Season tickets"],
+  ] as const;
+  return (
+    <nav className="sub-tabs" aria-label="Stands">
+      {tabs.map(([k, label]) => (
+        <a key={k} href={`#/${k}`} aria-current={k === current ? "page" : undefined}>
+          {label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 export function App() {
   const r = useRoute();
   const View = ROUTES[r].view;
@@ -141,6 +163,7 @@ export function App() {
       <Header tab={tab} />
       <main className="wrap page">
         {(r === "match" || r === "album" || r === "market" || r === "ai") && <ClubTabs current={r} />}
+        {(r === "stands" || r === "g" || r === "tickets") && <StandsTabs current={r} />}
         <View />
       </main>
       <TabLinks current={tab} className="tabbar" />

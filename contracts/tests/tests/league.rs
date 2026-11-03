@@ -30,6 +30,7 @@ struct Game {
     goalars: Contract,
     players: Contract,
     items: Contract,
+    tickets: Contract,
 }
 
 async fn deploy() -> Result<Game> {
@@ -40,6 +41,7 @@ async fn deploy() -> Result<Game> {
     let goalars = worker.dev_deploy(&wasm("goalars")?).await?;
     let players = worker.dev_deploy(&wasm("players")?).await?;
     let items = worker.dev_deploy(&wasm("items")?).await?;
+    let tickets = worker.dev_deploy(&wasm("tickets")?).await?;
     for c in [&goalars, &players, &items] {
         c.call("new")
             .args_json(json!({ "league_id": league.id() }))
@@ -47,6 +49,12 @@ async fn deploy() -> Result<Game> {
             .await?
             .into_result()?;
     }
+    tickets
+        .call("new")
+        .args_json(json!({ "league_id": league.id(), "goalars_id": goalars.id() }))
+        .transact()
+        .await?
+        .into_result()?;
     league
         .call("new")
         .args_json(json!({
@@ -57,6 +65,7 @@ async fn deploy() -> Result<Game> {
             "half_ms": HALF_MS.to_string(),
             "half_time_ms": HALF_MS.to_string(),
             "attester": attester_public_key(),
+            "season_tickets_id": tickets.id(),
         }))
         .transact()
         .await?
@@ -67,6 +76,7 @@ async fn deploy() -> Result<Game> {
         goalars,
         players,
         items,
+        tickets,
     })
 }
 
@@ -799,5 +809,109 @@ async fn a_person_opens_a_pack_and_dresses_his_footballer() -> Result<()> {
             .await?,
     )?;
     assert_eq!(after, got, "no fusion was recorded");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_season_ticket_earns_at_full_houses_and_its_g_go_with_it() -> Result<()> {
+    let game = deploy().await?;
+    let club = game.account().await?;
+    game.call(&club, "create_club", json!({ "name": "Northbank Rovers" }))
+        .await?
+        .into_result()?;
+    let other = game.account().await?;
+    game.call(&other, "create_club", json!({ "name": "Moonhaven FC" }))
+        .await?
+        .into_result()?;
+    // Two fans (the signup grant gives them G); one buys a season ticket.
+    let ada = game.account().await?;
+    let bob = game.account().await?;
+    for fan in [&ada, &bob] {
+        game.call(fan, "follow", json!({ "club_id": club.id() }))
+            .await?
+            .into_result()?;
+    }
+    let price = 300_000 * ONE_G;
+    let r = ada
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": price.to_string(),
+            "msg": json!({ "season_ticket": club.id() }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?;
+    println!("season ticket: {} Tgas", r.total_gas_burnt.as_tgas());
+    r.into_result()?;
+    let mine: Vec<Value> = game
+        .tickets
+        .view("tickets_of")
+        .args_json(json!({ "account_id": ada.id() }))
+        .await?
+        .json()?;
+    assert_eq!(mine.len(), 1);
+    let token = mine[0]["token_id"].as_str().unwrap().to_string();
+    assert_eq!(mine[0]["number"], json!(1));
+    assert_eq!(mine[0]["balance"], json!("0"));
+    assert_eq!(
+        g(&game
+            .view("get_club", json!({ "club_id": club.id() }))
+            .await?["treasury"]),
+        price
+    );
+
+    // Both fans in: a full house. The ticket earns its share, held in it.
+    for fan in [&ada, &bob] {
+        game.call(fan, "check_in", json!({})).await?.into_result()?;
+    }
+    let calls = game.play_full_day(&club).await?;
+    for c in &calls {
+        println!("half: {} Tgas", league_gas(c, game.league.id()));
+    }
+    let ticket: Value = game
+        .tickets
+        .view("ticket")
+        .args_json(json!({ "token_id": token }))
+        .await?
+        .json()?;
+    let earned = g(&ticket["balance"]);
+    assert!(earned > 0, "the ticket earned at the full house: {ticket}");
+    assert!(earned <= 50_000 * ONE_G);
+    let ledger: Vec<Value> = serde_json::from_value(game.view("ledger", json!({})).await?)?;
+    assert!(ledger.iter().any(|e| e["kind"] == "season_tickets"));
+
+    // Sold to Bob: the balance goes with it, Ada can no longer take it.
+    ada.call(game.tickets.id(), "nft_transfer")
+        .args_json(json!({ "receiver_id": bob.id(), "token_id": token }))
+        .deposit(NearToken::from_yoctonear(1))
+        .transact()
+        .await?
+        .into_result()?;
+    let r = ada
+        .call(game.tickets.id(), "withdraw")
+        .args_json(json!({ "token_id": token }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(60))
+        .transact()
+        .await?;
+    assert!(r.is_failure(), "the old owner cannot withdraw");
+    let before = game.balance(bob.id().as_str()).await?;
+    bob.call(game.tickets.id(), "withdraw")
+        .args_json(json!({ "token_id": token }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(60))
+        .transact()
+        .await?
+        .into_result()?;
+    assert_eq!(game.balance(bob.id().as_str()).await?, before + earned);
+    let ticket: Value = game
+        .tickets
+        .view("ticket")
+        .args_json(json!({ "token_id": token }))
+        .await?
+        .json()?;
+    assert_eq!(ticket["balance"], json!("0"));
     Ok(())
 }

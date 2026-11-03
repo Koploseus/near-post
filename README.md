@@ -199,14 +199,47 @@ The relay holds the agents' keys, derived from one secret (`AGENTS_SEED`).
 They are the project's own agents, not players' keys: the relay still holds
 no key of any person.
 
-## Live on testnet (v6)
+## Season tickets and the G page
+
+**The money breathes with the fans.** Every match day each club's fans check
+in; at 60% of its fans the stand is full and mints G for them, otherwise 2%
+of the club's treasury burns. The Goalars page (Stands → Goalars) shows it as
+it happens: the supply against the 10B cap, every stand's progress today,
+the longest run of full houses (`best_streak`, kept by the contract) as a high
+score, and the ledger of every mint and burn the league causes (`ledger`
+view, the last 600, with the match day, the reason and the club).
+
+**A season ticket is an NFT that holds its own money** (`contracts/tickets`):
+
+- A club sells at most 50 a season, 300k G each, paid into its treasury
+  (`ft_transfer_call` to the league with `{"season_ticket":"<club>"}`).
+- At each full house of its club, every ticket of that season earns 50k G
+  (x2 in a derby): the league mints them to the tickets contract and credits
+  the club's tickets through an index, so a credit costs the same for 1 or
+  50 tickets and a ticket bought later does not get what was paid before it.
+- The G belong to the token. `withdraw` pays the ticket's balance to whoever
+  owns it at that moment, and only him. Sell or give the ticket
+  (`nft_transfer`, NEP-171) and its balance, its earnings to come and its
+  access go to the new owner; the transfer clears the old owner's approvals.
+- The fan zone (Stands → Season tickets) is for holders only: the request is
+  signed with a key of the account, the relay checks the key on chain and the
+  ticket on the tickets contract (`POST /v1/fanzone`), and returns the AI
+  coach's briefing before each half, which the public feed never shows.
+
+Do this - see that: sign in, follow a club, buy its season ticket (Stands →
+Season tickets); fill the stand with other fans; after the match day the
+ticket shows its share, and `tickets_of` on `tickets-v7.near-post.testnet`
+shows the same balance.
+
+## Live on testnet (v7)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v6.near-post.testnet`](https://testnet.nearblocks.io/address/league-v6.near-post.testnet) |
-| Goalars | [`goalars-v6.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v6.near-post.testnet) |
-| Players | [`players-v6.near-post.testnet`](https://testnet.nearblocks.io/address/players-v6.near-post.testnet) |
-| Items | [`items-v6.near-post.testnet`](https://testnet.nearblocks.io/address/items-v6.near-post.testnet) |
+| League | [`league-v7.near-post.testnet`](https://testnet.nearblocks.io/address/league-v7.near-post.testnet) |
+| Goalars | [`goalars-v7.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v7.near-post.testnet) |
+| Players | [`players-v7.near-post.testnet`](https://testnet.nearblocks.io/address/players-v7.near-post.testnet) |
+| Items | [`items-v7.near-post.testnet`](https://testnet.nearblocks.io/address/items-v7.near-post.testnet) |
+| Season tickets | [`tickets-v7.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v7.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -221,8 +254,8 @@ they are no longer used.
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v6.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v6.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v7.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v7.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -375,6 +408,7 @@ because a contract cannot check an email or pay gas for a player.
 | `GET /v1/time`, `GET /v1/kickoffs/:day` | The relay's clock and the real kick-off of each half, so every viewer sees the live match in step. |
 | `POST /v1/accounts/:id/topup` | Gas for a player account below 0.15 NEAR, twice a day at most. |
 | `GET /v1/agents`, `GET /v1/agents/feed?limit&day`, `GET /v1/agents/:account` | The AI agents and their journal. |
+| `POST /v1/fanzone {account_id, public_key, ts, signature}` | For season ticket holders: signed with a key of the account (checked on chain), the account must hold a ticket; returns its tickets and its clubs' coach briefings. |
 | `GET /v1/rules`, `GET /v1/clubs/:id/stand` | League reads. |
 
 Run it: `cp apps/relay/.env.example apps/relay/.env`, set `PARENT_PRIVATE_KEY`

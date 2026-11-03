@@ -4,3 +4,6 @@ export const vaultMessage = (
   ts: number,
   e: { credential_id: string; salt: string; iv: string; ciphertext: string },
 ) => `near-post:vault:${accountId}:${ts}:${e.credential_id}:${e.salt}:${e.iv}:${e.ciphertext}`;
+
+/** What a season ticket holder signs to open the fan zone. */
+export const fanzoneMessage = (accountId: string, ts: number) => `near-post:fanzone:${accountId}:${ts}`;

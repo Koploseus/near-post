@@ -12,9 +12,10 @@ primary_region = 'cdg'
 [env]
   NEAR_NETWORK = "testnet"
   NEAR_RPC_URL = "https://test.rpc.fastnear.com"
-  LEAGUE_ID = "league-v6.near-post.testnet"
-  GOALARS_ID = "goalars-v6.near-post.testnet"
-  PLAYERS_ID = "players-v6.near-post.testnet"
+  LEAGUE_ID = "league-v7.near-post.testnet"
+  GOALARS_ID = "goalars-v7.near-post.testnet"
+  PLAYERS_ID = "players-v7.near-post.testnet"
+  TICKETS_ID = "tickets-v7.near-post.testnet"
   # AI agents: on with the AGENTS_SEED secret (and NEAR_AI_API_KEY for the model).
   AGENTS_RPS = "2"
   AGENTS_RPC_URL = "https://near-testnet.drpc.org"
@@ -31,7 +32,7 @@ primary_region = 'cdg'
   CROWD = "rive-nord:5,port-lune:4,pont-levant:3,haute-ville:4,marais:2,vieux-phare:3,saint-cendre:2,cote-rouge:3"
   CROWD_EVERY = "3"
   # The parent tops up the contracts' storage balance when it runs low.
-  KEEP_FUNDED = "league-v6.near-post.testnet,players-v6.near-post.testnet,goalars-v6.near-post.testnet,items-v6.near-post.testnet"
+  KEEP_FUNDED = "league-v7.near-post.testnet,players-v7.near-post.testnet,goalars-v7.near-post.testnet,items-v7.near-post.testnet,tickets-v7.near-post.testnet"
 
 # Passkey backups (encrypted in the browser) live on a volume. Create it once:
 #   fly volumes create near_post_data --region cdg --size 1

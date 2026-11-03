@@ -102,6 +102,13 @@ pub struct Rules {
     pub formations: Vec<Formation>,
     /// Most skill points one training can add (fewer from 80, see play.rs).
     pub training_max_points: u8,
+    /// A season ticket's price, paid into the club's treasury.
+    pub season_ticket_price: U128,
+    /// Season tickets a club sells per season.
+    pub season_tickets_per_club: u32,
+    /// What each season ticket of a club earns at each of its full houses
+    /// (times the derby multiplier), minted into the ticket.
+    pub season_ticket_share: U128,
 }
 
 pub fn the_rules() -> Rules {
@@ -132,6 +139,9 @@ pub fn the_rules() -> Rules {
         week_length: 7,
         formations: FORMATIONS.to_vec(),
         training_max_points: 3,
+        season_ticket_price: U128(300_000 * ONE_G),
+        season_tickets_per_club: 50,
+        season_ticket_share: U128(50_000 * ONE_G),
     }
 }
 
@@ -157,8 +167,23 @@ pub trait PlayersContract {
     ) -> Payout;
 }
 
+#[ext_contract(ext_tickets)]
+pub trait SeasonTicketsContract {
+    fn mint(
+        &mut self,
+        token_id: String,
+        owner_id: AccountId,
+        club: AccountId,
+        season: u32,
+        number: u32,
+        metadata: PlayerMetadata,
+    );
+    fn credit(&mut self, season: u32, shares: Vec<(AccountId, U128)>);
+}
+
 #[ext_contract(ext_self)]
 pub trait SelfCallbacks {
+    fn on_season_tickets_minted(&mut self, season: u32, nominal: Vec<(AccountId, U128)>);
     fn on_treasury_minted(&mut self, nominal: Vec<(AccountId, U128)>) -> U128;
     fn on_claim_minted(&mut self, account_id: AccountId, amount: U128) -> U128;
     fn on_player_claim_minted(&mut self, token_id: String, amount: U128) -> U128;
@@ -222,6 +247,8 @@ pub enum Order {
     Bid(String),
     /// A pack of three items: `{"pack":{}}`.
     Pack(PackOrder),
+    /// A season ticket of a club: `{"season_ticket":"<club id>"}`.
+    SeasonTicket(AccountId),
 }
 
 #[near(serializers = [json])]
@@ -423,6 +450,8 @@ enum StorageKey {
     DayResults,
     FinalTables,
     Unboxed,
+    SeasonTicketsSold,
+    Ledger,
 }
 
 #[near(serializers = [json, borsh])]
@@ -604,6 +633,33 @@ pub struct League {
     /// What each account got from its last pack or fusion.
     unboxed: LookupMap<AccountId, Vec<String>>,
     next_unbox: u64,
+    /// The season tickets contract (NEP-171 tokens that hold their G).
+    season_tickets_id: AccountId,
+    /// (club, season) -> season tickets sold.
+    season_tickets_sold: LookupMap<(AccountId, u32), u32>,
+    /// Every mint and burn of G the league causes, the last `LEDGER_SIZE`.
+    ledger: LookupMap<u64, LedgerEntry>,
+    ledger_next: u64,
+}
+
+/// How many ledger entries the league keeps (the oldest are overwritten).
+pub const LEDGER_SIZE: u64 = 600;
+
+/// One mint or burn of G. Mints are nominal (the goalars contract scales
+/// them under the cap); burns are exact.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct LedgerEntry {
+    pub id: u64,
+    pub match_day: u32,
+    /// full_house, empty_stand, goals, own_goal, season_tickets, sale_tax,
+    /// pack, training, relegation, signup, welcome.
+    pub kind: String,
+    /// The club or account concerned.
+    pub who: Option<AccountId>,
+    pub amount: U128,
+    /// A mint (true) or a burn (false).
+    pub mint: bool,
 }
 
 /// A squad holds at most this many players: eleven and one more.
@@ -624,6 +680,7 @@ const BURN_GAS: Gas = Gas::from_tgas(10);
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const ACADEMY_GAS: Gas = Gas::from_tgas(60);
 const SALE_GAS: Gas = Gas::from_tgas(60);
+const TICKETS_GAS: Gas = Gas::from_tgas(20);
 const MAX_NAME: usize = 32;
 const MS: u64 = 1_000_000;
 const MINUTE_NS: u64 = 60_000 * MS;
@@ -642,6 +699,7 @@ impl League {
         attester: PublicKey,
         half_ms: U64,
         half_time_ms: U64,
+        season_tickets_id: AccountId,
     ) -> Self {
         require!(
             match_interval_ms.0 >= 2 * half_ms.0 + half_time_ms.0 + 60_000,
@@ -706,6 +764,10 @@ impl League {
             suspended: LookupSet::new(StorageKey::Suspended),
             unboxed: LookupMap::new(StorageKey::Unboxed),
             next_unbox: 0,
+            season_tickets_id,
+            season_tickets_sold: LookupMap::new(StorageKey::SeasonTicketsSold),
+            ledger: LookupMap::new(StorageKey::Ledger),
+            ledger_next: 0,
         }
     }
 
@@ -1093,7 +1155,7 @@ impl League {
         );
         let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
             env::panic_str(
-                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"} or {\"pack\":{}}",
+                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}} or {\"season_ticket\":\"<club>\"}",
             )
         });
         match order {
@@ -1102,6 +1164,7 @@ impl League {
                 self.bid(sender_id, amount, token);
             }
             Order::Pack(_) => self.open_pack_for(sender_id, amount),
+            Order::SeasonTicket(club) => self.sell_season_ticket(sender_id, amount, club),
         }
         PromiseOrValue::Value(U128(0))
     }
@@ -1191,6 +1254,7 @@ impl League {
             }
         }
         if burn > 0 {
+            self.log("sale_tax", None, burn, false);
             ext_goalars::ext(self.goalars_id.clone())
                 .with_static_gas(BURN_GAS)
                 .burn(U128(burn), Some(format!("sale tax, offer {offer_id}")))
@@ -1537,6 +1601,72 @@ impl League {
         }
     }
 
+    /// Every club's stand for the current match day: fans in, the target.
+    pub fn stands_today(&self) -> Vec<(AccountId, Stand)> {
+        self.club_ids
+            .iter()
+            .map(|id| (id.clone(), self.stand(id.clone())))
+            .collect()
+    }
+
+    // ---- Season tickets ----
+
+    /// Season tickets a club sold for a season (at most `season_tickets_per_club`).
+    pub fn season_tickets_sold(&self, club_id: AccountId, season: u32) -> u32 {
+        self.season_tickets_sold
+            .get(&(club_id, season))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn season_tickets_contract(&self) -> AccountId {
+        self.season_tickets_id.clone()
+    }
+
+    /// Splits what goalars really minted for season tickets between the clubs
+    /// (in proportion to their nominal shares) and credits their tickets.
+    #[private]
+    pub fn on_season_tickets_minted(
+        &mut self,
+        season: u32,
+        nominal: Vec<(AccountId, U128)>,
+        #[callback_result] minted: Result<U128, PromiseError>,
+    ) {
+        let Ok(minted) = minted else {
+            return;
+        };
+        let total: u128 = nominal.iter().map(|(_, v)| v.0).sum();
+        if total == 0 || minted.0 == 0 {
+            return;
+        }
+        let shares: Vec<(AccountId, U128)> = nominal
+            .into_iter()
+            .map(|(club, v)| (club, U128(minted.0 * v.0 / total)))
+            .collect();
+        ext_tickets::ext(self.season_tickets_id.clone())
+            .with_static_gas(TICKETS_GAS)
+            .credit(season, shares)
+            .detach();
+    }
+
+    // ---- The ledger ----
+
+    /// The last mints and burns of G, newest first.
+    pub fn ledger(&self, limit: Option<u32>) -> Vec<LedgerEntry> {
+        let n = (limit.unwrap_or(100) as u64).min(LEDGER_SIZE);
+        let mut out = Vec::new();
+        let mut id = self.ledger_next;
+        while id > 0 && (out.len() as u64) < n {
+            id -= 1;
+            if let Some(e) = self.ledger.get(&(id % LEDGER_SIZE))
+                && e.id == id
+            {
+                out.push(e.clone());
+            }
+        }
+        out
+    }
+
     // ---- Match days ----
 
     /// Plays the current match day. Anyone can call it once it is due; the
@@ -1749,10 +1879,75 @@ impl League {
                 seed: hex,
             },
         );
+        self.log("training", Some(sender_id.clone()), amount.0, false);
         ext_goalars::ext(self.goalars_id.clone())
             .with_static_gas(BURN_GAS)
             .burn(amount, Some(format!("training {token}")))
             .detach();
+    }
+
+    /// A season ticket of `club`, paid `amount` G by `buyer`: the price goes
+    /// to the club's treasury and the ticket is minted to the buyer.
+    fn sell_season_ticket(&mut self, buyer: AccountId, amount: U128, club: AccountId) {
+        let rules = the_rules();
+        require!(
+            amount == rules.season_ticket_price,
+            "a season ticket costs exactly season_ticket_price"
+        );
+        let season = self.season;
+        let key = (club.clone(), season);
+        let sold = self.season_tickets_sold.get(&key).copied().unwrap_or(0);
+        require!(
+            sold < rules.season_tickets_per_club,
+            "this club sold all its season tickets"
+        );
+        let name = self
+            .clubs
+            .get(&club)
+            .map(|c| c.name.clone())
+            .unwrap_or_else(|| env::panic_str("no such club"));
+        let number = sold + 1;
+        self.season_tickets_sold.insert(key, number);
+        if let Some(c) = self.clubs.get_mut(&club) {
+            c.treasury = U128(c.treasury.0 + amount.0);
+        }
+        let token_id = format!("{club}:{season}:{number}");
+        ext_tickets::ext(self.season_tickets_id.clone())
+            .with_static_gas(TICKETS_GAS)
+            .mint(
+                token_id,
+                buyer,
+                club.clone(),
+                season,
+                number,
+                PlayerMetadata {
+                    title: format!("{name} · Season {season} · #{number}"),
+                    description: "Season ticket: earns G at every full house of its club this season, held in the ticket. Read it: season tickets contract, ticket.".into(),
+                    copies: 1,
+                    extra: format!("{{\"club\":\"{club}\",\"season\":{season},\"number\":{number}}}"),
+                },
+            )
+            .detach();
+    }
+
+    /// Writes a mint or a burn in the ledger (a ring of `LEDGER_SIZE`).
+    fn log(&mut self, kind: &str, who: Option<AccountId>, amount: u128, mint: bool) {
+        if amount == 0 {
+            return;
+        }
+        let id = self.ledger_next;
+        self.ledger.insert(
+            id % LEDGER_SIZE,
+            LedgerEntry {
+                id,
+                match_day: self.match_day,
+                kind: kind.to_string(),
+                who,
+                amount: U128(amount),
+                mint,
+            },
+        );
+        self.ledger_next += 1;
     }
 
     fn bid(&mut self, buyer: AccountId, price: U128, token: String) -> u64 {
@@ -1887,7 +2082,9 @@ impl League {
                 };
                 match kind {
                     GoalKind::Own => {
-                        burn_total += self.take_from_treasury(at_fault, rules.own_goal_burn.0);
+                        let b = self.take_from_treasury(at_fault, rules.own_goal_burn.0);
+                        self.log("own_goal", Some(at_fault.clone()), b, false);
+                        burn_total += b;
                     }
                     GoalKind::Normal | GoalKind::Late => {
                         let k = if kind == GoalKind::Late {
@@ -1902,6 +2099,7 @@ impl League {
                             p.refresh();
                         }
                         treasury_mints.push((scorer.clone(), k * rules.goal_club_share.0));
+                        self.log("goals", Some(scorer.clone()), k * rules.goal_mint.0, true);
                     }
                 }
                 goals.push(Goal {
@@ -1948,6 +2146,40 @@ impl League {
                 1
             };
             burn_total += self.settle_stand(id, day, k, &rules);
+        }
+
+        // A full house pays the club's season tickets of this season.
+        let mut ticket_mints: Vec<(AccountId, U128)> = Vec::new();
+        for id in &ids {
+            let Some(st) = self.stands.get(&(id.clone(), day)) else {
+                continue;
+            };
+            let sold = self
+                .season_tickets_sold
+                .get(&(id.clone(), self.season))
+                .copied()
+                .unwrap_or(0);
+            if st.full_house && sold > 0 {
+                let amount = rules.season_ticket_share.0 * st.multiplier as u128 * sold as u128;
+                self.log("season_tickets", Some(id.clone()), amount, true);
+                ticket_mints.push((id.clone(), U128(amount)));
+            }
+        }
+        let ticket_total: u128 = ticket_mints.iter().map(|(_, v)| v.0).sum();
+        if ticket_total > 0 {
+            ext_goalars::ext(self.goalars_id.clone())
+                .with_static_gas(MINT_GAS)
+                .mint(
+                    self.season_tickets_id.clone(),
+                    U128(ticket_total),
+                    Some(format!("season tickets, match day {day}")),
+                )
+                .then(
+                    ext_self::ext(env::current_account_id())
+                        .with_static_gas(TICKETS_GAS.saturating_add(CALLBACK_GAS))
+                        .on_season_tickets_minted(self.season, ticket_mints),
+                )
+                .detach();
         }
 
         self.day_results.insert((day, div), results.clone());
@@ -2037,8 +2269,10 @@ impl League {
             // Going down costs a tenth of the treasury, burned.
             for id in &down {
                 let t = self.clubs.get(id).map_or(0, |c| c.treasury.0);
-                burned += self
+                let b = self
                     .take_from_treasury(id, t * the_rules().relegation_burn_bps as u128 / 10_000);
+                self.log("relegation", Some(id.clone()), b, false);
+                burned += b;
             }
             tables[d].extend(up);
             tables[d + 1].splice(0..0, down);
@@ -2475,7 +2709,13 @@ impl League {
 
     /// Schedules a mint on the goalars contract. The amount is nominal: goalars
     /// scales it under the 10B cap.
-    fn mint(&self, account_id: AccountId, amount: U128, memo: &str) {
+    fn mint(&mut self, account_id: AccountId, amount: U128, memo: &str) {
+        let kind = if memo.starts_with("signup") {
+            "signup"
+        } else {
+            "welcome"
+        };
+        self.log(kind, Some(account_id.clone()), amount.0, true);
         ext_goalars::ext(self.goalars_id.clone())
             .with_static_gas(MINT_GAS)
             .with_attached_deposit(NearToken::from_yoctonear(0))
@@ -2534,6 +2774,12 @@ impl League {
         let full_house = present >= full_house_target(fans);
         let mut burned = 0;
         if full_house {
+            self.log(
+                "full_house",
+                Some(club_id.clone()),
+                rules.full_house_mint_per_fan.0 * k as u128 * present as u128,
+                true,
+            );
             if let Some(c) = self.clubs.get_mut(club_id) {
                 c.full_house_streak += 1;
                 c.best_streak = c.best_streak.max(c.full_house_streak);
@@ -2542,6 +2788,7 @@ impl League {
             let treasury = self.clubs.get(club_id).map(|c| c.treasury.0).unwrap_or(0);
             let bps = (rules.empty_stand_burn_bps * k).min(10_000) as u128;
             burned = self.take_from_treasury(club_id, treasury * bps / 10_000);
+            self.log("empty_stand", Some(club_id.clone()), burned, false);
             if let Some(c) = self.clubs.get_mut(club_id) {
                 c.full_house_streak = 0;
             }

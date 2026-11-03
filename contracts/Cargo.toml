@@ -1,5 +1,5 @@
 [workspace]
-members = ["goalars", "players", "items", "league", "tests"]
+members = ["goalars", "players", "items", "tickets", "league", "tests"]
 resolver = "2"
 
 [workspace.package]
