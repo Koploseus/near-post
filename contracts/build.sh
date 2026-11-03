@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 export RUSTUP_TOOLCHAIN=1.99.1
 
-contracts=(goalars players items league)
+contracts=(goalars players items tickets league)
 for contract in "${contracts[@]}"; do
   cargo near build non-reproducible-wasm --locked --manifest-path "$contract/Cargo.toml"
 done

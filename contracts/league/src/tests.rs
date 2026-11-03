@@ -51,6 +51,7 @@ fn league() -> League {
         attester_pk(),
         U64(4 * MINUTE_MS),
         U64(MINUTE_MS),
+        acc("tickets.testnet"),
     )
 }
 
@@ -1577,4 +1578,104 @@ fn a_manager_recalls_a_player_his_club_owns() {
     as_caller("c0.testnet");
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| l.recall_player(gk.clone())));
     assert!(r.is_err());
+}
+
+// ---- Season tickets and the ledger ----
+
+fn buy_season_ticket(l: &mut League, from: &str, club: &str, amount: u128) {
+    as_caller("goalars.testnet");
+    let _ = l.ft_on_transfer(
+        acc(from),
+        U128(amount),
+        format!("{{\"season_ticket\":\"{club}\"}}"),
+    );
+}
+
+#[test]
+fn a_season_ticket_pays_the_club_and_is_numbered() {
+    let mut l = league_with(2, 0);
+    let price = the_rules().season_ticket_price.0;
+    let before = l.get_club(acc("c0.testnet")).unwrap().treasury.0;
+    buy_season_ticket(&mut l, "fan.testnet", "c0.testnet", price);
+    buy_season_ticket(&mut l, "other.testnet", "c0.testnet", price);
+    assert_eq!(l.season_tickets_sold(acc("c0.testnet"), 1), 2);
+    assert_eq!(l.season_tickets_sold(acc("c1.testnet"), 1), 0);
+    assert_eq!(
+        l.get_club(acc("c0.testnet")).unwrap().treasury.0,
+        before + 2 * price
+    );
+}
+
+#[test]
+#[should_panic(expected = "a season ticket costs exactly season_ticket_price")]
+fn a_season_ticket_has_one_price() {
+    let mut l = league_with(1, 0);
+    buy_season_ticket(&mut l, "fan.testnet", "c0.testnet", ONE_G);
+}
+
+#[test]
+#[should_panic(expected = "this club sold all its season tickets")]
+fn fifty_season_tickets_a_club_and_season() {
+    let mut l = league_with(1, 0);
+    let price = the_rules().season_ticket_price.0;
+    for n in 0..=the_rules().season_tickets_per_club {
+        buy_season_ticket(&mut l, &format!("f{n}.testnet"), "c0.testnet", price);
+    }
+}
+
+#[test]
+fn a_full_house_credits_the_season_tickets_and_the_ledger_says_so() {
+    let mut l = league_with(2, 5);
+    let price = the_rules().season_ticket_price.0;
+    for n in 0..3 {
+        buy_season_ticket(&mut l, &format!("t{n}.testnet"), "c0.testnet", price);
+    }
+    // c1 has a treasury (a ticket sold) that its empty stand will burn from.
+    buy_season_ticket(&mut l, "t9.testnet", "c1.testnet", price);
+    // c0's stand is full (5 fans, target 3), c1's is empty.
+    for f in 0..4 {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.check_in();
+    }
+    let today = l.stands_today();
+    assert_eq!(today.len(), 2);
+    assert!(
+        today
+            .iter()
+            .any(|(c, s)| c == &acc("c0.testnet") && s.full_house)
+    );
+    play_day(&mut l, 3);
+    let ledger = l.ledger(Some(100));
+    let tickets = ledger
+        .iter()
+        .find(|e| e.kind == "season_tickets")
+        .expect("the tickets were credited");
+    assert_eq!(tickets.who, Some(acc("c0.testnet")));
+    assert_eq!(tickets.amount.0, 3 * the_rules().season_ticket_share.0);
+    assert!(tickets.mint);
+    assert!(
+        ledger
+            .iter()
+            .any(|e| e.kind == "full_house" && e.who == Some(acc("c0.testnet")))
+    );
+    assert!(
+        ledger
+            .iter()
+            .any(|e| e.kind == "empty_stand" && e.who == Some(acc("c1.testnet")) && !e.mint)
+    );
+    assert!(ledger.iter().any(|e| e.kind == "signup"));
+    // Newest first.
+    assert!(ledger.windows(2).all(|w| w[0].id > w[1].id));
+}
+
+#[test]
+fn the_ledger_keeps_the_last_entries() {
+    let mut l = league();
+    for n in 0..(LEDGER_SIZE + 25) {
+        l.log("pack", None, 1 + n as u128, false);
+    }
+    let all = l.ledger(Some(10_000));
+    assert_eq!(all.len() as u64, LEDGER_SIZE);
+    assert_eq!(all[0].amount.0, (LEDGER_SIZE + 25) as u128);
+    assert_eq!(all.last().unwrap().id, 25);
 }

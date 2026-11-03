@@ -1,4 +1,4 @@
-// Deploys the four checked-in wasm to testnet as sub-accounts of near-post.testnet.
+// Deploys the five checked-in wasm to testnet as sub-accounts of near-post.testnet.
 // Keys are read from / written to <keys-dir> (mode 600, outside the repo) and never printed.
 // Usage: node scripts/deploy-testnet.mjs <keys-dir> . <version> <match-interval-ms> [half-ms] [half-time-ms]
 import { createRequire } from "node:module";
@@ -23,6 +23,7 @@ const plan = [
   ["goalars", 5.0],
   ["players", 8.0],
   ["items", 4.0],
+  ["tickets", 4.0],
 ];
 const manifest = { network: "testnet", version, deployed_at: new Date().toISOString(), contracts: {} };
 for (const [name, fund] of plan) {
@@ -48,6 +49,7 @@ const init = async (n, args) => {
   console.log("init", id(n), r.transaction.hash);
 };
 for (const n of ["goalars", "players", "items"]) await init(n, { league_id: id("league") });
+await init("tickets", { league_id: id("league"), goalars_id: id("goalars") });
 // The drill attester (v4): the relay holds its private key, the league its public key.
 if (!existsSync(`${keys}/attester.json`)) {
   const kp = KeyPair.fromRandom("ed25519");
@@ -55,7 +57,7 @@ if (!existsSync(`${keys}/attester.json`)) {
 }
 const attester = load("attester").public_key;
 manifest.attester = attester;
-await init("league", { goalars_id: id("goalars"), players_id: id("players"), items_id: id("items"), match_interval_ms: String(intervalMs), attester, half_ms: String(halfMs), half_time_ms: String(halfTimeMs) });
+await init("league", { goalars_id: id("goalars"), players_id: id("players"), items_id: id("items"), match_interval_ms: String(intervalMs), attester, half_ms: String(halfMs), half_time_ms: String(halfTimeMs), season_tickets_id: id("tickets") });
 
 writeFileSync(`${repo}/deployments/testnet.json`, JSON.stringify(manifest, null, 2) + "\n");
 console.log("manifest written");
