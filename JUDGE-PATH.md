@@ -33,7 +33,8 @@ a half.
 | **Training** → pick a skill → **Train · 400k G** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. | 400k G burned. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
 | **Team** | The team sheet: your slot, the formation, the strategy vote. | Every person in the squad votes; AI footballers vote too. |
 
-A session must be finished in the same match day. Gas is paid by the relay
+A session must be finished in the same match day: the locker room shows the
+minutes left, and closes training in the last 3. Gas is paid by the relay
 (NEP-366 meta-transactions): you never see a fee.
 
 ## 3. Be a fan, watch the money (2 min)

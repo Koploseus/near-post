@@ -6,7 +6,8 @@ import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
 import { attestDrill, finishTraining, league, startDrill, train } from "../lib/near.js";
-import type { Player, Skill, Ticket } from "../lib/types.js";
+import { serverNow } from "../lib/time.js";
+import type { Player, Schedule, Skill, Ticket } from "../lib/types.js";
 
 const TRAINING = "400000000000";
 const SAVED = "near-post.attested";
@@ -18,6 +19,18 @@ interface Attested {
   points: number;
   signature: string;
 }
+
+/**
+ * When the current match day closes (its second half), and with it any
+ * training session paid during it. Before kick-off, the second half is due
+ * a half and half-time after kick-off; after the first half, it is scheduled.
+ */
+export function dayEndsAt(s: Schedule): number {
+  return s.first_half_played ? Number(s.next_match_at_ms) : Number(s.kickoff_at_ms) + Number(s.half_ms) + Number(s.half_time_ms);
+}
+/** Too close to the end of the match day to pay for a session: a drill and its submission take a few minutes. */
+export const TRAIN_CUTOFF_MS = 3 * 60_000;
+const minutes = (ms: number) => (ms >= 60_000 ? `${Math.floor(ms / 60_000)} min` : `${Math.max(0, Math.floor(ms / 1000))} s`);
 
 /** The score of a drill survives a reload until it is submitted. */
 const loadAttested = (ticket: number): Attested | null => {
@@ -43,6 +56,13 @@ const saveAttested = (a: Attested | null) => {
  */
 export function Training({ me }: { me: Player }) {
   const { session, schedule, balance, refresh } = useGame();
+  const [now, setNow] = useState(serverNow());
+  useEffect(() => {
+    const t = setInterval(() => setNow(serverNow()), 5_000);
+    return () => clearInterval(t);
+  }, []);
+  const left = schedule ? dayEndsAt(schedule) - now : Infinity;
+  const late = left < TRAIN_CUTOFF_MS;
   const day = schedule?.match_day ?? 0;
   const { data: last, reload } = useData(() => league<Ticket | null>("training_ticket", { token_id: me.token_id }), [me.token_id, day]);
   // A session lasts one match day: an older ticket can no longer be finished.
@@ -82,7 +102,9 @@ export function Training({ me }: { me: Player }) {
             <p className="big-score">
               {attested.hits} / {attested.rounds} · <strong>+{attested.points}</strong> {skillName(ticket.skill)}
             </p>
-            <p className="note">The relay signed your score. Submit it before the next match day.</p>
+            <p className={left < TRAIN_CUTOFF_MS ? "err" : "note"}>
+              The relay signed your score. Submit it before this match day ends{Number.isFinite(left) ? `, in ${minutes(left)}` : ""}.
+            </p>
             <Action
               label={attested.points ? `ADD ${attested.points} ${skillName(ticket.skill).toUpperCase()}` : "CLOSE THE SESSION (NO POINT)"}
               run={() => finishTraining(session, me.token_id, attested.points, attested.signature)}
@@ -99,6 +121,7 @@ export function Training({ me }: { me: Player }) {
             <p className="note">
               Paid: {HOW[ticket.skill]} Score 90% to gain 3 points, 70% for 2, 50% for 1. It gets harder as the skill rises.
             </p>
+            {Number.isFinite(left) && <p className={left < TRAIN_CUTOFF_MS ? "err" : "note"}>Play and submit within {minutes(left)}: the session ends with this match day.</p>}
             <Action
               label="START THE DRILL"
               run={async () => {
@@ -132,12 +155,17 @@ export function Training({ me }: { me: Player }) {
           </div>
           <Action
             label={`TRAIN ${skillName(skill).toUpperCase()} · 400k G`}
-            disabled={BigInt(balance) < BigInt(TRAINING)}
+            disabled={BigInt(balance) < BigInt(TRAINING) || late}
             run={() => train(session, me.token_id, skill, TRAINING)}
             success="Session booked: play the drill"
             done={() => soon(reload)}
           />
           {BigInt(balance) < BigInt(TRAINING) && <p className="note">You have {g(balance)}.</p>}
+          {late ? (
+            <p className="note">This match day ends in {minutes(left)}, too soon to play a session: training opens again with the next one.</p>
+          ) : (
+            Number.isFinite(left) && <p className="note">{minutes(left)} left in this match day to pay, play and submit.</p>
+          )}
         </>
       )}
       {error && (
