@@ -161,6 +161,11 @@ export class Agents {
   private async setup() {
     for (const a of [...this.coaches, ...this.footballers]) {
       if (this.ready.has(a.account) || this.cantSign.has(a.account)) continue;
+      if (this.d.journal.isDone(`ready:${a.account}`)) {
+        // Checked before a restart: no need to read it all again.
+        this.ready.add(a.account);
+        continue;
+      }
       try {
         if (a.kind === "footballer" && (await this.d.chain.balance(a.account)) === null) {
           await this.d.chain.createAccount(a.account, this.d.publicKeyOf(a), near("0.25"));
@@ -191,6 +196,8 @@ export class Agents {
           this.d.journal.markDone(`joined:${a.account}`);
         }
         this.ready.add(a.account);
+        this.d.journal.markDone(`ready:${a.account}`);
+        this.d.journal.save();
       } catch (e) {
         console.error(`agents: setup of ${a.account}: ${msg(e)}`);
       }
