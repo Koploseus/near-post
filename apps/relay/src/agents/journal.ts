@@ -21,7 +21,8 @@ export type Act =
   | { what: "reported" }
   | { what: "collected" }
   | { what: "created"; token_id?: string }
-  | { what: "renamed"; name: string };
+  | { what: "renamed"; name: string }
+  | { what: "recalled"; token_id: string };
 
 export interface Entry {
   at: number;

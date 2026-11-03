@@ -1316,22 +1316,26 @@ impl League {
         if !squad.contains(&token_id) {
             squad.push(token_id);
         }
-        // Eleven and one more: past twelve, the weakest academy player leaves
-        // the squad (his NFT stays with the club). Twelve people and no
-        // academy player left: the newcomer sits on the bench.
-        while squad.len() > MAX_SQUAD {
-            let weakest = squad
-                .iter()
-                .filter_map(|t| self.players.get(t))
-                .filter(|p| p.controller.is_none())
-                .min_by_key(|p| (p.overall, std::cmp::Reverse(p.token_id.clone())))
-                .map(|p| p.token_id.clone());
-            match weakest {
-                Some(w) => squad.retain(|t| t != &w),
-                None => break,
-            }
-        }
+        self.trim(&mut squad);
         self.squads.insert(new_owner, squad);
+    }
+
+    /// The manager brings back a player his club owns but who left the squad
+    /// (when it went past twelve). The squad is trimmed again the same way.
+    pub fn recall_player(&mut self, token_id: String) {
+        let club = env::predecessor_account_id();
+        require!(self.clubs.contains_key(&club), "you manage no club");
+        let p = self
+            .players
+            .get(&token_id)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        require!(p.owner == club, "your club does not own that player");
+        let mut squad = self.squads.get(&club).cloned().unwrap_or_default();
+        require!(!squad.contains(&token_id), "he is in the squad already");
+        squad.push(token_id.clone());
+        self.trim(&mut squad);
+        require!(squad.contains(&token_id), "the squad has no room for him");
+        self.squads.insert(club, squad);
     }
 
     /// The person who plays him (or, for an academy player, his owner)
@@ -2380,6 +2384,30 @@ impl League {
 
     /// Whether a player can play today: everyone in the squad does, unless
     /// suspended after a red card.
+    /// Eleven and one more: past twelve, the weakest academy player leaves
+    /// the squad (his NFT stays with the club), but never the last keeper.
+    /// Twelve people and no academy player left: the newcomer sits on the bench.
+    fn trim(&self, squad: &mut Vec<String>) {
+        while squad.len() > MAX_SQUAD {
+            let keepers = squad
+                .iter()
+                .filter_map(|t| self.players.get(t))
+                .filter(|p| p.position == Position::Gk)
+                .count();
+            let weakest = squad
+                .iter()
+                .filter_map(|t| self.players.get(t))
+                .filter(|p| p.controller.is_none())
+                .filter(|p| p.position != Position::Gk || keepers > 1)
+                .min_by_key(|p| (p.overall, std::cmp::Reverse(p.token_id.clone())))
+                .map(|p| p.token_id.clone());
+            match weakest {
+                Some(w) => squad.retain(|t| t != &w),
+                None => break,
+            }
+        }
+    }
+
     fn available(&self, token: &String) -> bool {
         self.players.contains_key(token)
             && !self.suspended.contains(&(token.clone(), self.match_day))

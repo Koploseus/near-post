@@ -761,14 +761,17 @@ fn squads_hold_twelve_and_the_weakest_academy_player_makes_room() {
         sign_person(&mut l, &format!("p{n}.testnet"), "c0.testnet");
     }
     let squad = l.squad(acc("c0.testnet"));
-    assert_eq!(squad.len(), 12);
+    // Twelve people (forwards) and the academy keeper, who never leaves the last goal.
+    assert_eq!(squad.len(), 13);
     assert!(
-        squad.iter().all(|p| p.controller.is_some()),
-        "twelve people"
+        squad
+            .iter()
+            .all(|p| p.controller.is_some() || p.position == Position::Gk),
+        "twelve people and a keeper"
     );
     // A thirteenth person sits on the bench: nobody else is pushed out.
     sign_person(&mut l, "p12.testnet", "c0.testnet");
-    assert_eq!(l.squad(acc("c0.testnet")).len(), 13);
+    assert_eq!(l.squad(acc("c0.testnet")).len(), 14);
 }
 
 #[test]
@@ -1524,4 +1527,54 @@ fn old_match_sheets_are_deleted() {
     assert!(l.results(1).is_empty(), "the oldest sheet is gone");
     assert_eq!(l.results(2).len(), 1);
     assert_eq!(l.results(KEEP_RESULTS + 1).len(), 1);
+}
+
+#[test]
+fn past_twelve_the_squad_keeps_its_last_keeper() {
+    let mut l = league_with(1, 0);
+    // Make the academy keeper the weakest player of the club.
+    let gk = l
+        .squad(acc("c0.testnet"))
+        .into_iter()
+        .find(|p| p.position == Position::Gk)
+        .unwrap()
+        .token_id;
+    l.players.get_mut(&gk).unwrap().overall = 1;
+    for n in 0..4 {
+        sign_person(&mut l, &format!("p{n}.testnet"), "c0.testnet");
+    }
+    let squad = l.squad(acc("c0.testnet"));
+    assert_eq!(squad.len(), 12);
+    assert!(squad.iter().any(|p| p.token_id == gk));
+}
+
+#[test]
+fn a_manager_recalls_a_player_his_club_owns() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "p0.testnet", "c0.testnet");
+    sign_person(&mut l, "p1.testnet", "c0.testnet");
+    // An academy player left the squad (thirteen); bring the keeper back
+    // after he was pushed out under the old rule.
+    let gk = l
+        .squad(acc("c0.testnet"))
+        .into_iter()
+        .find(|p| p.position == Position::Gk)
+        .unwrap()
+        .token_id;
+    l.squads
+        .get_mut(&acc("c0.testnet"))
+        .unwrap()
+        .retain(|t| t != &gk);
+    as_caller("c0.testnet");
+    l.recall_player(gk.clone());
+    let squad = l.squad(acc("c0.testnet"));
+    assert_eq!(squad.len(), 12);
+    assert!(squad.iter().any(|p| p.token_id == gk));
+    // Not his club's player, or already in: refused.
+    as_caller("c1.testnet");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| l.recall_player(gk.clone())));
+    assert!(r.is_err());
+    as_caller("c0.testnet");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| l.recall_player(gk.clone())));
+    assert!(r.is_err());
 }

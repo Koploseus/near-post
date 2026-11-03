@@ -23,7 +23,9 @@ export type Act =
   | { what: "joined"; club: string; price: number }
   | { what: "reported" }
   | { what: "collected" }
-  | { what: "created" };
+  | { what: "created" }
+  | { what: "renamed"; name: string }
+  | { what: "recalled"; token_id: string };
 
 export interface AgentEntry {
   at: number;

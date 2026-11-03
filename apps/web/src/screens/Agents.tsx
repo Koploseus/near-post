@@ -92,6 +92,8 @@ function actText(a: Act, clubs: Map<string, string>, names: Map<string, string>)
       return "opens a pack";
     case "equipped":
       return `wears ${a.item.split(".")[1] ?? a.item}`;
+    case "recalled":
+      return `brings ${p(a.token_id)} back in goal`;
     case "joined":
       return `signs for ${clubs.get(a.club) ?? "a club"}${a.price ? ` (${gOf(a.price)})` : ""}`;
     default:
