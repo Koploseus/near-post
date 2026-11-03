@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
-import { isGasless, league, leagueCall, signOut, topUp, transferRegistration } from "../lib/near.js";
+import { call, isGasless, league, leagueCall, signOut, topUp, transferRegistration } from "../lib/near.js";
+import { LEAGUE, PLAYERS } from "../lib/config.js";
+import { Offers } from "./Market.js";
 import type { Club, Player, Position } from "../lib/types.js";
 import { PasskeyIcon, SignIn } from "./SignIn.js";
 import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.js";
@@ -70,6 +72,15 @@ function PickClub({ me }: { me: Player }) {
         and his wallet stays yours, wherever he goes. A squad is eleven and one more: you take the place of its weakest
         academy player, and a club with twelve people is full.
       </p>
+      <h3>Offers for {me.name}</h3>
+      <Offers
+        tokenId={me.token_id}
+        accept={(o) =>
+          call(session!, PLAYERS, "nft_approve", { token_id: me.token_id, account_id: LEAGUE, msg: JSON.stringify({ accept: o.id }) }, { deposit: 10n ** 22n, tgas: 250 }).then(() =>
+            setTimeout(refresh, 2500),
+          )
+        }
+      />
       <div className="clubs">
         {(data ?? []).map(({ c, people }) => (
           <div className="club-row" key={c.manager}>

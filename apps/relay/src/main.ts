@@ -6,6 +6,11 @@ import { rpcChain } from "./chain.js";
 import { loadConfig } from "./config.js";
 import { near } from "./chain.js";
 import { parseCrowd } from "./crowd.js";
+import { Journal } from "./agents/journal.js";
+import { askWith } from "./agents/minds.js";
+import { agentKey, roster } from "./agents/roster.js";
+import { Agents } from "./agents/runner.js";
+import { Limiter, throttle } from "./agents/throttle.js";
 import { Kickoffs, startScheduler } from "./schedule.js";
 import { Vaults } from "./vault.js";
 
@@ -17,7 +22,9 @@ const chain = rpcChain(config.NEAR_RPC_URL, signer);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
 const kickoffs = new Kickoffs();
 const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
-const app = createApp(config, chain, { mailer, kickoffs, vaults });
+const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
+const agents = agentsOn ? { roster: roster(config.PARENT_ACCOUNT_ID), journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents.json` : null) } : undefined;
+const app = createApp(config, chain, { mailer, kickoffs, vaults, ...(agents ? { agents } : {}) });
 if (config.WEB_DIST) {
   // The web app uses hash routes: only files, and index.html for "/".
   app.use("/*", async (c, next) => {
@@ -49,6 +56,41 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
       : {}),
   });
   console.log(`scheduler on${crowdKey && clubs.length ? `, crowd of ${clubs.reduce((n, c) => n + c.fans.length, 0)} fans` : ""}`);
+}
+
+if (agents && config.AGENTS_SEED) {
+  const seed = config.AGENTS_SEED;
+  const brain = config.NEAR_AI_API_KEY ? { url: config.NEAR_AI_URL, key: config.NEAR_AI_API_KEY, model: config.NEAR_AI_MODEL } : null;
+  // One budget of RPC requests for all agents, so the scheduler keeps its share.
+  const limiter = new Limiter(config.AGENTS_RPS);
+  const runner = new Agents(
+    {
+      chain: throttle(chain, limiter),
+      as: (a) => throttle(rpcChain(config.NEAR_RPC_URL, { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey }), limiter),
+      publicKeyOf: (a) => agentKey(seed, a.account).publicKey,
+      leagueId: config.LEAGUE_ID!,
+      goalarsId: config.GOALARS_ID!,
+      playersId: config.PLAYERS_ID!,
+      ask: askWith(brain),
+      brain,
+      journal: agents.journal,
+    },
+    agents.roster,
+  );
+  let busy = false;
+  const look = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      await runner.tick();
+    } catch (e) {
+      console.error(`agents: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      busy = false;
+    }
+  };
+  setInterval(() => void look(), config.AGENTS_EVERY_MS);
+  console.log(`agents on: ${agents.roster.length}, ${brain ? `model ${brain.model}` : "rules only (no NEAR_AI_API_KEY)"}`);
 }
 
 serve({ fetch: app.fetch, port: config.PORT }, (info) => {

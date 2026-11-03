@@ -20,35 +20,35 @@ const exists = (id) => provider.viewAccount({ accountId: id }).then(() => true, 
 const view = (method, args = {}) => provider.callFunction({ contractId: LEAGUE, method, args });
 const parent = as(PARENT);
 
-/** Fictional clubs only. [account prefix, name, crowd size, rival prefix] */
+/** Fictional clubs only (their AI coaches keep these names: apps/relay/src/agents/rules.ts). [account prefix, name, crowd size, rival prefix] */
 const CLUBS = [
-  ["rive-nord", "Olympique Rive Nord", 5, "port-lune"],
-  ["port-lune", "FC Port-Lune", 4, "rive-nord"],
-  ["pont-levant", "AS Pont-Levant", 3, "haute-ville"],
-  ["haute-ville", "Racing Haute-Ville", 4, "pont-levant"],
-  ["marais", "Stade des Marais", 2, "vieux-phare"],
-  ["vieux-phare", "US Vieux-Phare", 3, "marais"],
-  ["saint-cendre", "Union Saint-Cendre", 2, "cote-rouge"],
-  ["cote-rouge", "FC Cote-Rouge", 3, "saint-cendre"],
+  ["rive-nord", "Northbank Rovers", 5, "port-lune"],
+  ["port-lune", "Moonhaven FC", 4, "rive-nord"],
+  ["pont-levant", "Drawbridge Athletic", 3, "haute-ville"],
+  ["haute-ville", "Highcastle City", 4, "pont-levant"],
+  ["marais", "Marshwick Town", 2, "vieux-phare"],
+  ["vieux-phare", "Lanternpoint FC", 3, "marais"],
+  ["saint-cendre", "St Cinder Albion", 2, "cote-rouge"],
+  ["cote-rouge", "Redcliff Wanderers", 3, "saint-cendre"],
 ];
 /** More fictional clubs, no crowd: enough for a second division (DIVISIONS=1 skips them). */
 const MORE = [
-  ["val-ombre", "Sporting Val-d'Ombre"],
-  ["pierrefeu", "AC Pierrefeu"],
-  ["docks", "Etoile des Docks"],
-  ["clairbois", "FC Clairbois"],
-  ["mont-gris", "Olympique Mont-Gris"],
-  ["bellerive", "US Bellerive"],
-  ["lavandier", "Stade Lavandier"],
-  ["bois-joli", "Racing Bois-Joli"],
-  ["fontaine-rouge", "AS Fontaine-Rouge"],
-  ["quais", "Union des Quais"],
-  ["hautes-herbes", "FC Hautes-Herbes"],
-  ["rocheblanche", "Entente Rocheblanche"],
-  ["grand-pre", "SC Grand-Pre"],
-  ["tour-neuve", "Athletic Tour-Neuve"],
-  ["maree-basse", "AS Maree-Basse"],
-  ["lune-rousse", "FC Lune-Rousse"],
+  ["val-ombre", "Shadowvale Sporting"],
+  ["pierrefeu", "Emberstone AFC"],
+  ["docks", "Dockside Stars"],
+  ["clairbois", "Brightwood FC"],
+  ["mont-gris", "Greymount Olympic"],
+  ["bellerive", "Fairbank Rangers"],
+  ["lavandier", "Lavenmere FC"],
+  ["bois-joli", "Bramblewood Racing"],
+  ["fontaine-rouge", "Redwell Athletic"],
+  ["quais", "Quayside Union"],
+  ["hautes-herbes", "Tallgrass Town"],
+  ["rocheblanche", "Chalkstone Rovers"],
+  ["grand-pre", "Meadowmere SC"],
+  ["tour-neuve", "Newtower Athletic"],
+  ["maree-basse", "Lowtide FC"],
+  ["lune-rousse", "Copper Moon FC"],
 ];
 
 async function sub(prefix, publicKey, fund) {

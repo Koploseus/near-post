@@ -6,6 +6,7 @@ import { SPOTS } from "../lib/pitch.js";
 import { league } from "../lib/near.js";
 import { BOT, type Club, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
 import { clubName } from "../lib/format.js";
+import { type AgentEntry, agentFeed, useAgents } from "../lib/agents.js";
 import { Highlight, type HighlightKind, type HighlightMoment } from "./Highlight.js";
 
 const REDUCED = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -252,6 +253,8 @@ export function MatchView({
         )}
       </section>
 
+      <CoachTalk day={day} m={m} names={names} c={c} />
+
       <div className="live-grid">
         <section className="paper panel feed" aria-label="Match events">
           <h3>{final ? "Every action" : "Live"}</h3>
@@ -420,5 +423,32 @@ function Moment({
         {name(moment)} · {team}
       </span>
     </div>
+  );
+}
+
+/**
+ * What the AI coaches of this match said: before kick-off, then at half-time
+ * (shown from half-time on, so it does not give the first half away).
+ */
+function CoachTalk({ day, m, names, c }: { day: number; m: MatchResult; names: Map<string, string>; c: Clock }) {
+  const roster = useAgents();
+  const second = c.phase !== "before" && c.phase !== "first_half";
+  const coaches = [m.home, m.away].filter((x) => roster.get(x)?.kind === "coach");
+  const { data } = useData<AgentEntry[]>(() => (coaches.length ? agentFeed({ day, limit: 200 }) : Promise.resolve([])), [day, coaches.join(), second]);
+  const lines = coaches.flatMap((club) => {
+    const said = (data ?? []).filter((e) => e.agent === club && e.kind === "tactic" && (second || e.half !== 2));
+    const last = said.sort((a, b) => b.at - a.at)[0];
+    return last?.quote ? [{ club, e: last }] : [];
+  });
+  if (!lines.length) return null;
+  return (
+    <section className="paper panel coach-talk" aria-label="The coaches">
+      {lines.map(({ club, e }) => (
+        <p key={club}>
+          <span className="ai-tag">AI</span> <b>{roster.get(club)?.name}</b> <span className="note">{clubName(names.get(club) ?? "")}</span>
+          <q>{e.quote}</q>
+        </p>
+      ))}
+    </section>
   );
 }

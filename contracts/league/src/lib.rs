@@ -843,6 +843,21 @@ impl League {
         self.sign_academy(&manager);
     }
 
+    /// The manager renames his club (1 to 32 characters).
+    pub fn rename_club(&mut self, name: String) {
+        let manager = env::predecessor_account_id();
+        let name = name.trim().to_string();
+        require!(
+            !name.is_empty() && name.chars().count() <= MAX_NAME,
+            "club name must be 1 to 32 characters"
+        );
+        let club = self
+            .clubs
+            .get_mut(&manager)
+            .unwrap_or_else(|| env::panic_str("you manage no club"));
+        club.name = name;
+    }
+
     // ---- Squads ----
 
     /// The captain (or the manager, without one) picks the formation for

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Action } from "../lib/Action.js";
 import { GOALARS, LEAGUE, PLAYERS } from "../lib/config.js";
-import { g, positionLabel, short } from "../lib/format.js";
+import { clubName, g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { call, league, leagueCall } from "../lib/near.js";
 import type { Club, Offer, Player } from "../lib/types.js";
+import { roleOf, useAgents } from "../lib/agents.js";
 import { Sticker } from "./Sticker.js";
 
 const ONE_G = 1_000_000n;
@@ -53,6 +54,7 @@ export function Market() {
               ))}
           </select>
         </label>
+        <CoachNote club={target} />
         <div className="stickers">
           {squad?.map((p) => (
             <Sticker key={p.token_id} p={p} selected={p.token_id === picked} onClick={() => setPicked(p.token_id)} />
@@ -103,8 +105,22 @@ export function Market() {
   );
 }
 
-function Offers({ tokenId, accept }: { tokenId: string; accept?: (o: Offer) => Promise<unknown> }) {
+/** The AI coach who runs a club, if one does. */
+function CoachNote({ club }: { club: string | null }) {
+  const coach = useAgents().get(club ?? "");
+  if (coach?.kind !== "coach") return null;
+  return (
+    <p className="note">
+      <span className="ai-tag">AI</span> Coach {coach.name} · {roleOf(coach)}. He answers bids between match days.
+    </p>
+  );
+}
+
+export function Offers({ tokenId, accept }: { tokenId: string; accept?: (o: Offer) => Promise<unknown> }) {
   const { session } = useGame();
+  const roster = useAgents();
+  const { data: table } = useData(() => league<Club[]>("table"), []);
+  const clubOf = (a: string) => table?.find((c) => c.manager === a);
   const { data, reload } = useData(() => league<Offer[]>("offers_for", { token_id: tokenId }), [tokenId]);
   const open = data?.filter((o) => o.state === "Open") ?? [];
   if (open.length === 0) return <p className="note">No open offer.</p>;
@@ -112,7 +128,8 @@ function Offers({ tokenId, accept }: { tokenId: string; accept?: (o: Offer) => P
     <ul className="offers">
       {open.map((o) => (
         <li key={o.id}>
-          <strong>{g(o.price)}</strong> from {short(o.buyer)}
+          <strong>{g(o.price)}</strong> from {clubOf(o.buyer) ? clubName(clubOf(o.buyer)!.name) : short(o.buyer)}
+          {roster.get(o.buyer)?.kind === "coach" && <span className="ai-tag">AI</span>}
           {accept && <Action label="ACCEPT" className="cta small" run={() => accept(o)} done={reload} />}
           {session?.accountId === o.buyer && (
             <Action label="CANCEL" className="cta small" run={() => leagueCall(session, "cancel_offer", { offer_id: o.id }, 60)} done={reload} />

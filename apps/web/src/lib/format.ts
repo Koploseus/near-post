@@ -31,8 +31,10 @@ export const SKILLS = [
 
 const PREFIX = /^(FC|AS|US|SC|AC|Olympique|Racing|Stade|Union|Sporting|Athletic|Etoile|Entente|Real)\s+(des\s+|de\s+|du\s+)?/i;
 
-/** A club's short name, as people say it: "FC Port-Lune" → "Port-Lune". */
+const SUFFIX = /\s+(FC|AFC|SC)$/i;
+
+/** A club's short name, as people say it: "FC Port-Lune" → "Port-Lune", "Moonhaven FC" → "Moonhaven". */
 export function clubName(name: string): string {
-  const s = name.replace(PREFIX, "");
+  const s = name.replace(PREFIX, "").replace(SUFFIX, "");
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : name;
 }

@@ -6,6 +6,8 @@ import { type Chain, near } from "./chain.js";
 import type { Config } from "./config.js";
 import { MAX_CLICKS, drill, drillEnd, hits, implausible, points, rounds } from "./drill.js";
 import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
+import type { Journal } from "./agents/journal.js";
+import type { Agent } from "./agents/roster.js";
 import type { Kickoffs } from "./schedule.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
 
@@ -38,6 +40,8 @@ export interface Deps {
   vaults?: Vaults;
   /** When each half really kicked off (the scheduler records it). */
   kickoffs?: Kickoffs;
+  /** The AI agents and what they did. */
+  agents?: { roster: Agent[]; journal: Journal };
   mailer: Mailer;
   codes?: Codes;
   now?: () => number;
@@ -139,6 +143,21 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const id = AccountId.safeParse(c.req.param("accountId"));
     if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
     return c.json({ passkeys: vaults.get(id.data).length });
+  });
+
+  /** The AI agents: who they are, and their journal (decisions, quotes, transactions, model evidence). */
+  app.get("/v1/agents", (c) => c.json({ agents: deps.agents?.roster ?? [] }));
+  app.get("/v1/agents/feed", (c) => {
+    const limit = Math.min(200, Math.max(1, Number(c.req.query("limit") ?? 50) || 50));
+    const day = c.req.query("day");
+    return c.json({ entries: deps.agents?.journal.feed(limit, undefined, day ? Number(day) : undefined) ?? [] });
+  });
+  app.get("/v1/agents/:accountId", (c) => {
+    const id = AccountId.safeParse(c.req.param("accountId"));
+    if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
+    const agent = deps.agents?.roster.find((a) => a.account === id.data);
+    if (!agent) return c.json({ error: "not_an_agent" }, 404);
+    return c.json({ agent, entries: deps.agents!.journal.feed(50, id.data) });
   });
 
   /** Gas top-up for a player's account that is nearly empty, a few times a day. */

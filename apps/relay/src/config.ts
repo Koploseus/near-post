@@ -61,6 +61,18 @@ const Env = z.object({
   KEEP_TOPUP_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("5"),
   /** Where the relay keeps passkey backups (a Fly volume in production). Unset: in memory only. */
   DATA_DIR: z.string().optional(),
+  /**
+   * AI agents (coaches of the fictional clubs, footballers): on with a seed,
+   * the secret their keys are derived from. Off without one.
+   */
+  AGENTS_SEED: z.string().min(32).optional(),
+  AGENTS_EVERY_MS: z.coerce.number().int().min(1000).default(15_000),
+  /** RPC requests a second the agents may make, all together. */
+  AGENTS_RPS: z.coerce.number().positive().default(4),
+  /** NEAR AI Cloud (OpenAI-compatible). Without a key the agents follow their rules only. */
+  NEAR_AI_API_KEY: z.string().startsWith("sk-").optional(),
+  NEAR_AI_URL: z.url().default("https://cloud-api.near.ai/v1"),
+  NEAR_AI_MODEL: z.string().default("Qwen/Qwen3.6-35B-A3B-FP8"),
   /** Serves the built web app from this folder (one origin for app and API). */
   WEB_DIST: z.string().optional(),
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { g } from "./lib/format.js";
 import { GameProvider, useGame } from "./lib/game.js";
 import { Toasts } from "./lib/toast.js";
+import { Agents } from "./screens/Agents.js";
 import { Album } from "./screens/Album.js";
 import { Dashboard } from "./screens/Dashboard.js";
 import { Game } from "./screens/Game.js";
@@ -22,6 +23,7 @@ const ROUTES = {
   match: { tab: "club", view: Match },
   album: { tab: "club", view: Album },
   market: { tab: "club", view: Market },
+  ai: { tab: "club", view: Agents },
   game: { tab: "club", view: Game },
   locker: { tab: "me", view: LockerRoom },
 } as const;
@@ -111,12 +113,13 @@ function Header({ tab }: { tab: Tab }) {
   );
 }
 
-/** Results, album and market, the club's three pages. */
-export function ClubTabs({ current }: { current: "match" | "album" | "market" }) {
+/** Results, album, market and the AI agents: the club's pages. */
+export function ClubTabs({ current }: { current: "match" | "album" | "market" | "ai" }) {
   const tabs = [
     ["match", "Results"],
     ["album", "Album"],
     ["market", "Market"],
+    ["ai", "AI"],
   ] as const;
   return (
     <nav className="sub-tabs" aria-label="Club">
@@ -137,7 +140,7 @@ export function App() {
     <GameProvider>
       <Header tab={tab} />
       <main className="wrap page">
-        {(r === "match" || r === "album" || r === "market") && <ClubTabs current={r} />}
+        {(r === "match" || r === "album" || r === "market" || r === "ai") && <ClubTabs current={r} />}
         <View />
       </main>
       <TabLinks current={tab} className="tabbar" />
