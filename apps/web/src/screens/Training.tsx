@@ -177,7 +177,7 @@ export function Training({ me }: { me: Player }) {
   );
 }
 
-const PENALTIES = "five penalties. Press on the ball, drag to where you aim in the goal, release: a quick swipe shoots harder but drifts more.";
+const PENALTIES = "five penalties. Press on the ball, drag to where you aim in the goal, release. A firm swipe beats the keeper; a flick drifts, a slow shot gives him time.";
 const HOW: Record<string, string> = {
   shooting: PENALTIES,
   physical: PENALTIES,
