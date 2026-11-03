@@ -106,6 +106,8 @@ export function Stands() {
           <dl>
             <dt>Full house (60%)</dt>
             <dd style={{ color: "#1e7a47" }}>+100k G per fan</dd>
+            <dt>Goal</dt>
+            <dd style={{ color: "#1e7a47" }}>up to +600k G, as full as the stand</dd>
             <dt>Derby</dt>
             <dd>×2</dd>
             <dt>Tifo not complete</dt>
@@ -113,7 +115,7 @@ export function Stands() {
             <dt>Season ticket</dt>
             <dd style={{ color: "#1e7a47" }}>+50k G per full house</dd>
           </dl>
-          <span className="note">Fixed in the league contract at launch. No one can change them.</span>
+          <span className="note">Fixed in the league contract. No method changes them.</span>
         </aside>
       </div>
     </div>

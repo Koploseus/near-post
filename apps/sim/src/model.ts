@@ -9,9 +9,11 @@ export const RULES = {
   signupGrant: 1_000_000,
   welcomeBonus: 1_000_000,
   welcomeVisits: 4,
-  goalMint: 6_000_000,
-  goalClubShare: 0.3, // 1.8M of 6M
-  ownGoalBurn: 6_000_000,
+  // With a full stand behind the scorer; in proportion to the fans present
+  // (up to the full-house target) otherwise, nothing with an empty stand.
+  goalMint: 600_000,
+  goalClubShare: 0.3, // 180k of 600k
+  ownGoalBurn: 600_000,
   fullHouseMintPerFan: 100_000,
   stadiumTarget: 0.6,
   emptyStandBurn: 0.02,
@@ -19,6 +21,10 @@ export const RULES = {
   derbyMultiplier: 2,
   trainingCost: 400_000,
   saleTax: 0.03,
+  packPrice: 500_000,
+  seasonTicketPrice: 300_000,
+  seasonTicketsPerClub: 50,
+  seasonTicketShare: 50_000,
 } as const;
 
 export interface League {
@@ -40,25 +46,38 @@ export interface League {
   bootsCost: number;
   transfersPerDay: number;
   transferPrice: number;
+  /** Packs bought a day (each burns pack_price). */
+  packsPerDay: number;
+  /** Season tickets each club sells a day, until 50 a season (the price moves to the treasury: no mint, no burn). */
+  ticketsPerClubPerDay: number;
+  /** Clubs relegated at the end of a season (they burn a tenth of their treasury). */
+  relegated: number;
 }
 
-export const SMALL_LEAGUE: Omit<League, "goalsPerMatch" | "attendance"> = {
-  clubs: 8,
+/**
+ * The v7 testnet league: 24 clubs in two divisions (19 match days a season),
+ * 52 AI footballers and 24 AI coaches on day one, a few people a day.
+ */
+export const V7_LEAGUE: Omit<League, "goalsPerMatch" | "attendance"> = {
+  clubs: 24,
   accounts0: 100,
   newAccountsPerDay: 10,
-  supportersPerClub: 50,
-  fansPerAccount: 1 / 16,
+  supportersPerClub: 20,
+  fansPerAccount: 1 / 24,
   ownGoalShare: 0.04,
   lateGoalShare: 0.12,
-  derbyEvery: 7,
-  seasonDays: 38,
-  trainRate: 0.7,
-  youthPerDay: 2,
-  youthCost: 5_000_000,
-  bootsPerDay: 1,
-  bootsCost: 3_000_000,
-  transfersPerDay: 3,
-  transferPrice: 30_000_000,
+  derbyEvery: 5,
+  seasonDays: 19,
+  trainRate: 0.3,
+  youthPerDay: 0,
+  youthCost: 0,
+  bootsPerDay: 0,
+  bootsCost: 0,
+  transfersPerDay: 4,
+  transferPrice: 500_000,
+  packsPerDay: 6,
+  ticketsPerClubPerDay: 1,
+  relegated: 2,
 };
 
 export function rng(seed: number) {
@@ -110,6 +129,7 @@ export function simulate(league: League, days = 60, seed = 7): number[] {
     waiting[RULES.welcomeVisits]! += n;
   };
   signUp(accounts);
+  const tickets = new Array<number>(league.clubs).fill(0);
   const out: number[] = [];
 
   for (let day = 1; day <= days; day++) {
@@ -124,6 +144,17 @@ export function simulate(league: League, days = 60, seed = 7): number[] {
       waiting[k - 1]! += came;
     }
 
+    // Fans check in before the match: their stand sets what its goals are worth.
+    const fans = league.supportersPerClub + Math.floor(accounts * league.fansPerAccount);
+    const target = Math.ceil(RULES.stadiumTarget * fans);
+    const present: number[] = [];
+    for (let c = 0; c < league.clubs; c++) {
+      let n = 0;
+      for (let f = 0; f < fans; f++) if (r() < league.attendance) n++;
+      present.push(n);
+    }
+    const fill = (c: number) => (target > 0 ? Math.min(1, present[c]! / target) : 0);
+
     for (let side = 0; side < league.clubs; side++) {
       for (let g = poisson(r, league.goalsPerMatch / 2); g > 0; g--) {
         const roll = r();
@@ -131,20 +162,24 @@ export function simulate(league: League, days = 60, seed = 7): number[] {
           burnTreasury(side, Math.min(1, RULES.ownGoalBurn / Math.max(1, treasury[side]!)));
         } else {
           const k = roll < league.ownGoalShare + league.lateGoalShare ? 2 : 1;
-          const minted = mint(k * RULES.goalMint);
+          const minted = mint(k * RULES.goalMint * fill(side));
           treasury[side]! += minted * RULES.goalClubShare;
         }
       }
     }
 
-    const fans = league.supportersPerClub + Math.floor(accounts * league.fansPerAccount);
     const derby = day % league.derbyEvery === 0;
     for (let c = 0; c < league.clubs; c++) {
       const k = derby && c < 2 ? RULES.derbyMultiplier : 1;
-      let present = 0;
-      for (let f = 0; f < fans; f++) if (r() < league.attendance) present++;
-      if (present >= Math.ceil(RULES.stadiumTarget * fans)) mint(k * present * RULES.fullHouseMintPerFan);
-      else burnTreasury(c, Math.min(1, k * RULES.emptyStandBurn));
+      // A season ticket's price goes to the club's treasury: G change hands, none are made.
+      const sold = Math.min(RULES.seasonTicketsPerClub - tickets[c]!, league.ticketsPerClubPerDay);
+      tickets[c]! += sold;
+      treasury[c]! += sold * RULES.seasonTicketPrice;
+      if (present[c]! >= target) {
+        mint(k * present[c]! * RULES.fullHouseMintPerFan);
+        // ...and the club's season tickets each earn their share, minted into them.
+        mint(k * tickets[c]! * RULES.seasonTicketShare);
+      } else burnTreasury(c, Math.min(1, k * RULES.emptyStandBurn));
     }
 
     players += league.youthPerDay;
@@ -154,11 +189,13 @@ export function simulate(league: League, days = 60, seed = 7): number[] {
       trainings * RULES.trainingCost +
         league.youthPerDay * league.youthCost +
         league.bootsPerDay * league.bootsCost +
-        league.transfersPerDay * league.transferPrice * RULES.saleTax,
+        league.transfersPerDay * league.transferPrice * RULES.saleTax +
+        league.packsPerDay * RULES.packPrice,
     );
 
-    if (day === league.seasonDays) {
-      for (const c of [league.clubs - 1, league.clubs - 2]) burnTreasury(c, RULES.relegationBurn);
+    if (day % league.seasonDays === 0) {
+      for (let i = 1; i <= league.relegated; i++) burnTreasury(league.clubs - i, RULES.relegationBurn);
+      tickets.fill(0); // a new season, new season tickets
     }
     out.push(supply);
   }
@@ -166,22 +203,18 @@ export function simulate(league: League, days = 60, seed = 7): number[] {
 }
 
 export const SCENARIOS: Record<string, League> = {
-  "Attacking, loyal fans": { ...SMALL_LEAGUE, goalsPerMatch: 3.2, attendance: 0.75 },
-  "Attacking, absent fans": { ...SMALL_LEAGUE, goalsPerMatch: 3.2, attendance: 0.45 },
-  "Defensive, loyal fans": { ...SMALL_LEAGUE, goalsPerMatch: 1.8, attendance: 0.75 },
-  "Defensive, absent fans": { ...SMALL_LEAGUE, goalsPerMatch: 1.8, attendance: 0.45 },
-  "Dead league: no newcomers, absent fans": {
-    ...SMALL_LEAGUE,
-    newAccountsPerDay: 0,
-    goalsPerMatch: 1.8,
-    attendance: 0.45,
-  },
-  "Big league (64 clubs), loyal fans": {
-    ...SMALL_LEAGUE,
-    clubs: 64,
+  "Loyal fans (75% come)": { ...V7_LEAGUE, goalsPerMatch: 2.6, attendance: 0.75 },
+  "Absent fans (45% come)": { ...V7_LEAGUE, goalsPerMatch: 2.6, attendance: 0.45 },
+  "Half-hearted fans (60%, on the edge)": { ...V7_LEAGUE, goalsPerMatch: 2.6, attendance: 0.6 },
+  "Dead league: no newcomers, absent fans": { ...V7_LEAGUE, newAccountsPerDay: 0, goalsPerMatch: 2.6, attendance: 0.45, packsPerDay: 1 },
+  "Full league (200 clubs), loyal fans": {
+    ...V7_LEAGUE,
+    clubs: 200,
     accounts0: 1_000,
     newAccountsPerDay: 200,
-    goalsPerMatch: 3.2,
+    goalsPerMatch: 2.6,
     attendance: 0.75,
+    packsPerDay: 40,
+    relegated: 27,
   },
 };

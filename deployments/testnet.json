@@ -5,9 +5,11 @@
   "contracts": {
     "league": {
       "account_id": "league-v7.near-post.testnet",
-      "wasm_sha256": "39088cf1442c9c4c09254fe9b3835baca940e0b8e34757f81cc9e590f7ef1fca",
+      "wasm_sha256": "05df55e194feb55c33645e726d735df55b5a7f6d8a29f90454a341a0d021ad33",
       "deploy_tx": "E7cQ8i24BjFdVYnz1dvpVHszhFXpybQ2WsUkNcniD9sB",
-      "init_tx": "GpWgzQbC5uvesTzGH6yTFMriaYqxvft5gsmUGLJmubvs"
+      "init_tx": "GpWgzQbC5uvesTzGH6yTFMriaYqxvft5gsmUGLJmubvs",
+      "redeploy_tx": "6kK16cXJcfsKB63wgj4CCPaWnCredveogp4NEQtVV9HW",
+      "redeployed_at": "2026-11-03T10:33:02.438Z"
     },
     "goalars": {
       "account_id": "goalars-v7.near-post.testnet",
