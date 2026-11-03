@@ -1,5 +1,7 @@
 # NEAR Post
 
+![NEAR Post: a football ball in pixel sunglasses wearing a $G chain](apps/web/public/og.png)
+
 **Football where the fans mint the money.**
 
 NEAR Post is a football management game on NEAR. Your players are NFTs, the

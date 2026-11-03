@@ -109,6 +109,7 @@ function Header({ tab }: { tab: Tab }) {
   return (
     <header className="wrap top">
       <a className="brand" href="#/home">
+        <img src="/logo.svg" alt="" width="38" height="41" />
         NEAR POST
       </a>
       <TabLinks current={tab} className="nav" />

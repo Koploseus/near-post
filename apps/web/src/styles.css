@@ -55,7 +55,8 @@ h1 { margin: 0; font-family: var(--display); font-size: clamp(28px, 5vw, 40px); 
 
 /* ---- App shell ---- */
 .page { padding-bottom: 56px; }
-.brand { text-decoration: none; }
+.brand { text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.brand img { display: block; transform: rotate(-4deg); }
 .who { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 700; color: var(--paper); text-decoration: none; }
 .who strong { color: var(--yellow); font-family: var(--display); font-weight: 400; }
 .link { background: none; border: 0; padding: 8px 4px; min-height: 44px; color: var(--yellow); font-weight: 700; text-decoration: underline; cursor: pointer; }
