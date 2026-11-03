@@ -15,6 +15,7 @@ import { HairBack, HairFront, LookDefs, SKIN } from "./screens/Look.js";
 import { Market } from "./screens/Market.js";
 import { Match } from "./screens/Match.js";
 import { Stands } from "./screens/Stands.js";
+import { Try } from "./screens/Try.js";
 
 /** Every screen, by hash. `tab` is the section of the nav it belongs to. */
 const ROUTES = {
@@ -30,6 +31,7 @@ const ROUTES = {
   ai: { tab: "club", view: Agents },
   game: { tab: "club", view: Game },
   locker: { tab: "me", view: LockerRoom },
+  try: { tab: "home", view: Try },
 } as const;
 type Route = keyof typeof ROUTES;
 type Tab = (typeof ROUTES)[Route]["tab"];

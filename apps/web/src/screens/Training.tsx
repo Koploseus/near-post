@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { type Click, type Drill as DrillT, drill } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
 import { DribbleGame, PassesGame, SprintGame, TacklesGame } from "./Games.js";
@@ -187,11 +187,28 @@ const HOW: Record<string, string> = {
   defending: "six duels. The attacker cuts left or right, sometimes after a feint: swipe to his side (or ← →) as he cuts.",
 };
 
+/** The penalties in 3D (three.js, loaded only for this drill); the 2D game where WebGL is missing. */
+const PenaltyGame3D = lazy(() => import("./Penalty3D.js").then((m) => ({ default: m.PenaltyGame3D })));
+function webgl(): boolean {
+  try {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl2") ?? c.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 /** The canvas game for a drill. */
 function game(d: DrillT, onDone: (trace: Click[]) => void): ReactNode {
   switch (d.game) {
     case "penalties":
-      return <PenaltyGame setup={d.setup} onDone={onDone} />;
+      return webgl() ? (
+        <Suspense fallback={<div className="pen3d-loading">Warming up…</div>}>
+          <PenaltyGame3D setup={d.setup} onDone={onDone} />
+        </Suspense>
+      ) : (
+        <PenaltyGame setup={d.setup} onDone={onDone} />
+      );
     case "passes":
       return <PassesGame setup={d.setup} onDone={onDone} />;
     case "dribble":
