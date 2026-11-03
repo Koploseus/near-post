@@ -23,15 +23,34 @@ export const near = (amount: string): bigint => BigInt(nearToYocto(amount as `${
 /** The RPC says the account (or key) does not exist, as opposed to an error (rate limit, network). */
 const missing = (e: unknown) => /does not exist|UNKNOWN_ACCOUNT|UNKNOWN_ACCESS_KEY|doesn't exist/i.test(e instanceof Error ? `${e.name} ${e.message}` : String(e));
 
-export function rpcChain(url: string, signer?: { accountId: string; privateKey: string }): Chain {
+/** A rate limit or a network failure: another RPC may answer. */
+const transient = (e: unknown) => /429|rate limit|too many|fetch failed|network|timeout|ECONN|exceeded \d+ attempts|5\d\d/i.test(e instanceof Error ? e.message : String(e));
+
+/**
+ * `readsAlso`: public RPCs the views fall back to when `url` refuses (a 429):
+ * the scheduler reads the schedule every few seconds and must not stop for a
+ * rate limit. Transactions always go through `url`.
+ */
+export function rpcChain(url: string, signer?: { accountId: string; privateKey: string }, readsAlso: string[] = []): Chain {
   const provider = new JsonRpcProvider({ url });
+  const quick = { retries: 2, wait: 200, backoff: 2 };
+  const readers = [new JsonRpcProvider({ url }, quick), ...readsAlso.map((u) => new JsonRpcProvider({ url: u }, quick))];
   const parent = () => {
     if (!signer) throw new Error("PARENT_PRIVATE_KEY is not set");
     return new Account(signer.accountId, provider, signer.privateKey as `ed25519:${string}`);
   };
   return {
     async view<T>(contractId: string, method: string, args: Record<string, unknown> = {}) {
-      return (await provider.callFunction({ contractId, method, args })) as T;
+      let last: unknown;
+      for (const r of readers) {
+        try {
+          return (await r.callFunction({ contractId, method, args })) as T;
+        } catch (e) {
+          if (!transient(e)) throw e;
+          last = e;
+        }
+      }
+      throw last;
     },
     async balance(accountId) {
       try {
