@@ -52,6 +52,9 @@ export async function ask(cfg: BrainConfig, system: string, situation: unknown, 
     temperature: 0.7,
     max_tokens: 600,
     response_format: { type: "json_schema", json_schema: { name: "decision", strict: true, schema } },
+    // Qwen thinks before it answers and spends the tokens on it: a pick among
+    // a few options needs no chain of thought.
+    ...(/qwen/i.test(cfg.model) ? { chat_template_kwargs: { enable_thinking: false } } : {}),
   });
   let text: string;
   try {
