@@ -116,7 +116,7 @@ export async function finishSignIn(email: string, code: string): Promise<SignInR
   if (!r.created && !r.key_on_account) {
     if (r.vaults?.length) return { unlock: { accountId: r.account_id, backups: r.vaults } };
     throw new Error(
-      "Sign in on the device you signed up with first, and add a passkey in the Locker room.",
+      "Sign in on the device you signed up with first, and back up your key (passkey or recovery key) in the Locker room.",
     );
   }
   const s = { accountId: r.account_id, privateKey: kp.toString() };
