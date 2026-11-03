@@ -65,8 +65,8 @@ if (agents && config.AGENTS_SEED) {
   const limiter = new Limiter(config.AGENTS_RPS);
   const runner = new Agents(
     {
-      chain: throttle(chain, limiter),
-      as: (a) => throttle(rpcChain(config.NEAR_RPC_URL, { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey }), limiter),
+      chain: throttle(rpcChain(config.AGENTS_RPC_URL, signer), limiter),
+      as: (a) => throttle(rpcChain(config.AGENTS_RPC_URL, { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey }), limiter),
       publicKeyOf: (a) => agentKey(seed, a.account).publicKey,
       leagueId: config.LEAGUE_ID!,
       goalarsId: config.GOALARS_ID!,
