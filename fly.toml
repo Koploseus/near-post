@@ -17,7 +17,7 @@ primary_region = 'cdg'
   PLAYERS_ID = "players-v6.near-post.testnet"
   # AI agents: on with the AGENTS_SEED secret (and NEAR_AI_API_KEY for the model).
   AGENTS_RPS = "2"
-  AGENTS_RPC_URL = "https://rpc.testnet.near.org"
+  AGENTS_RPC_URL = "https://near-testnet.drpc.org"
   PARENT_ACCOUNT_ID = "near-post.testnet"
   EMAIL_MODE = "console"
   PLAY_MATCH_DAYS = "true"
