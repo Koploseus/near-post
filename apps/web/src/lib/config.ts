@@ -4,6 +4,8 @@ export const GOALARS = import.meta.env.VITE_GOALARS_ID ?? "goalars-v6.near-post.
 export const PLAYERS = import.meta.env.VITE_PLAYERS_ID ?? "players-v6.near-post.testnet";
 export const ITEMS = import.meta.env.VITE_ITEMS_ID ?? "items-v6.near-post.testnet";
 export const RPC = import.meta.env.VITE_NEAR_RPC_URL ?? "https://test.rpc.fastnear.com";
+/** Public testnet RPCs (docs.near.org/api/rpc/providers) that answer browsers: reads move to them when one is rate-limited. */
+export const READ_RPCS: string[] = [RPC, "https://near-testnet.drpc.org", "https://testnet-rpc.intea.rs"];
 /** The relay; the dev server proxies /v1 to it. */
 export const RELAY = import.meta.env.VITE_RELAY_URL ?? "";
 export const EXPLORER = "https://testnet.nearblocks.io";
