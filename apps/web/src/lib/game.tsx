@@ -109,6 +109,14 @@ export function useGame(): Game {
 }
 
 /** Loads data for a screen; `reload` re-runs it. */
+/**
+ * Reads again a few times after a transaction: its callbacks land a block or
+ * two later, and the RPCs read final blocks, a few seconds behind.
+ */
+export function soon(f: () => void) {
+  for (const ms of [2500, 6000, 12000]) setTimeout(f, ms);
+}
+
 export function useData<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; error: string | null; reload(): void } {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);

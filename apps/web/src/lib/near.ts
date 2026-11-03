@@ -198,7 +198,7 @@ export const train = (s: Session, tokenId: string, skill: string, amount: string
   call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount, msg: JSON.stringify({ train: { token_id: tokenId, skill } }) }, { deposit: 1n, tgas: 150 });
 
 export const startDrill = (tokenId: string) =>
-  relay<{ ticket: import("./types.js").Ticket; level: number }>("/v1/training/start", { token_id: tokenId });
+  relay<{ ticket: import("./types.js").Ticket; level: number; attested?: { hits: number; rounds: number; points: number; signature: string } }>("/v1/training/start", { token_id: tokenId });
 
 export const attestDrill = (tokenId: string, clicks: { t: number; x: number; y: number; up?: boolean }[]) =>
   relay<{ hits: number; rounds: number; points: number; signature: string }>("/v1/training/attest", { token_id: tokenId, clicks });

@@ -33,7 +33,13 @@ const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.G
 const agents = agentsOn
   ? { roster: roster(config.PARENT_ACCOUNT_ID), journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null) }
   : undefined;
-const app = createApp(config, chain, { mailer, kickoffs, vaults, ...(agents ? { agents } : {}) });
+const app = createApp(config, chain, {
+  mailer,
+  kickoffs,
+  vaults,
+  drillsFile: config.DATA_DIR ? `${config.DATA_DIR}/drills-${config.LEAGUE_ID}.json` : null,
+  ...(agents ? { agents } : {}),
+});
 if (config.WEB_DIST) {
   // The web app uses hash routes: only files, and index.html for "/".
   app.use("/*", async (c, next) => {

@@ -4,7 +4,7 @@ import { Action } from "../lib/Action.js";
 import { DribbleGame, PassesGame, SprintGame, TacklesGame } from "./Games.js";
 import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
-import { useData, useGame } from "../lib/game.js";
+import { soon, useData, useGame } from "../lib/game.js";
 import { attestDrill, finishTraining, league, startDrill, train } from "../lib/near.js";
 import type { Player, Skill, Ticket } from "../lib/types.js";
 
@@ -22,7 +22,7 @@ interface Attested {
 /** The score of a drill survives a reload until it is submitted. */
 const loadAttested = (ticket: number): Attested | null => {
   try {
-    const a = JSON.parse(sessionStorage.getItem(SAVED) ?? "null") as Attested | null;
+    const a = JSON.parse(localStorage.getItem(SAVED) ?? "null") as Attested | null;
     return a?.ticket === ticket ? a : null;
   } catch {
     return null;
@@ -30,8 +30,8 @@ const loadAttested = (ticket: number): Attested | null => {
 };
 const saveAttested = (a: Attested | null) => {
   try {
-    if (a) sessionStorage.setItem(SAVED, JSON.stringify(a));
-    else sessionStorage.removeItem(SAVED);
+    if (a) localStorage.setItem(SAVED, JSON.stringify(a));
+    else localStorage.removeItem(SAVED);
   } catch {
     /* in memory only */
   }
@@ -44,7 +44,10 @@ const saveAttested = (a: Attested | null) => {
 export function Training({ me }: { me: Player }) {
   const { session, schedule, balance, refresh } = useGame();
   const day = schedule?.match_day ?? 0;
-  const { data: ticket, reload } = useData(() => league<Ticket | null>("training_ticket", { token_id: me.token_id }), [me.token_id, day]);
+  const { data: last, reload } = useData(() => league<Ticket | null>("training_ticket", { token_id: me.token_id }), [me.token_id, day]);
+  // A session lasts one match day: an older ticket can no longer be finished.
+  const ticket = last && last.match_day === day ? last : null;
+  const lapsed = last && last.match_day < day ? last : null;
   const [skill, setSkill] = useState<Skill>(me.position === "Fw" ? "shooting" : me.position === "Mf" ? "passing" : "defending");
   const [run, setRun] = useState<{ drill: DrillT } | null>(null);
   const [attested, setAttested] = useState<Attested | null>(null);
@@ -81,13 +84,13 @@ export function Training({ me }: { me: Player }) {
             </p>
             <p className="note">The relay signed your score. Submit it before the next match day.</p>
             <Action
-              label={`ADD ${attested.points} ${skillName(ticket.skill).toUpperCase()}`}
+              label={attested.points ? `ADD ${attested.points} ${skillName(ticket.skill).toUpperCase()}` : "CLOSE THE SESSION (NO POINT)"}
               run={() => finishTraining(session, me.token_id, attested.points, attested.signature)}
               success={`+${attested.points} ${skillName(ticket.skill).toLowerCase()}`}
               done={() => {
                 saveAttested(null);
                 reload();
-                setTimeout(refresh, 2500);
+                soon(refresh);
               }}
             />
           </>
@@ -101,15 +104,23 @@ export function Training({ me }: { me: Player }) {
               run={async () => {
                 setError(null);
                 const s = await startDrill(me.token_id);
+                if (s.attested) {
+                  // Played already (another tab, or a reload): the relay kept the score.
+                  const saved = { ticket: s.ticket.id, ...s.attested };
+                  saveAttested(saved);
+                  setAttested(saved);
+                  return;
+                }
                 setRun({ drill: drill(s.ticket.seed, s.level, s.ticket.skill) });
               }}
             />
           </>
         )
-      ) : me.last_trained_day >= day ? (
+      ) : me.last_trained_day >= day && !lapsed ? (
         <p className="note">Trained this match day. Back after the next match.</p>
       ) : (
         <>
+          {lapsed && <p className="note">Your last session ended with match day {lapsed.match_day} before you finished it.</p>}
           <p className="note">400k G, burned. Pick a skill, then play the drill.</p>
           <div className="skill-pick" role="radiogroup" aria-label="Skill to train">
             {SKILLS.map(([k, label, name]) => (
@@ -124,7 +135,7 @@ export function Training({ me }: { me: Player }) {
             disabled={BigInt(balance) < BigInt(TRAINING)}
             run={() => train(session, me.token_id, skill, TRAINING)}
             success="Session booked: play the drill"
-            done={() => setTimeout(reload, 2500)}
+            done={() => soon(reload)}
           />
           {BigInt(balance) < BigInt(TRAINING) && <p className="note">You have {g(balance)}.</p>}
         </>

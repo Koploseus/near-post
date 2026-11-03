@@ -133,6 +133,14 @@ export interface MatchResult {
   full_time: boolean;
 }
 
+export interface StandResult {
+  present: number;
+  fans: number;
+  full_house: boolean;
+  multiplier: number;
+  burned: string;
+}
+
 export interface Stand {
   match_day: number;
   present: number;

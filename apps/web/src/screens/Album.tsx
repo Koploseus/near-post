@@ -4,7 +4,7 @@ import { PLAYERS } from "../lib/config.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { league, leagueCall, view } from "../lib/near.js";
-import type { Career, Player } from "../lib/types.js";
+import type { Career, Club, Player } from "../lib/types.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 
 export function Album() {
@@ -20,6 +20,8 @@ export function Album() {
   }, [clubId]);
   const [selected, setSelected] = useState<string | null>(null);
   const sel = data?.squad.find((p) => p.token_id === selected) ?? data?.squad[0] ?? null;
+  const { data: table } = useData(() => league<Club[]>("table"), []);
+  const nameOf = (id: string) => table?.find((c) => c.manager === id)?.name ?? short(id);
   const { data: career } = useData(() => (sel ? view<Career | null>(PLAYERS, "career", { token_id: sel.token_id }) : Promise.resolve(null)), [sel?.token_id]);
 
   if (!club || !clubId) return <p className="sub">Sign in and join a club to open its album.</p>;
@@ -45,9 +47,9 @@ export function Album() {
             {career && (
               <dl className="stats">
                 <dt>Trained by</dt>
-                <dd>{short(career.trained_by)}</dd>
+                <dd>{nameOf(career.trained_by)}</dd>
                 <dt>Past clubs</dt>
-                <dd>{career.past_clubs.length ? career.past_clubs.map(short).join(", ") : "none"}</dd>
+                <dd>{career.past_clubs.length ? career.past_clubs.map(nameOf).join(", ") : "none"}</dd>
                 <dt>Wallet</dt>
                 <dd>{g(sel.wallet)}</dd>
               </dl>

@@ -283,7 +283,12 @@ describe("drill attestation", () => {
     expect(body.points).toBe(points(body.hits, 5));
     const message = `near-post:train:${LEAGUE}:p12:7:${body.points}`;
     expect(key.verify(new TextEncoder().encode(message), Buffer.from(body.signature, "base64"))).toBe(true);
-    expect((await post("/v1/training/attest", { token_id: "p12", clicks: [] })).status).toBe(409);
+    // One score per ticket: playing again gives the same one back, and a
+    // player who lost his tab gets it from the start call.
+    const again = (await (await post("/v1/training/attest", { token_id: "p12", clicks: [] })).json()) as typeof body;
+    expect(again.signature).toBe(body.signature);
+    const back = (await (await post("/v1/training/start", { token_id: "p12" })).json()) as { attested?: typeof body };
+    expect(back.attested?.signature).toBe(body.signature);
   });
 
   it("refuses a drill sent back too fast, or never started", async () => {

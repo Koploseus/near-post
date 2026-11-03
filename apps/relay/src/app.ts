@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { Hono } from "hono";
 import { KeyPair, PublicKey } from "near-api-js";
 import { z } from "zod";
@@ -41,6 +43,8 @@ export interface Deps {
   vaults?: Vaults;
   /** When each half really kicked off (the scheduler records it). */
   kickoffs?: Kickoffs;
+  /** Where the drill scores already signed are kept (a restart must not reopen them). */
+  drillsFile?: string | null;
   /** The AI agents and what they did. */
   agents?: { roster: Agent[]; journal: Journal };
   mailer: Mailer;
@@ -260,7 +264,25 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
 
   const attester = config.ATTESTER_PRIVATE_KEY ? KeyPair.fromString(config.ATTESTER_PRIVATE_KEY as `ed25519:${string}`) : null;
   const started = new Map<number, number>();
-  const signed = new Set<number>();
+  // One signature per ticket, kept: a player who closed the tab gets his
+  // score back instead of a ticket he can neither play nor finish.
+  type Signed = { token_id: string; ticket: number; hits: number; rounds: number; points: number; signature: string };
+  const signed = new Map<number, Signed>();
+  if (deps.drillsFile) {
+    try {
+      for (const r of JSON.parse(readFileSync(deps.drillsFile, "utf8")) as Signed[]) signed.set(r.ticket, r);
+    } catch {
+      /* none yet */
+    }
+  }
+  const keepSigned = () => {
+    if (!deps.drillsFile) return;
+    // The last 5,000 are plenty: an open ticket is finished within a match day.
+    const last = [...signed.values()].slice(-5000);
+    mkdirSync(dirname(deps.drillsFile), { recursive: true });
+    writeFileSync(`${deps.drillsFile}.tmp`, JSON.stringify(last), { mode: 0o600 });
+    renameSync(`${deps.drillsFile}.tmp`, deps.drillsFile);
+  };
   const drillsByIp = new Limiter(30, 60 * 60_000, now);
 
   async function openTicket(tokenId: string) {
@@ -281,7 +303,8 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!body.success) return c.json({ error: "invalid_request" }, 400);
     const open = await openTicket(body.data.token_id);
     if (!open) return c.json({ error: "no_open_training" }, 404);
-    if (signed.has(open.ticket.id)) return c.json({ error: "already_attested" }, 409);
+    const done = signed.get(open.ticket.id);
+    if (done) return c.json({ ticket: open.ticket, level: open.level, attested: done });
     if (!started.has(open.ticket.id)) started.set(open.ticket.id, now());
     return c.json({ ticket: open.ticket, level: open.level });
   });
@@ -294,20 +317,23 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const open = await openTicket(body.data.token_id);
     if (!open) return c.json({ error: "no_open_training" }, 404);
     const { ticket, level } = open;
-    if (signed.has(ticket.id)) return c.json({ error: "already_attested" }, 409);
+    const done = signed.get(ticket.id);
+    if (done) return c.json(done);
     const start = started.get(ticket.id);
     const d = drill(ticket.seed, level, ticket.skill);
     if (start === undefined || now() - start < drillEnd(d, body.data.clicks as Parameters<typeof hits>[1]) - 500) {
       return c.json({ error: "implausible", reason: "the drill did not last that long" }, 422);
     }
-    signed.add(ticket.id);
     started.delete(ticket.id);
     const hit = hits(d, body.data.clicks as Parameters<typeof hits>[1]);
     const total = rounds(d);
     const pts = points(hit, total);
     const message = `near-post:train:${config.LEAGUE_ID}:${ticket.token_id}:${ticket.id}:${pts}`;
     const signature = Buffer.from(attester!.sign(new TextEncoder().encode(message)).signature).toString("base64");
-    return c.json({ token_id: ticket.token_id, ticket: ticket.id, hits: hit, rounds: total, points: pts, signature });
+    const result = { token_id: ticket.token_id, ticket: ticket.id, hits: hit, rounds: total, points: pts, signature };
+    signed.set(ticket.id, result);
+    keepSigned();
+    return c.json(result);
   });
 
   // ---- League reads ----
