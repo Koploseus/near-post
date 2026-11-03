@@ -6,12 +6,16 @@ import { type SignedDelegate, SCHEMA } from "near-api-js";
  * delegate action in the browser, the relay wraps it in a transaction and
  * pays. Only player accounts, only our contracts, only these methods.
  */
-export function allowedMethods(contracts: { league: string; goalars: string; players: string }): Map<string, Set<string>> {
+export function allowedMethods(contracts: { league: string; goalars: string; players: string; tickets?: string }): Map<string, Set<string>> {
   return new Map([
     [
       contracts.league,
       new Set([
         "create_footballer",
+        "create_club",
+        "rename_club",
+        "set_rival",
+        "recall_player",
         "report_for_match",
         "vote_captain",
         "set_formation",
@@ -34,6 +38,7 @@ export function allowedMethods(contracts: { league: string; goalars: string; pla
     ],
     [contracts.goalars, new Set(["ft_transfer_call", "ft_transfer"])],
     [contracts.players, new Set(["nft_transfer", "nft_approve", "nft_revoke"])],
+    ...(contracts.tickets ? [[contracts.tickets, new Set(["withdraw", "nft_transfer", "nft_approve", "nft_revoke"])] as [string, Set<string>]] : []),
   ]);
 }
 

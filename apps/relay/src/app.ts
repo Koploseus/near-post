@@ -228,6 +228,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         league: config.LEAGUE_ID,
         goalars: config.GOALARS_ID ?? `goalars-${version}.${parentOf}`,
         players: config.PLAYERS_ID ?? `players-${version}.${parentOf}`,
+        ...(config.TICKETS_ID ? { tickets: config.TICKETS_ID } : {}),
       })
     : new Map<string, Set<string>>();
 

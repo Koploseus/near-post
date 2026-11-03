@@ -117,13 +117,12 @@ function Header({ tab }: { tab: Tab }) {
   );
 }
 
-/** Results, album, market and the AI agents: the club's pages. */
+/** Results, album and market: the club's pages. (The AI agents' page, #/ai, is linked from Today.) */
 export function ClubTabs({ current }: { current: "match" | "album" | "market" | "ai" }) {
   const tabs = [
     ["match", "Results"],
     ["album", "Album"],
     ["market", "Market"],
-    ["ai", "AI"],
   ] as const;
   return (
     <nav className="sub-tabs" aria-label="Club">
