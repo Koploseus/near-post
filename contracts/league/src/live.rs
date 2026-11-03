@@ -1,4 +1,4 @@
-//! The live match engine (v5), after the one of the original Star du Foot.
+//! The live match engine (v5).
 //!
 //! A match is two halves. The ball is always at one player's feet, in one of
 //! three zones of the pitch (own third, middle, attacking third). Step by
