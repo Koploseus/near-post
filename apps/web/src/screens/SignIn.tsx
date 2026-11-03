@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useGame } from "../lib/game.js";
 import { type SignInResult, finishSignIn, loadSession, saveSession, startSignIn } from "../lib/near.js";
-import { type Backup, passkeysAvailable, saveWithPasskey, unlockWithPasskey } from "../lib/passkey.js";
+import { type Backup, isRecovery, passkeysAvailable, saveWithPasskey, saveWithRecoveryKey, unlockWithPasskey, unlockWithRecoveryKey } from "../lib/passkey.js";
+import type { Session } from "../lib/near.js";
 import { toast } from "../lib/toast.js";
 
 type Step = { k: "email" } | { k: "code" } | { k: "unlock"; accountId: string; backups: Backup[] } | { k: "secure" };
@@ -14,6 +15,7 @@ export function SignIn() {
   const { session, setSession, refresh } = useGame();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [recovery, setRecovery] = useState("");
   const [step, setStep] = useState<Step>({ k: "email" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export function SignIn() {
   };
   const after = (r: SignInResult) => {
     if ("unlock" in r) return setStep({ k: "unlock", ...r.unlock });
-    if (r.created && passkeysAvailable()) {
+    if (r.created) {
       // Signed in already; offer the passkey before entering.
       setStep({ k: "secure" });
       return;
@@ -103,45 +105,88 @@ export function SignIn() {
       {step.k === "unlock" && (
         <>
           <h2 id="signin-title">Welcome back</h2>
-          <button
-            type="button"
-            className="cta passkey-cta"
-            disabled={busy}
-            onClick={() =>
-              void go(async () => {
-                const s = await unlockWithPasskey(step.accountId, step.backups);
-                saveSession(s);
-                setSession(s);
-                refresh();
-                toast("Welcome back");
-              })
-            }
-          >
-            <PasskeyIcon /> {busy ? "…" : "CONTINUE WITH A PASSKEY"}
-          </button>
+          {step.backups.some((b) => !isRecovery(b)) && (
+            <button
+              type="button"
+              className="cta passkey-cta"
+              disabled={busy}
+              onClick={() =>
+                void go(async () => {
+                  const s = await unlockWithPasskey(step.accountId, step.backups);
+                  saveSession(s);
+                  setSession(s);
+                  refresh();
+                  toast("Welcome back");
+                })
+              }
+            >
+              <PasskeyIcon /> {busy ? "…" : "CONTINUE WITH A PASSKEY"}
+            </button>
+          )}
+          {step.backups.some(isRecovery) && (
+            <form
+              className="form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void go(async () => {
+                  const s = await unlockWithRecoveryKey(step.accountId, step.backups, recovery);
+                  saveSession(s);
+                  setSession(s);
+                  refresh();
+                  toast("Welcome back");
+                });
+              }}
+            >
+              <input type="text" name="username" autoComplete="username" value={email || step.accountId} readOnly hidden />
+              <label htmlFor="recovery">{step.backups.some((b) => !isRecovery(b)) ? "Or your recovery key" : "Your recovery key"}</label>
+              <input
+                id="recovery"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                spellCheck={false}
+                placeholder="XXXX-XXXX-…"
+                value={recovery}
+                onChange={(e) => setRecovery(e.target.value)}
+              />
+              <button className="cta" type="submit" disabled={busy || !recovery}>
+                {busy ? "…" : "UNLOCK"}
+              </button>
+            </form>
+          )}
         </>
       )}
 
       {step.k === "secure" && (
         <>
-          <h2 id="signin-title">Add a passkey</h2>
-          <p className="lead">To sign in on all your devices.</p>
-          <button
-            type="button"
-            className="cta passkey-cta"
-            disabled={busy}
-            onClick={() =>
-              void go(async () => {
-                const s = loadOrThrow(session);
-                await saveWithPasskey(s, email || s.accountId);
-                toast("Passkey added");
-                setSession(s);
-                refresh();
-              })
-            }
-          >
-            <PasskeyIcon /> {busy ? "…" : "ADD A PASSKEY"}
-          </button>
+          <h2 id="signin-title">Sign in on your other devices</h2>
+          <p className="lead">Your key lives in this browser. Back it up with a passkey or a recovery key.</p>
+          {passkeysAvailable() && (
+            <button
+              type="button"
+              className="cta passkey-cta"
+              disabled={busy}
+              onClick={() =>
+                void go(async () => {
+                  const s = loadOrThrow(session);
+                  await saveWithPasskey(s, email || s.accountId);
+                  toast("Passkey added");
+                  setSession(s);
+                  refresh();
+                })
+              }
+            >
+              <PasskeyIcon /> {busy ? "…" : "ADD A PASSKEY"}
+            </button>
+          )}
+          <RecoveryKeySetup
+            session={loadSession() ?? session}
+            username={email}
+            onDone={() => {
+              setSession(loadOrThrow(session));
+              refresh();
+            }}
+          />
           <button
             type="button"
             className="link"
@@ -179,5 +224,65 @@ export function PasskeyIcon() {
       <circle cx="18" cy="14" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
       <path d="M18 16.5V22m0-2.5h2.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+/**
+ * The other backup: a recovery key, shown once, in a form a password manager
+ * offers to save (Bitwarden keeps it like a password for this site).
+ */
+export function RecoveryKeySetup({ session, username, onDone }: { session: Session | null; username: string; onDone?: () => void }) {
+  const [key, setKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!session) return null;
+  if (!key)
+    return (
+      <div className="recovery">
+        <button
+          type="button"
+          className="link"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              setKey(await saveWithRecoveryKey(session));
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "…" : "Use a recovery key instead (Bitwarden, other password managers)"}
+        </button>
+        {error && (
+          <p className="err" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  return (
+    <form
+      className="form recovery"
+      onSubmit={(e) => {
+        e.preventDefault();
+        toast("Recovery key saved");
+        onDone?.();
+      }}
+    >
+      <p className="lead">Your recovery key. Save it in your password manager now: it is shown once, and nobody, not even us, can give it back.</p>
+      <input type="text" name="username" autoComplete="username" value={username || session.accountId} readOnly hidden />
+      <code className="recovery-key">{key}</code>
+      <input type="password" name="password" autoComplete="new-password" value={key} readOnly hidden />
+      <button type="button" className="link" onClick={() => void navigator.clipboard?.writeText(key).then(() => toast("Copied"))}>
+        Copy
+      </button>
+      <button className="cta" type="submit">
+        I SAVED IT
+      </button>
+    </form>
   );
 }

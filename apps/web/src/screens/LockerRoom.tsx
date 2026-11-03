@@ -6,7 +6,7 @@ import { call, isGasless, league, leagueCall, signOut, topUp, transferRegistrati
 import { LEAGUE, PLAYERS } from "../lib/config.js";
 import { Offers } from "./Market.js";
 import type { Club, Player, Position } from "../lib/types.js";
-import { PasskeyIcon, SignIn } from "./SignIn.js";
+import { PasskeyIcon, RecoveryKeySetup, SignIn } from "./SignIn.js";
 import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 import { Training } from "./Training.js";
@@ -173,11 +173,11 @@ function Account() {
       <span className="k">ACCOUNT</span>
       {passkeys ? (
         <p className="ok">
-          <PasskeyIcon /> Passkey on
+          <PasskeyIcon /> Backed up: you can sign in on your other devices
         </p>
       ) : (
         <>
-          <p className="note">Add a passkey to sign in on all your devices.</p>
+          <p className="note">Back up your key with a passkey or a recovery key to sign in on your other devices.</p>
           {passkeysAvailable() && (
             <Action
               className="cta small"
@@ -187,6 +187,7 @@ function Account() {
               success="Passkey added"
             />
           )}
+          <RecoveryKeySetup session={session} username={session.accountId} onDone={reload} />
         </>
       )}
       <p className="note">
