@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
 import { serverNow } from "../lib/time.js";
-import { type Clock, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
-import { SPOTS } from "../lib/pitch.js";
+import { type Clock, HALF_SECONDS, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
+import { frameAt, keyframes, positions } from "../lib/flow.js";
 import { league } from "../lib/near.js";
 import { BOT, type Club, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
 import { clubName } from "../lib/format.js";
@@ -338,48 +338,36 @@ export function MatchView({
 /** A small pitch: 22 players in their formations, and the ball going where the play is. */
 function Pitch({ m, shown, c }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock }) {
   const second = c.phase === "second_half" || c.phase === "full_time";
-  const f = [m.formations[second ? 2 : 0] ?? m.formations[0]!, m.formations[second ? 3 : 1] ?? m.formations[1]!];
-  const last = shown[shown.length - 1];
-  const s = c.second;
-  const recent = last && s - last.second < 45 && (c.phase === "first_half" || c.phase === "second_half");
-  let x = 50 + 28 * Math.sin(s / 37) + 8 * Math.sin(s / 11);
-  let y = 50 + 30 * Math.sin(s / 23 + 1);
-  if (recent && last) {
-    const dir = last.home ? 1 : -1; // home attacks to the right
-    const at = (v: number) => 50 + dir * v;
-    if (last.kind === "goal" || last.kind === "own_goal") [x, y] = [at(47), 50];
-    else if (last.kind === "saved") [x, y] = [at(43), 46 + (s % 9)];
-    else if (last.kind === "missed") [x, y] = [at(46), (s % 2 ? 30 : 70)];
-    else if (last.kind === "corner") [x, y] = [at(48), s % 2 ? 3 : 97];
-    else if (last.kind === "penalty") [x, y] = [at(39), 50];
-    else if (last.kind === "free_kick") [x, y] = [at(31), 35 + (s % 30)];
-    else [x, y] = [at(5 + (s % 20)), 20 + (s % 60)];
-  }
-  const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time";
-  if (stopped) [x, y] = [50, 50];
-  // Sent off: his dot leaves the pitch (and his slot stays empty after the break).
   const half = second ? 1 : 0;
+  const f = [m.formations[second ? 2 : 0] ?? m.formations[0]!, m.formations[second ? 3 : 1] ?? m.formations[1]!];
+  // The ball's path through this half's events (the first half kicked off by the home side).
+  const keys = useMemo(() => {
+    const evs = half === 0 ? m.events.slice(0, m.first_half_events) : m.events.slice(m.first_half_events);
+    const start = half === 0 ? 0 : HALF_SECONDS;
+    const end = m.half_ends[half] ?? start + HALF_SECONDS;
+    return keyframes(evs, start, end, half === 0 ? 0 : 1);
+  }, [m, half]);
+  const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time" || c.phase === "before";
+  const at = stopped ? { t: c.second, ball: [50, 50] as [number, number], side: 0 as const } : frameAt(keys, c.second);
+  // Sent off: his dot leaves the pitch (and his slot stays empty after the break).
   const gone = (side: number, k: number) =>
     (second && m.elevens[2 + side]?.[k] === "") ||
     shown.some((e) => e.kind === "red" && e.half === half && Number(!e.home) === side && e.player === k);
-  const spot = (side: 0 | 1, k: number) => {
-    const [sx, sy] = SPOTS[f[side]!][k]!;
-    const depth = (100 - sy) * 0.46 + 3; // own goal line to halfway
-    const wobble = stopped ? 0 : Math.sin(s / 7 + k * 1.7 + side) * 2;
-    return side === 0 ? { left: `${depth + wobble}%`, top: `${sx}%` } : { left: `${100 - depth + wobble}%`, top: `${100 - sx}%` };
-  };
+  const teams = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined));
   return (
     <div className="mini-pitch" aria-hidden="true">
       <span className="mp-line mp-half" />
       <span className="mp-line mp-circle" />
+      <span className="mp-box mp-left" />
+      <span className="mp-box mp-right" />
       <span className="mp-goal mp-left" />
       <span className="mp-goal mp-right" />
-      {[0, 1].map((side) =>
-        Array.from({ length: 11 }, (_, k) =>
-          gone(side, k) ? null : <span key={`${side}-${k}`} className={`mp-dot ${side ? "away" : "home"}`} style={spot(side as 0 | 1, k)} />,
+      {teams.map((team, side) =>
+        team.map(([x, y], k) =>
+          gone(side, k) ? null : <span key={`${side}-${k}`} className={`mp-dot ${side ? "away" : "home"}`} style={{ left: `${x}%`, top: `${y}%` }} />,
         ),
       )}
-      <span className="mp-ball" style={{ left: `${Math.min(98, Math.max(2, x))}%`, top: `${Math.min(96, Math.max(4, y))}%` }} />
+      <span className="mp-ball" style={{ left: `${Math.min(99.5, Math.max(0.5, at.ball[0]))}%`, top: `${at.ball[1]}%` }} />
     </div>
   );
 }
