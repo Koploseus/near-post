@@ -11,6 +11,7 @@ import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
 import type { Journal } from "./agents/journal.js";
 import type { Agent } from "./agents/roster.js";
 import type { Kickoffs } from "./schedule.js";
+import { Stats } from "./stats.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
 import { fanzoneMessage } from "./vault-message.js";
 
@@ -348,6 +349,17 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   });
 
   app.get("/v1/rules", async (c) => c.json(await chain.view(config.LEAGUE_ID!, "rules")));
+
+  // Season leaderboards, counted from the on-chain match sheets (cached).
+  const stats = config.LEAGUE_ID ? new Stats(chain, config.LEAGUE_ID, now) : null;
+  app.get("/v1/stats", async (c) => {
+    if (!stats) return c.json({ error: "league_not_deployed" }, 503);
+    try {
+      return c.json(await stats.season());
+    } catch {
+      return c.json({ error: "chain_unavailable" }, 502);
+    }
+  });
 
   // ---- Live clock ----
   //
