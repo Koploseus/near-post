@@ -102,6 +102,14 @@ export function Dashboard() {
       <section className="today-main">
         {/* Logged out, what the game is comes first; logged in, the match does. */}
         {!session && nextCard}
+        {!session && (
+          <a className="try-banner" href="#/try">
+            <span>
+              <b>No account? Take five penalties first.</b> The shooting drill, in 3D, in your browser.
+            </span>
+            <span className="cta small">TRY IT</span>
+          </a>
+        )}
         {/* The match: live score, or the countdown to kick-off. */}
         {ld?.state === "live" && liveMatch && schedule ? (
           <a className="hero live-hero" href="#/live">
