@@ -1,10 +1,55 @@
-import { Account, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
-import { GOALARS, ITEMS, LEAGUE, PLAYERS, RELAY, RPC } from "./config.js";
+import { Account, FailoverRpcProvider, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
+import { GOALARS, ITEMS, LEAGUE, PLAYERS, READ_RPCS, RELAY, RPC } from "./config.js";
 
-export const provider = new JsonRpcProvider({ url: RPC });
+/**
+ * For signing: the access key's nonce and a recent block, from the first RPC
+ * that answers (a gasless player's transaction is then sent by the relay).
+ */
+export const provider = new FailoverRpcProvider([RPC, ...READ_RPCS.filter((u) => u !== RPC)].map((url) => new JsonRpcProvider({ url }, { retries: 1, wait: 300, backoff: 2 })));
 
-export async function view<T>(contractId: string, method: string, args: Record<string, unknown> = {}): Promise<T> {
-  return (await provider.callFunction({ contractId, method, args })) as T;
+/**
+ * Reads: the same view asked twice within a few seconds is asked once (the
+ * screens share them), and a rate-limited or unreachable RPC rests for a
+ * while as the next one answers.
+ */
+const readers = READ_RPCS.map((url) => new JsonRpcProvider({ url }, { retries: 1, wait: 300, backoff: 2 }));
+const resting = new Map<number, number>();
+const recent = new Map<string, { at: number; value: Promise<unknown> }>();
+const FRESH_MS = 3000;
+const REST_MS = 30_000;
+let next = 0;
+
+/** A rate limit, a network or CORS failure (a 429 comes without CORS headers): try another RPC. */
+export const transient = (e: unknown) =>
+  /429|rate limit|too many|failed to fetch|fetch failed|network|load failed|exceeded \d+ attempts|timeout|5\d\d/i.test(e instanceof Error ? `${e.name} ${e.message}` : String(e));
+
+async function read<T>(contractId: string, method: string, args: Record<string, unknown>): Promise<T> {
+  let last: unknown = new Error("no RPC answered");
+  for (let tried = 0; tried < readers.length; tried++) {
+    const k = (next + tried) % readers.length;
+    if ((resting.get(k) ?? 0) > Date.now() && tried < readers.length - 1) continue;
+    try {
+      const value = (await readers[k]!.callFunction({ contractId, method, args })) as T;
+      next = k;
+      return value;
+    } catch (e) {
+      if (!transient(e)) throw e; // the contract answered: an error of the call itself
+      last = e;
+      resting.set(k, Date.now() + REST_MS);
+    }
+  }
+  throw last;
+}
+
+export function view<T>(contractId: string, method: string, args: Record<string, unknown> = {}): Promise<T> {
+  const key = `${contractId} ${method} ${JSON.stringify(args)}`;
+  const hit = recent.get(key);
+  if (hit && Date.now() - hit.at < FRESH_MS) return hit.value as Promise<T>;
+  const value = read<T>(contractId, method, args);
+  recent.set(key, { at: Date.now(), value });
+  value.catch(() => recent.delete(key));
+  if (recent.size > 400) for (const [k, v] of recent) if (Date.now() - v.at >= FRESH_MS) recent.delete(k);
+  return value;
 }
 export const league = <T>(method: string, args: Record<string, unknown> = {}) => view<T>(LEAGUE, method, args);
 
@@ -91,6 +136,20 @@ export async function call<T = unknown>(
   methodName: string,
   args: Record<string, unknown> = {},
   opts: { tgas?: number; deposit?: bigint } = {},
+): Promise<{ hash: string; value: T | undefined }> {
+  try {
+    return await send<T>(s, contractId, methodName, args, opts);
+  } finally {
+    recent.clear(); // what the screens read next must include this transaction
+  }
+}
+
+async function send<T>(
+  s: Session,
+  contractId: string,
+  methodName: string,
+  args: Record<string, unknown>,
+  opts: { tgas?: number; deposit?: bigint },
 ): Promise<{ hash: string; value: T | undefined }> {
   const account = new Account(s.accountId, provider, s.privateKey as `ed25519:${string}`);
   const gas = BigInt(opts.tgas ?? 100) * 10n ** 12n;
