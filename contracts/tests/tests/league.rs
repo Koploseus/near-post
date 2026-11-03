@@ -303,7 +303,8 @@ async fn a_match_day_end_to_end() -> Result<()> {
         100_000 * ONE_G * (cap - supply) / cap
     );
 
-    // Every goal is in a named player's wallet; his owner claims it.
+    // Every goal is in a named player's wallet; his owner claims it. Only
+    // Rive Nord had fans in: Port-Lune's goals, if any, paid nothing.
     for goal in m["goals"].as_array().unwrap() {
         assert!(!goal["name"].as_str().unwrap().is_empty());
     }
@@ -311,7 +312,7 @@ async fn a_match_day_end_to_end() -> Result<()> {
         .as_array()
         .unwrap()
         .iter()
-        .find(|g| g["kind"] != "Own")
+        .find(|g| g["kind"] != "Own" && g["for_home"] == true)
         .map(|g| g["player"].as_str().unwrap().to_string());
     if let Some(token) = scorer {
         let player = game

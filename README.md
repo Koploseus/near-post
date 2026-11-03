@@ -92,8 +92,12 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   replays each half over ten real minutes, its clock running at 45 minutes a
   half: score, shots, saves, corners, fouls, cards, possession, then the man
   of the match. A goal adds one point of shooting. Win 3 points, draw 1.
-- **Goals mint G:** 6M G per goal, 4.2M to the scorer's own wallet and 1.8M to
-  the club. A goal after the 90th minute counts double; an own goal burns 6M G.
+- **Goals mint G, if the fans came:** a goal mints up to 600k G, 420k to the
+  scorer's own wallet and 180k to the club, in proportion to how full the
+  scoring club's stand is that day (present fans over the 60% full-house
+  target, capped at 1). Full stand: 600k. Half of the target: 300k. Empty
+  stand, or a club with no fans: nothing. A goal after the 90th minute counts
+  double; an own goal burns 600k G from the club at fault.
 - **What a player earns:** his goals; a 200k salary from the club treasury for
   every match he starts (while the treasury lasts); 5% of every sale of his
   registration. All of it follows the person, not the club: he collects with
@@ -132,8 +136,8 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
   plays him, 3% burned, the rest to the seller. Any NEP-199 market pays it,
   ours included.
 - **10 billion G, ever.** Supply starts at zero and every mint is scaled by
-  the room left: `minted = amount × (10B − supply) / 10B`. At 5B a goal mints
-  3M instead of 6M; at 9B, 600k. Burns free room for new mints. The goalars
+  the room left: `minted = amount × (10B − supply) / 10B`. At 5B a full-stand goal
+  mints 300k instead of 600k; at 9B, 60k. Burns free room for new mints. The goalars
   contract enforces it, so no bug in the league can pass the cap.
 - **No admin method.** No contract has an owner, an admin function or an
   upgrade method: nobody, including us, can mint G or change a rule through
@@ -347,25 +351,29 @@ Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
 `pnpm sim` replays 60 match days with the contract's rules (seeded, reproducible;
 model in `apps/sim/src/model.ts`):
 
-| League | Day 1 | Day 30 | Day 60 |
+| League (v7 rules, 24 clubs) | Day 1 | Day 30 | Day 60 |
 | --- | --- | --- | --- |
-| 8 clubs, attacking, loyal fans | 254M | 2.93B | 4.21B |
-| 8 clubs, attacking, absent fans | 186M | 1.97B | 2.48B |
-| 8 clubs, defensive, loyal fans | 223M | 2.27B | 3.26B |
-| 8 clubs, defensive, absent fans | 155M | 1.24B | 1.46B |
-| 8 clubs, no newcomers, absent fans | 161M | 280M | 0 |
-| 64 clubs, attacking, loyal fans | 2.49B | 8.98B | 9.23B |
+| Loyal fans (75% come) | 228M | 3.20B | 5.40B |
+| Half-hearted fans (60%, on the edge) | 184M | 2.39B | 4.06B |
+| Absent fans (45% come) | 149M | 1.58B | 2.55B |
+| No newcomers, absent fans | 141M | 474M | 436M |
+| 200 clubs, loyal fans | 2.68B | 9.67B | 9.77B |
 
-A living league grows its own money; a dead one burns it away; a big one bends
-towards the cap and never reaches it. Assumptions: 8 clubs, 100 accounts plus
-10 a day, one fan per 16 accounts on top of 50 per club, 70% of players train
-daily. In the dead league, spending is not limited by balances, so "0" means
-players could no longer afford training. The model assumes every account
+The fans set the money supply. Every mint that matters depends on them: a full
+house pays per fan present, a goal pays in proportion to the scoring club's
+stand, and a season ticket earns only at full houses. With loyal fans the
+supply grows; with absent fans it grows at half the pace; a league that stops
+recruiting stalls and then shrinks, because training, packs, the sale tax,
+empty stands and relegation keep burning. A big league bends towards the cap
+and never reaches it. Until v7, goals minted a flat 6M whoever was watching,
+which sent any league to the cap whatever its fans did.
+
+Assumptions (`V7_LEAGUE` in the model): 24 clubs, 100 accounts plus 10 a day,
+20 supporters per club plus one fan per 24 accounts, 2.6 goals a match, 30% of
+players train daily, 4 transfers and 6 packs a day, one season ticket per club
+a day, 2 clubs relegated every 19 match days. The model assumes every account
 keeps coming at the league's attendance rate; accounts that sign up and never
 return (or fake ones) get 1M instead of 5M, which the model does not count.
-
-Early players get more: the closer supply is to the cap, the smaller every
-mint. That is the cap working, and it is intended.
 
 ## How it is built
 
@@ -435,7 +443,10 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   after that, a new version means new accounts (v2), not an upgrade. One
   exception so far: on 2 November the league's code was redeployed on
   `league-v6` with the same state, to add `rename_club`, then `recall_player`
-  and the rule that keeps a club's last keeper.
+  and the rule that keeps a club's last keeper. On 3 November `league-v7`
+  got the same treatment
+  ([tx](https://testnet.nearblocks.io/txns/6kK16cXJcfsKB63wgj4CCPaWnCredveogp4NEQtVV9HW))
+  to make goals pay with the stand (600k G at most, nothing with an empty one).
 
 - Club shares go to the club treasury, which the league holds as real G so
   that penalties can burn it.

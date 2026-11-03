@@ -66,6 +66,9 @@ pub const KEEP_RESULTS: u32 = 96;
 #[near(serializers = [json])]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rules {
+    /// What a goal mints with a full stand behind the scoring club; less in
+    /// proportion to its fans present (up to the full-house target), nothing
+    /// with an empty stand: the money breathes with the fans.
     pub goal_mint: U128,
     pub goal_scorer_share: U128,
     pub goal_club_share: U128,
@@ -113,11 +116,11 @@ pub struct Rules {
 
 pub fn the_rules() -> Rules {
     Rules {
-        goal_mint: U128(6_000_000 * ONE_G),
-        goal_scorer_share: U128(4_200_000 * ONE_G),
-        goal_club_share: U128(1_800_000 * ONE_G),
+        goal_mint: U128(600_000 * ONE_G),
+        goal_scorer_share: U128(420_000 * ONE_G),
+        goal_club_share: U128(180_000 * ONE_G),
         late_goal_multiplier: 2,
-        own_goal_burn: U128(6_000_000 * ONE_G),
+        own_goal_burn: U128(600_000 * ONE_G),
         derby_multiplier: 2,
         stadium_target_bps: 6_000,
         full_house_mint_per_fan: U128(100_000 * ONE_G),
@@ -2028,6 +2031,11 @@ impl League {
         let mut treasury_mints: Vec<(AccountId, u128)> = Vec::new();
         let mut burn_total: u128 = 0;
         let mut derby_clubs: Vec<AccountId> = Vec::new();
+        // How full each club's stand is today, in basis points of its target.
+        let fill: std::collections::HashMap<AccountId, u128> = ids
+            .iter()
+            .map(|id| (id.clone(), self.stand_fill_bps(id, day)))
+            .collect();
 
         for (index, m) in results.iter_mut().enumerate() {
             let (hs, hxi, hf) = self.side_of(&m.home, 2, Some(FirstHalf::of(m, true)));
@@ -2092,14 +2100,22 @@ impl League {
                         } else {
                             1
                         };
+                        let f = fill.get(scorer).copied().unwrap_or(0);
                         if let Some(p) = self.players.get_mut(&token) {
-                            p.wallet = U128(p.wallet.0 + k * rules.goal_scorer_share.0);
+                            p.wallet =
+                                U128(p.wallet.0 + k * rules.goal_scorer_share.0 * f / 10_000);
                             p.goals += 1;
                             p.skills.raise(Skill::Shooting, 1);
                             p.refresh();
                         }
-                        treasury_mints.push((scorer.clone(), k * rules.goal_club_share.0));
-                        self.log("goals", Some(scorer.clone()), k * rules.goal_mint.0, true);
+                        treasury_mints
+                            .push((scorer.clone(), k * rules.goal_club_share.0 * f / 10_000));
+                        self.log(
+                            "goals",
+                            Some(scorer.clone()),
+                            k * rules.goal_mint.0 * f / 10_000,
+                            true,
+                        );
                     }
                 }
                 goals.push(Goal {
@@ -2759,6 +2775,22 @@ impl League {
 
     /// Records a club's stand for the day and returns what it burned. A club
     /// with no fans has no tifo: nothing happens.
+    /// A club's stand on `day`, in basis points of its full-house target
+    /// (10_000 when full, 0 with no fan or nobody in).
+    fn stand_fill_bps(&self, club_id: &AccountId, day: u32) -> u128 {
+        let fans = self.clubs.get(club_id).map(|c| c.fans).unwrap_or(0);
+        let target = full_house_target(fans) as u128;
+        if target == 0 {
+            return 0;
+        }
+        let present = self
+            .attendance
+            .get(&(club_id.clone(), day))
+            .copied()
+            .unwrap_or(0) as u128;
+        (present * 10_000 / target).min(10_000)
+    }
+
     fn settle_stand(&mut self, club_id: &AccountId, day: u32, k: u32, rules: &Rules) -> u128 {
         let Some(fans) = self.clubs.get(club_id).map(|c| c.fans) else {
             return 0;

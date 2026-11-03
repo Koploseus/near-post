@@ -581,11 +581,18 @@ fn a_sold_player_changes_squad_keeps_his_wallet_and_leaves_the_eleven() {
 
 #[test]
 fn goals_fill_the_scorers_wallets_and_raise_their_shooting() {
-    let mut l = league_with(2, 0);
+    // Five fans each, all in every day: full stands, goals pay in full.
+    let mut l = league_with(2, 5);
     let before: Vec<Player> = [l.squad(acc("c0.testnet")), l.squad(acc("c1.testnet"))].concat();
     let r = the_rules();
     let mut expected: std::collections::HashMap<String, (u128, u32)> = Default::default();
     for d in 0..6u64 {
+        for c in 0..2 {
+            for f in 0..5 {
+                as_caller(&format!("f{c}-{f}.testnet"));
+                l.check_in();
+            }
+        }
         for m in kick_off(&mut l, d as u8 + 1) {
             for g in m.goals {
                 let k = match g.kind {
@@ -1678,4 +1685,31 @@ fn the_ledger_keeps_the_last_entries() {
     assert_eq!(all.len() as u64, LEDGER_SIZE);
     assert_eq!(all[0].amount.0, (LEDGER_SIZE + 25) as u128);
     assert_eq!(all.last().unwrap().id, 25);
+}
+
+#[test]
+fn a_goal_pays_in_proportion_to_the_scoring_clubs_stand() {
+    let r = the_rules();
+    // No fan at all: goals pay nothing.
+    let mut l = league_with(2, 0);
+    let mut scored = 0;
+    for d in 0..8u64 {
+        for m in kick_off(&mut l, d as u8 + 1) {
+            scored += m.goals.iter().filter(|g| g.kind != GoalKind::Own).count();
+        }
+    }
+    assert!(scored > 0);
+    for c in ["c0", "c1"] {
+        for p in l.squad(acc(&format!("{c}.testnet"))) {
+            assert_eq!(p.wallet.0, 0, "an empty stand pays no goal");
+        }
+    }
+    // Ten fans, target six, three in: half the goal for that day.
+    let mut l = league_with(1, 10);
+    for f in 0..3 {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.check_in();
+    }
+    assert_eq!(l.stand_fill_bps(&acc("c0.testnet"), l.match_day), 5_000);
+    assert_eq!(r.goal_scorer_share.0 * 5_000 / 10_000, 210_000 * ONE_G);
 }
