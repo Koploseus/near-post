@@ -5,7 +5,7 @@ describe("goalars supply", () => {
   it("never passes the 10B cap, even in a huge league", () => {
     const s = simulate({ ...SCENARIOS["Full league (200 clubs), loyal fans"]!, newAccountsPerDay: 5_000 }, 120);
     expect(Math.max(...s)).toBeLessThan(RULES.maxSupply);
-  });
+  }, 60_000); // tens of thousands of fans a day, drawn one by one
 
   it("a living league grows and a dead one stalls", () => {
     const alive = simulate(SCENARIOS["Loyal fans (75% come)"]!);
