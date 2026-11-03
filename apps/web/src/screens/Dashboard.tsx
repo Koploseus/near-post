@@ -132,7 +132,7 @@ export function Dashboard() {
               <b>Real football mini-games.</b> Penalties, through balls, dribbles, sprints, tackles: win them to raise his skills.
             </li>
             <li>
-              <b>Goals mint G, fans burn it.</b> Fill the stand for a tifo, dress your player, climb the divisions.
+              <b>The fans make the money.</b> A goal pays only as much as its stand is full. Fill it for a tifo, or the club's treasury burns.
             </li>
           </ul>
         )}

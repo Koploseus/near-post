@@ -1,5 +1,4 @@
 import { Action } from "../lib/Action.js";
-import { short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { league, leagueCall } from "../lib/near.js";
 import { FORMATIONS, ROLE_LABEL, ROLE_NAME, SPOTS } from "../lib/pitch.js";
@@ -111,7 +110,7 @@ export function Lineup() {
               ),
             )}
           </div>
-          <p className="note">Now: {lineup.strategy}. Players in slots: {lineup.chosen.filter(Boolean).length} of 11 · {short(clubId)}</p>
+          <p className="note">Now: {lineup.strategy}. Players in slots: {lineup.chosen.filter(Boolean).length} of 11</p>
           <SetPieces clubId={clubId} leader={isCaptain} />
         </aside>
       </div>

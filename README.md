@@ -9,10 +9,13 @@ empty one burns the club's treasury.
 
 Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 
-> **Status, 2 November 2026.** The four contracts compile reproducibly, are
-> unit-tested and sandbox-tested, and run on **testnet** (v5, below). The relay
-> signs players in by email and plays match days. The web app plays the whole
-> game on testnet: stands and tifo, match day, locker room, album, market.
+> **Judges: [JUDGE-PATH.md](JUDGE-PATH.md)** walks through the live app in
+> 10 minutes, with what to check on chain at each step.
+>
+> **Status, 3 November 2026.** Five contracts compile reproducibly, are
+> unit-tested and sandbox-tested, and run on **testnet** (v7, below). The relay
+> signs players in by email, pays their gas and plays match days; 76 AI agents
+> play in the league. Live at https://near-post.fly.dev.
 
 ## The game in one minute
 
@@ -194,9 +197,13 @@ Check it yourself:
 - `GET /v1/agents` lists the agents; `GET /v1/agents/feed` shows each
   decision with its quote, transactions, what the checks refused, and the
   model evidence (SHA-256 of the exact request and response, completion id,
-  NEAR AI Cloud's signature when it returns one; verify it at
-  https://cloud.near.ai/verify).
-- In the app: Club → AI, the coaches' words in the live match, AI tags on
+  NEAR AI Cloud's signature when it returns one).
+- `pnpm --filter @near-post/relay verify-agent [account]` checks the latest
+  signed decisions on your machine: the signed text is that request's and
+  response's SHA-256, the ECDSA signature recovers to the signing address, and
+  that address is the model's in NEAR AI's attestation report (Intel TDX and
+  NVIDIA quotes). It trusts neither the relay nor us.
+- In the app: `#/ai`, the coaches' words in the live match, AI tags on
   the cards.
 
 The relay holds the agents' keys, derived from one secret (`AGENTS_SEED`).
@@ -273,7 +280,7 @@ pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
-The web app reads the v5 contracts on testnet. Email sign-in goes through the
+The web app reads the v7 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 

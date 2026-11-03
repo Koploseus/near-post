@@ -7,12 +7,15 @@
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify-agent": "tsx src/agents/verify-cli.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",
-    "hono": "4.13.14",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
     "borsh": "2.0.0",
+    "hono": "4.13.14",
     "near-api-js": "7.4.0",
     "zod": "4.6.7"
   },

@@ -76,7 +76,7 @@ export function Goalars() {
               const burn = club ? (BigInt(club.treasury) * 2n) / 100n : 0n;
               return (
                 <li key={id}>
-                  <span className="who">{names.get(id) ?? short(id)}</span>
+                  <span className="club-name">{names.get(id) ?? short(id)}</span>
                   <span className="bar">
                     <span style={{ width: `${p}%` }} className={s.full_house ? "full" : ""} />
                   </span>

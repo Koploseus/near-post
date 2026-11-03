@@ -18,8 +18,13 @@ const config = loadConfig();
 const signer = config.PARENT_PRIVATE_KEY
   ? { accountId: config.PARENT_ACCOUNT_ID, privateKey: config.PARENT_PRIVATE_KEY }
   : undefined;
-// The scheduler's reads fall back to other public RPCs on a rate limit.
-const chain = rpcChain(config.NEAR_RPC_URL, signer, [config.AGENTS_RPC_URL, "https://testnet-rpc.intea.rs"]);
+// Every RPC call falls back to other public RPCs on a rate limit: a sign-up
+// must not fail because the agents or the crowd spent FastNEAR's budget.
+const fallbacks = config.NEAR_RPC_FALLBACKS.split(",").map((s) => s.trim()).filter(Boolean);
+const rpcs = [config.NEAR_RPC_URL, ...fallbacks.filter((u) => u !== config.NEAR_RPC_URL)];
+// The agents start on the fallbacks, so the players' RPC keeps its budget.
+const agentRpcs = [...rpcs.slice(1), rpcs[0]!];
+const chain = rpcChain(rpcs, signer, [config.AGENTS_RPC_URL]);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
 const kickoffs = new Kickoffs();
 const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
@@ -28,7 +33,13 @@ const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.G
 const agents = agentsOn
   ? { roster: roster(config.PARENT_ACCOUNT_ID), journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null) }
   : undefined;
-const app = createApp(config, chain, { mailer, kickoffs, vaults, ...(agents ? { agents } : {}) });
+const app = createApp(config, chain, {
+  mailer,
+  kickoffs,
+  vaults,
+  drillsFile: config.DATA_DIR ? `${config.DATA_DIR}/drills-${config.LEAGUE_ID}.json` : null,
+  ...(agents ? { agents } : {}),
+});
 if (config.WEB_DIST) {
   // The web app uses hash routes: only files, and index.html for "/".
   app.use("/*", async (c, next) => {
@@ -47,7 +58,7 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
   startScheduler(chain, config.LEAGUE_ID, {
     kickoffs,
     ...(crowdKey && clubs.length
-      ? { crowd: { clubs, every: config.CROWD_EVERY, asFan: (fan: string) => rpcChain(config.NEAR_RPC_URL, { accountId: fan, privateKey: crowdKey }) } }
+      ? { crowd: { clubs, every: config.CROWD_EVERY, asFan: (fan: string) => rpcChain(agentRpcs, { accountId: fan, privateKey: crowdKey }) } }
       : {}),
     ...(config.KEEP_FUNDED
       ? {
@@ -69,10 +80,10 @@ if (agents && config.AGENTS_SEED) {
   const limiter = new Limiter(config.AGENTS_RPS);
   const runner = new Agents(
     {
-      chain: throttle(readsFrom(rpcChain(config.AGENTS_RPC_URL, signer), rpcChain(config.NEAR_RPC_URL, signer)), limiter),
+      chain: throttle(readsFrom(rpcChain([config.AGENTS_RPC_URL, ...agentRpcs], signer), rpcChain(agentRpcs, signer)), limiter),
       as: (a) => {
         const k = { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey };
-        return throttle(readsFrom(rpcChain(config.AGENTS_RPC_URL, k), rpcChain(config.NEAR_RPC_URL, k)), limiter);
+        return throttle(readsFrom(rpcChain([config.AGENTS_RPC_URL, ...agentRpcs], k), rpcChain(agentRpcs, k)), limiter);
       },
       publicKeyOf: (a) => agentKey(seed, a.account).publicKey,
       leagueId: config.LEAGUE_ID!,

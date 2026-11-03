@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
-import { useData, useGame } from "../lib/game.js";
+import { soon, useData, useGame } from "../lib/game.js";
 import { call, isGasless, league, leagueCall, signOut, topUp, transferRegistration } from "../lib/near.js";
 import { LEAGUE, PLAYERS } from "../lib/config.js";
 import { Offers } from "./Market.js";
@@ -78,7 +78,7 @@ function PickClub({ me }: { me: Player }) {
         tokenId={me.token_id}
         accept={(o) =>
           call(session!, PLAYERS, "nft_approve", { token_id: me.token_id, account_id: LEAGUE, msg: JSON.stringify({ accept: o.id }) }, { deposit: 10n ** 22n, tgas: 250 }).then(() =>
-            setTimeout(refresh, 2500),
+            soon(refresh),
           )
         }
       />
@@ -94,7 +94,7 @@ function PickClub({ me }: { me: Player }) {
             {people >= 12 ? (
               <span className="chip">FULL</span>
             ) : (
-              <Action label={`SIGN FOR ${c.name.toUpperCase()}`} className="cta small" run={() => transferRegistration(session!, me.token_id, c.manager)} done={() => setTimeout(refresh, 2500)} success={`Welcome to ${c.name}!`} />
+              <Action label={`SIGN FOR ${c.name.toUpperCase()}`} className="cta small" run={() => transferRegistration(session!, me.token_id, c.manager)} done={() => soon(refresh)} success={`Welcome to ${c.name}!`} />
             )}
           </div>
         ))}
@@ -114,7 +114,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
       <div className="paper panel me">
         <Sticker p={me} />
         <div className="me-info">
-          <span className="k">{short(club.manager).toUpperCase()} · MATCH DAY {day}</span>
+          <span className="k">{club.name.toUpperCase()} · MATCH DAY {day}</span>
           <h2>{me.name}</h2>
           <dl className="stats">
             <dt>Club</dt>
@@ -148,7 +148,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
         <div className="paper panel">
           <h3>Collect</h3>
           <p className="note">Your goals are minted, your salary is paid from the club treasury.</p>
-          <Action label={`COLLECT ${g(owed)}`} disabled={owed === 0n} run={() => leagueCall(session!, "claim_player", { token_id: me.token_id })} done={() => setTimeout(refresh, 2500)} success={`${g(owed)} on its way`} />
+          <Action label={`COLLECT ${g(owed)}`} disabled={owed === 0n} run={() => leagueCall(session!, "claim_player", { token_id: me.token_id })} done={() => soon(refresh)} success={`${g(owed)} on its way`} />
         </div>
         {!isGasless(session!.accountId) && (
           <div className="paper panel">
@@ -232,7 +232,7 @@ function FoundClub({ me }: { me: Player }) {
           // His footballer is already the club's (the club is his account): bring him into the squad.
           await leagueCall(session, "recall_player", { token_id: me.token_id }, 30);
         }}
-        done={() => setTimeout(refresh, 2500)}
+        done={() => soon(refresh)}
         success={`${name.trim()} is founded`}
       />
       <p className="note">You manage it: the formation (until the squad elects a captain), the market, the season tickets it sells.</p>

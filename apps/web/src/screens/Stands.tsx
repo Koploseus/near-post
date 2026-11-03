@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g } from "../lib/format.js";
-import { useData, useGame } from "../lib/game.js";
+import { soon, useData, useGame } from "../lib/game.js";
 import { league, leagueCall } from "../lib/near.js";
-import type { Club, Stand } from "../lib/types.js";
+import type { Club, Stand, StandResult } from "../lib/types.js";
 import { paint } from "../tifo.js";
 
 const FOLLOW = "near-post.follows";
@@ -12,6 +12,37 @@ const remembered = () => {
     return localStorage.getItem(FOLLOW);
   } catch {
     return null;
+  }
+};
+/** Which club this account supports, as far as this browser knows (the league has no view for it). */
+const fanOf = (account: string) => {
+  try {
+    return localStorage.getItem(`near-post.fan.${account}`);
+  } catch {
+    return null;
+  }
+};
+const setFan = (account: string, club: string) => {
+  try {
+    localStorage.setItem(`near-post.fan.${account}`, club);
+  } catch {
+    /* fine */
+  }
+};
+/** The match days this browser took a seat in, so it offers only the claims it can make. */
+const seatKey = (account: string, day: number) => `near-post.seat.${account}.${day}`;
+const sat = (account: string, day: number) => {
+  try {
+    return localStorage.getItem(seatKey(account, day));
+  } catch {
+    return null;
+  }
+};
+const setSat = (account: string, day: number, club: string) => {
+  try {
+    localStorage.setItem(seatKey(account, day), club);
+  } catch {
+    /* fine */
   }
 };
 const remember = (club: string) => {
@@ -26,12 +57,23 @@ const remember = (club: string) => {
 export function Stands() {
   const { session, schedule, clubId, refresh } = useGame();
   const { data: table } = useData(() => league<Club[]>("table"), []);
+  // With no club of your own, open on the busiest stand of the day, not an empty one.
+  const { data: today } = useData(() => league<[string, Stand][]>("stands_today").catch(() => []), []);
+  const busiest = today?.length ? [...today].sort((a, b) => b[1].present - a[1].present || b[1].fans - a[1].fans)[0]![0] : null;
   const [club, setClub] = useState<string | null>(() => remembered() ?? clubId);
-  const current = club ?? table?.[0]?.manager ?? null;
+  const current = club ?? clubId ?? busiest ?? table?.[0]?.manager ?? null;
   const { data: stand, reload } = useData(() => (current ? league<Stand>("stand", { club_id: current }) : Promise.resolve(null)), [current, schedule?.match_day]);
-  const info = table?.find((c) => c.manager === current);
-  const squares = useMemo(() => paint(stand?.present ?? 0, stand?.fans ?? 0), [stand?.present, stand?.fans]);
   const last = (schedule?.match_day ?? 1) - 1;
+  const info = table?.find((c) => c.manager === current);
+  const { data: lastStand } = useData(
+    () => (current && last > 0 ? league<StandResult | null>("stand_result", { club_id: current, match_day: last }) : Promise.resolve(null)),
+    [current, last],
+  );
+  const { data: credits, reload: reloadCredits } = useData(
+    () => (session ? league<string>("credits_of", { account_id: session.accountId }) : Promise.resolve("0")),
+    [session?.accountId, last],
+  );
+  const squares = useMemo(() => paint(stand?.present ?? 0, stand?.fans ?? 0), [stand?.present, stand?.fans]);
 
   if (!table) return <p className="sub">Loading the stands…</p>;
   if (table.length === 0) return <p className="sub">No club yet.</p>;
@@ -86,28 +128,67 @@ export function Stands() {
           {session && current ? (
             <>
               <div className="buttons">
-                <Action label="TAKE YOUR SEAT" run={() => leagueCall(session, "check_in", {}, 60)} done={reload} success="You are in the stand" />
-                <Action label="BECOME A FAN" className="cta small" run={() => leagueCall(session, "follow", { club_id: current }, 30)} done={reload} success="You are a fan now" />
+                {fanOf(session.accountId) === current ? (
+                  <Action
+                    label="TAKE YOUR SEAT"
+                    run={() => leagueCall(session, "check_in", {}, 60).then(() => setSat(session.accountId, last + 1, current))}
+                    done={() => soon(reload)}
+                    success="You are in the stand"
+                  />
+                ) : (
+                  <Action
+                    label={`SUPPORT ${(info?.name ?? "THIS CLUB").toUpperCase()} · TAKE YOUR SEAT`}
+                    run={async () => {
+                      await leagueCall(session, "follow", { club_id: current }, 30);
+                      setFan(session.accountId, current);
+                      await leagueCall(session, "check_in", {}, 60);
+                      setSat(session.accountId, last + 1, current);
+                    }}
+                    done={() => soon(reload)}
+                    success="You are a fan, and in the stand"
+                  />
+                )}
               </div>
-              {last > 0 && (
+              {((lastStand?.full_house && sat(session.accountId, last) === current) || BigInt(credits ?? "0") > 0n) && (
                 <div className="buttons">
-                  <Action label={`CLAIM MATCH DAY ${last}`} className="cta small" run={() => leagueCall(session, "claim_stand", { club_id: current, match_day: last }, 30)} />
-                  <Action label="COLLECT MY CREDITS" className="cta small" run={() => leagueCall(session, "claim", {}, 60)} done={refresh} />
+                  {lastStand?.full_house && sat(session.accountId, last) === current && (
+                    <Action
+                      label={`CLAIM THE FULL HOUSE OF MATCH DAY ${last}`}
+                      className="cta small"
+                      run={() => leagueCall(session, "claim_stand", { club_id: current, match_day: last }, 30)}
+                      done={() => soon(reloadCredits)}
+                      success="Claimed: collect it below"
+                    />
+                  )}
+                  {BigInt(credits ?? "0") > 0n && (
+                    <Action
+                      label={`COLLECT ${g(credits ?? "0")}`}
+                      className="cta small"
+                      run={() => leagueCall(session, "claim", {}, 60)}
+                      done={() => {
+                        soon(reloadCredits);
+                        soon(refresh);
+                      }}
+                      success="In your wallet"
+                    />
+                  )}
                 </div>
               )}
-              <p className="sub" style={{ fontSize: 14, margin: 0 }}>You follow one club at a time. Your first 4 visits each pay a 1M G welcome bonus.</p>
+              <p className="sub" style={{ fontSize: 14, margin: 0 }}>
+                You support one club at a time. Your first 4 visits each pay a 1M G welcome bonus; a full house pays every fan who came.
+              </p>
             </>
           ) : (
             <a className="cta signin" href="#/locker">SIGN IN WITH EMAIL TO TAKE YOUR SEAT</a>
           )}
         </section>
-        <aside className="card" aria-label="Rules">
+        <aside className="card rules" aria-label="Rules">
           <span className="k">THE RULES</span>
           <dl>
             <dt>Full house (60%)</dt>
             <dd style={{ color: "#1e7a47" }}>+100k G per fan</dd>
             <dt>Goal</dt>
-            <dd style={{ color: "#1e7a47" }}>up to +600k G, as full as the stand</dd>
+            <dd style={{ color: "#1e7a47" }}>up to +600k G, as full as the stand is</dd>
             <dt>Derby</dt>
             <dd>×2</dd>
             <dt>Tifo not complete</dt>

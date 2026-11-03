@@ -1,3 +1,6 @@
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import { bytesToHex, concatBytes, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { createHash } from "node:crypto";
 
 /**
@@ -108,13 +111,32 @@ export interface Signature {
   signature_kind: string | null;
   /** The signed text is `<model>:<request hash>:<response hash>` (or `<request>:<response>` for the gateway) of this call. */
   matches: boolean;
+  /** The ECDSA signature recovers to `signing_address` (EIP-191). */
+  signer_ok?: boolean;
+}
+
+/** The Ethereum address that signed `text` (EIP-191 personal message), or null. */
+export function recoverSigner(text: string, signatureHex: string): string | null {
+  try {
+    const sig = hexToBytes(signatureHex.replace(/^0x/, ""));
+    if (sig.length !== 65) return null;
+    const body = utf8ToBytes(text);
+    const digest = keccak_256(concatBytes(utf8ToBytes(`\x19Ethereum Signed Message:\n${body.length}`), body));
+    const recovered = new Uint8Array(65);
+    recovered[0] = sig[64]! >= 27 ? sig[64]! - 27 : sig[64]!;
+    recovered.set(sig.subarray(0, 64), 1);
+    const pub = secp256k1.Signature.fromBytes(recovered, "recovered").recoverPublicKey(digest).toBytes(false);
+    return `0x${bytesToHex(keccak_256(pub.subarray(1)).subarray(-20))}`;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * NEAR AI Cloud's signature of a reply, when it has one. `matches` only says
- * the signed text names this exact request and response; checking the
- * signer against the TEE attestation is for the verifier
- * (https://cloud.near.ai/verify).
+ * NEAR AI Cloud's signature of a reply, when it has one. `matches`: the
+ * signed text names this exact request and response; `signer_ok`: the
+ * signature recovers to the signing address. That the address belongs to a
+ * TEE is in NEAR AI's attestation report (scripts: `verify-agent`).
  */
 export async function signatureOf(cfg: BrainConfig, e: Evidence, f: Fetch = fetch): Promise<Signature | null> {
   if (!e.chat_id) return null;
@@ -133,6 +155,7 @@ export async function signatureOf(cfg: BrainConfig, e: Evidence, f: Fetch = fetc
       signing_algo: String(s.signing_algo ?? "ecdsa"),
       signature_kind: s.signature_kind ?? null,
       matches: s.text === expected,
+      signer_ok: recoverSigner(s.text, s.signature) === String(s.signing_address ?? "").toLowerCase(),
     };
   } catch {
     return null;
