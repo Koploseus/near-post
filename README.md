@@ -1,6 +1,6 @@
 # NEAR Post
 
-![NEAR Post: a football ball in pixel sunglasses wearing a $G chain](apps/web/public/og.png)
+![NEAR Post: a winged crest with a ball, the NEAR POST banner, "The star is you!" and $G coins](apps/web/public/og.png)
 
 **Football where the fans mint the money.**
 
