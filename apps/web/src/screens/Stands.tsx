@@ -26,8 +26,11 @@ const remember = (club: string) => {
 export function Stands() {
   const { session, schedule, clubId, refresh } = useGame();
   const { data: table } = useData(() => league<Club[]>("table"), []);
+  // With no club of your own, open on the busiest stand of the day, not an empty one.
+  const { data: today } = useData(() => league<[string, Stand][]>("stands_today").catch(() => []), []);
+  const busiest = today?.length ? [...today].sort((a, b) => b[1].present - a[1].present || b[1].fans - a[1].fans)[0]![0] : null;
   const [club, setClub] = useState<string | null>(() => remembered() ?? clubId);
-  const current = club ?? table?.[0]?.manager ?? null;
+  const current = club ?? busiest ?? table?.[0]?.manager ?? null;
   const { data: stand, reload } = useData(() => (current ? league<Stand>("stand", { club_id: current }) : Promise.resolve(null)), [current, schedule?.match_day]);
   const info = table?.find((c) => c.manager === current);
   const squares = useMemo(() => paint(stand?.present ?? 0, stand?.fans ?? 0), [stand?.present, stand?.fans]);
@@ -101,13 +104,13 @@ export function Stands() {
             <a className="cta signin" href="#/locker">SIGN IN WITH EMAIL TO TAKE YOUR SEAT</a>
           )}
         </section>
-        <aside className="card" aria-label="Rules">
+        <aside className="card rules" aria-label="Rules">
           <span className="k">THE RULES</span>
           <dl>
             <dt>Full house (60%)</dt>
             <dd style={{ color: "#1e7a47" }}>+100k G per fan</dd>
             <dt>Goal</dt>
-            <dd style={{ color: "#1e7a47" }}>up to +600k G, as full as the stand</dd>
+            <dd style={{ color: "#1e7a47" }}>up to +600k G, as full as the stand is</dd>
             <dt>Derby</dt>
             <dd>×2</dd>
             <dt>Tifo not complete</dt>

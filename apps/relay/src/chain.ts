@@ -24,17 +24,56 @@ export const near = (amount: string): bigint => BigInt(nearToYocto(amount as `${
 const missing = (e: unknown) => /does not exist|UNKNOWN_ACCOUNT|UNKNOWN_ACCESS_KEY|doesn't exist/i.test(e instanceof Error ? `${e.name} ${e.message}` : String(e));
 
 /** A rate limit or a network failure: another RPC may answer. */
-const transient = (e: unknown) => /429|rate limit|too many|fetch failed|network|timeout|ECONN|exceeded \d+ attempts|5\d\d/i.test(e instanceof Error ? e.message : String(e));
+export const transient = (e: unknown) =>
+  /429|rate limit|too many|fetch failed|network|timeout|ECONN|exceeded \d+ attempts|internal server error|bad gateway|service unavailable|gateway time-?out|status(?: code)? 5\d\d|\b50[234]\b/i.test(
+    e instanceof Error ? `${e.name} ${e.message}` : String(e),
+  );
 
 /**
- * `readsAlso`: public RPCs the views fall back to when `url` refuses (a 429):
- * the scheduler reads the schedule every few seconds and must not stop for a
- * rate limit. Transactions always go through `url`.
+ * One provider over several public RPCs: a call that one refuses for a rate
+ * limit or a network error goes to the next (and the next call starts there).
+ * Anything else (account missing, contract panic) is the answer and is not
+ * retried elsewhere. A signed transaction re-sent to another RPC is the same
+ * transaction (same hash and nonce): it cannot land twice.
  */
-export function rpcChain(url: string, signer?: { accountId: string; privateKey: string }, readsAlso: string[] = []): Chain {
-  const provider = new JsonRpcProvider({ url });
+export function failover(urls: string[]): JsonRpcProvider {
+  const all = urls.map((url) => new JsonRpcProvider({ url }, { retries: 1, wait: 250, backoff: 2 }));
+  if (all.length === 1) return all[0]!;
+  let current = 0;
+  return new Proxy(all[0]!, {
+    get(_target, prop) {
+      const first = (all[0] as unknown as Record<PropertyKey, unknown>)[prop];
+      if (typeof first !== "function") return first;
+      return async (...args: unknown[]) => {
+        let last: unknown;
+        const start = current;
+        for (let i = 0; i < all.length; i++) {
+          const at = (start + i) % all.length;
+          const p = all[at] as unknown as Record<PropertyKey, (...a: unknown[]) => Promise<unknown>>;
+          try {
+            return await p[prop as string]!.apply(p, args);
+          } catch (e) {
+            if (!transient(e)) throw e;
+            last = e;
+            current = (at + 1) % all.length;
+          }
+        }
+        throw last;
+      };
+    },
+  });
+}
+
+/**
+ * `urls`: the RPCs to use, in order of preference; the next one takes over
+ * when one refuses (a 429) or fails on the network. `readsAlso`: more RPCs
+ * for views only (the scheduler reads every few seconds and must not stop).
+ */
+export function rpcChain(urls: string | string[], signer?: { accountId: string; privateKey: string }, readsAlso: string[] = []): Chain {
+  const list = [...new Set(typeof urls === "string" ? [urls] : urls)];
+  const provider = failover(list);
   const quick = { retries: 2, wait: 200, backoff: 2 };
-  const readers = [new JsonRpcProvider({ url }, quick), ...readsAlso.map((u) => new JsonRpcProvider({ url: u }, quick))];
+  const readers = [...list, ...readsAlso.filter((u) => !list.includes(u))].map((u) => new JsonRpcProvider({ url: u }, quick));
   const parent = () => {
     if (!signer) throw new Error("PARENT_PRIVATE_KEY is not set");
     return new Account(signer.accountId, provider, signer.privateKey as `ed25519:${string}`);

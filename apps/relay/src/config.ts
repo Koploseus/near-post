@@ -8,6 +8,8 @@ const Env = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   NEAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
   NEAR_RPC_URL: z.url().default("https://test.rpc.fastnear.com"),
+  /** Public RPCs that take over, in order, when NEAR_RPC_URL refuses (rate limit) or fails. Comma-separated. */
+  NEAR_RPC_FALLBACKS: z.string().default("https://testnet-rpc.intea.rs,https://near-testnet.drpc.org"),
   /** The league contract. Unset until the contracts are deployed. */
   LEAGUE_ID: z.string().min(2).optional(),
   /**

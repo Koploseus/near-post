@@ -514,6 +514,9 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 .supply .bar, .stand-list .bar { display: block; height: 10px; background: rgba(27, 35, 64, .12); border-radius: 5px; overflow: hidden; margin-top: 8px; }
 .supply .bar > div, .stand-list .bar > span { display: block; height: 100%; background: var(--yellow); }
 .stand-list .bar > span.full { background: #1e7a47; }
+.stand-list .club-name { font-weight: 800; color: var(--ink); }
+.rules dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+.rules dd { text-align: right; }
 .stand-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .stand-list li { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 4px 10px; align-items: center; }
 .stand-list li .note { grid-column: 1 / -1; }
