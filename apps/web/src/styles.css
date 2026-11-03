@@ -255,6 +255,7 @@ span.spot { cursor: default; }
 button.spot:hover { transform: scale(1.06); background: var(--yellow); }
 .spot.person { background: #dfe8f7; }
 .spot.you { background: var(--yellow); border-color: var(--red); }
+.spot.free { background: rgba(243, 234, 215, .25); border-style: dashed; border-color: var(--paper); color: var(--paper); box-shadow: none; }
 .spot-role { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--red); }
 .spot-rating { font-family: var(--display); font-size: 20px; line-height: 1; }
 .spot-name { font-size: 10px; font-weight: 700; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

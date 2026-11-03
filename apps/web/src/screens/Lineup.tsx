@@ -3,7 +3,8 @@ import { useData, useGame } from "../lib/game.js";
 import { league, leagueCall } from "../lib/near.js";
 import { FORMATIONS, ROLE_LABEL, ROLE_NAME, SPOTS } from "../lib/pitch.js";
 import { useEffect, useState } from "react";
-import type { Captain, Lineup as LineupT, Player, Strategy, Takers } from "../lib/types.js";
+import { serverNow } from "../lib/time.js";
+import type { Captain, Lineup as LineupT, Player, Schedule, Strategy, Takers } from "../lib/types.js";
 import { SeasonStats } from "./SeasonStats.js";
 
 const STRATEGIES: [Strategy, string][] = [
@@ -12,6 +13,14 @@ const STRATEGIES: [Strategy, string][] = [
   ["attack", "Attack"],
 ];
 
+/** Free slots are filled with the best of the squad this long before kick-off; until then, they stay empty. */
+export const SLOTS_CLOSE_MS = 60_000;
+
+/** Slots can be taken until a minute before the first half; after that the sheet shows the eleven that will play. */
+export function slotsOpen(s: Pick<Schedule, "first_half_played" | "kickoff_at_ms">, now: number): boolean {
+  return !s.first_half_played && now < Number(s.kickoff_at_ms) - SLOTS_CLOSE_MS;
+}
+
 /** The team sheet: the formation on a pitch, slots to take, the strategy vote. */
 export function Lineup() {
   const { session, me, club, clubId, schedule } = useGame();
@@ -19,6 +28,14 @@ export function Lineup() {
     () => (clubId ? league<LineupT>("lineup", { club_id: clubId }) : Promise.resolve(null)),
     [clubId, schedule?.match_day, schedule?.first_half_played],
   );
+  const [now, setNow] = useState(serverNow());
+  useEffect(() => {
+    const t = setInterval(() => setNow(serverNow()), 5_000);
+    return () => clearInterval(t);
+  }, []);
+  // Before kick-off, the sheet shows only the slots people chose; a minute
+  // before, the free ones go to the best of the squad for the role.
+  const open = !!schedule && slotsOpen(schedule, now);
   const { data: captain } = useData(
     () => (clubId ? league<Captain | null>("captain", { club_id: clubId }) : Promise.resolve(null)),
     [clubId],
@@ -32,18 +49,22 @@ export function Lineup() {
     );
   const half = schedule?.first_half_played ? "second half" : "kick-off";
   const isCaptain = captain ? me?.token_id === captain.token_id : session?.accountId === clubId;
-  const mine = lineup.players.findIndex((p) => p?.token_id === me?.token_id);
+  const shown = lineup.players.map((p, k) => (open && !lineup.chosen[k] ? null : p));
+  const mine = shown.findIndex((p) => p && p.token_id === me?.token_id);
   return (
     <div className="lineup-page">
       <section className="paper panel">
         <span className="k">TEAM SHEET · {half.toUpperCase()}</span>
         <h2>{club.name}</h2>
         <p className="note">
-          {mine >= 0
-            ? `You play ${ROLE_NAME[lineup.roles[mine]!].toLowerCase()} (slot ${mine + 1}). Tap another free slot to move.`
-            : me
-              ? "Tap a slot to take it. Free slots go to the best player of the squad for the role; an academy kid fills any gap."
-              : "Create your footballer in the locker room to take a slot."}
+          {!open
+            ? "The eleven is set: free slots went to the best of the squad for the role."
+            : mine >= 0
+              ? `You play ${ROLE_NAME[lineup.roles[mine]!].toLowerCase()} (slot ${mine + 1}). Tap another free slot to move.`
+              : me
+                ? "Tap a free slot to take it. Nobody can take a slot another player chose."
+                : "Create your footballer in the locker room to take a slot."}
+          {open && " One minute before kick-off, the free slots go to the best of the squad for the role."}
         </p>
         <div className="formations" role="group" aria-label="Formation">
           {FORMATIONS.map((f) =>
@@ -71,7 +92,7 @@ export function Lineup() {
           <span className="pitch-line box top" aria-hidden="true" />
           <span className="pitch-line box bottom" aria-hidden="true" />
           {lineup.roles.map((role, k) => {
-            const p = lineup.players[k];
+            const p = shown[k];
             const [x, y] = SPOTS[lineup.formation][k]!;
             const you = p && p.token_id === me?.token_id;
             const takenByPerson = lineup.chosen[k] && !you;
@@ -83,8 +104,8 @@ export function Lineup() {
                 <span className="spot-name">{you ? "YOU" : p ? p.name.split(" ").slice(-1)[0] : "free"}</span>
               </>
             );
-            const cls = `spot${you ? " you" : ""}${p?.controller ? " person" : ""}`;
-            return me && session && !takenByPerson && !you ? (
+            const cls = `spot${you ? " you" : ""}${p?.controller ? " person" : ""}${p ? "" : " free"}`;
+            return open && me && session && !takenByPerson && !you ? (
               <span key={k} className="spot-pos" style={{ left: `${x}%`, top: `${y}%` }}>
                 <Action className={cls} label={body} run={() => leagueCall(session, "take_slot", { slot: k }, 30)} done={reload} aria={label} success={`You play ${ROLE_NAME[role].toLowerCase()}`} />
               </span>
