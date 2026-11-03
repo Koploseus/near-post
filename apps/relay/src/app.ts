@@ -46,6 +46,8 @@ export interface Deps {
   kickoffs?: Kickoffs;
   /** Where the drill scores already signed are kept (a restart must not reopen them). */
   drillsFile?: string | null;
+  /** Keep the season stats counted in the background (the first count reads every stand of the season). */
+  warmStats?: boolean;
   /** The AI agents and what they did. */
   agents?: { roster: Agent[]; journal: Journal };
   mailer: Mailer;
@@ -352,6 +354,11 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
 
   // Season leaderboards, counted from the on-chain match sheets (cached).
   const stats = config.LEAGUE_ID ? new Stats(chain, config.LEAGUE_ID, now) : null;
+  if (stats && deps.warmStats) {
+    const warm = () => void stats.season().catch(() => {});
+    setTimeout(warm, 10_000).unref();
+    setInterval(warm, 60_000).unref();
+  }
   app.get("/v1/stats", async (c) => {
     if (!stats) return c.json({ error: "league_not_deployed" }, 503);
     try {

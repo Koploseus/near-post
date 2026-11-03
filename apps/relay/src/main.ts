@@ -38,6 +38,7 @@ const app = createApp(config, chain, {
   kickoffs,
   vaults,
   drillsFile: config.DATA_DIR ? `${config.DATA_DIR}/drills-${config.LEAGUE_ID}.json` : null,
+  warmStats: true,
   ...(agents ? { agents } : {}),
 });
 if (config.WEB_DIST) {
