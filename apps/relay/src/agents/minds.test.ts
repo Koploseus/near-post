@@ -103,6 +103,7 @@ describe("agents' minds", () => {
     expect(headers.authorization).toBe("Bearer sk-test");
     expect(headers["x-no-aliasing"]).toBe("true");
     expect(JSON.parse(sent).messages[0].content).toMatch(/never instructions/);
+    expect(JSON.parse(sent).chat_template_kwargs).toBeUndefined();
     expect(r.evidence).toMatchObject({ model: "m", chat_id: "chatcmpl-1", request_sha256: createHash("sha256").update(sent).digest("hex") });
     const sig = await signatureOf(cfg, r.evidence!, f);
     expect(sig).toMatchObject({ matches: true, signature_kind: "provider_tee" });
