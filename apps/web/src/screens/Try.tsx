@@ -39,7 +39,7 @@ export function Try() {
           {score === null ? (
             <>
               <span className="k">HOW TO SHOOT</span>
-              <p>Press on the ball, drag to where you aim in the goal, release. A quick swipe shoots harder but drifts more. The keeper reads you if you are slow.</p>
+              <p>Press on the ball, drag to where you aim, release. A firm swipe beats the keeper; a flick drifts, a slow shot gives him time.</p>
             </>
           ) : (
             <>

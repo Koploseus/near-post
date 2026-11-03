@@ -514,7 +514,7 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
           </div>
         )}
       </div>
-      <p className="note pen-help">Press on the ball, drag to where you aim, release. A quick swipe shoots harder but drifts more.</p>
+      <p className="note pen-help">Press on the ball, drag to where you aim, release. A firm swipe beats the keeper; a flick drifts, a slow shot gives him time.</p>
     </div>
   );
 }
