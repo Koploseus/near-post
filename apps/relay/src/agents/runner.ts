@@ -579,6 +579,7 @@ export class Agents {
     try {
       await run();
       this.d.journal.markDone(key);
+      this.d.journal.save(); // a restart (a deploy) must not lose or repeat what was done
     } catch (e) {
       console.error(`agents: ${key}: ${msg(e)}`);
     }
