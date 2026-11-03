@@ -330,7 +330,10 @@ a.cta { display: inline-flex; align-items: center; justify-content: center; text
 .mp-dot { position: absolute; width: 3.2%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); transition: left 1s linear, top 1s linear; border: 2px solid rgba(0,0,0,.35); }
 .mp-dot.home { background: var(--blue); }
 .mp-dot.away { background: var(--red); }
-.mp-ball { position: absolute; width: 2.6%; aspect-ratio: 1; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #111, 0 3px 6px rgba(0,0,0,.4); transform: translate(-50%, -50%); transition: left .95s ease-in-out, top .95s ease-in-out; z-index: 2; }
+.mp-ball { position: absolute; width: 2.6%; aspect-ratio: 1; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #111, 0 3px 6px rgba(0,0,0,.4); transform: translate(-50%, -50%); transition: left 1s linear, top 1s linear; z-index: 2; }
+.mp-box { position: absolute; top: 20.5%; width: 15.7%; height: 59%; border: 2px solid rgba(243,234,215,.45); }
+.mp-box.mp-left { left: 0; border-left: 0; }
+.mp-box.mp-right { right: 0; left: auto; border-right: 0; }
 .moment { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(18,25,51,.82); animation: moment 4s ease-out both; }
 .moment strong { font-family: var(--display); font-weight: 400; font-size: clamp(54px, 12vw, 120px); line-height: 1; color: var(--yellow); text-shadow: 0 6px 0 var(--red); animation: zoom .5s cubic-bezier(.2,1.6,.4,1) both; }
 .moment span { font-family: var(--display); font-size: clamp(18px, 3vw, 28px); }
