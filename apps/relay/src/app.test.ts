@@ -430,3 +430,60 @@ describe("agents' journal", () => {
     expect((await createApp(config, new FakeChain(), { mailer: mailbox().mailer }).request("/v1/agents")).status).toBe(200);
   });
 });
+
+describe("fan zone", () => {
+  it("opens to a season ticket holder who signs with a key of his account, and only to him", async () => {
+    const { Journal } = await import("./agents/journal.js");
+    const { roster } = await import("./agents/roster.js");
+    const { fanzoneMessage } = await import("./vault-message.js");
+    const chain = new FakeChain();
+    const kp = KeyPair.fromRandom("ed25519");
+    const fan = "u0123456789abcdef.near-post.testnet";
+    chain.accounts.set(fan, { balance: 1n, keys: [kp.getPublicKey().toString()] });
+    const journal = new Journal(null);
+    const coach = roster(PARENT)[0]!;
+    const entry = (agent: string, briefing: string) => ({
+      at: 5,
+      day: 3,
+      agent,
+      kind: "tactic" as const,
+      half: 1 as const,
+      quote: "We go forward.",
+      source: "model" as const,
+      refused: [],
+      acts: [],
+      txs: [],
+      errors: [],
+      evidence: null,
+      signature: null,
+      briefing,
+    });
+    journal.add(entry(coach.account, "4-3-3. Up front: ours 58 against their 51."));
+    journal.add(entry(roster(PARENT)[1]!.account, "Another club's plan."));
+    let t = 1_000_000;
+    const cfg = loadConfig({ LEAGUE_ID: "league-v7.near-post.testnet", TICKETS_ID: "tickets-v7.near-post.testnet" });
+    const app = createApp(cfg, chain, { mailer: mailbox().mailer, agents: { roster: roster(PARENT), journal }, now: () => t });
+    const sign = (ts: number, key = kp) => Buffer.from(key.sign(new TextEncoder().encode(fanzoneMessage(fan, ts))).signature).toString("base64");
+    const ask = (body: Record<string, unknown>) => post(app, "/v1/fanzone", { account_id: fan, public_key: kp.getPublicKey().toString(), ts: t, signature: sign(t), ...body });
+
+    // No ticket: closed.
+    chain.state.tickets_of = [];
+    expect((await ask({})).status).toBe(403);
+    // A ticket: his club's briefing, not another club's.
+    chain.state.tickets_of = [{ token_id: "x", club: coach.account, season: 1, number: 7, balance: "0", earned: "0" }];
+    const open = await ask({});
+    expect(open.status).toBe(200);
+    const body = (await open.json()) as { briefings: { briefing: string }[]; tickets: unknown[] };
+    expect(body.tickets).toHaveLength(1);
+    expect(body.briefings.map((b) => b.briefing)).toEqual(["4-3-3. Up front: ours 58 against their 51."]);
+    // Somebody else's key, or an old signature: refused.
+    const stranger = KeyPair.fromRandom("ed25519");
+    expect((await ask({ public_key: stranger.getPublicKey().toString(), signature: sign(t, stranger) })).status).toBe(401);
+    const old = t;
+    t += 6 * 60_000;
+    expect((await ask({ ts: old, signature: sign(old) })).status).toBe(401);
+    // The public feed never shows a briefing.
+    const feed = (await (await app.request("/v1/agents/feed")).json()) as { entries: Record<string, unknown>[] };
+    expect(feed.entries.every((e) => !("briefing" in e))).toBe(true);
+  });
+});

@@ -34,6 +34,7 @@ import {
 interface Schedule {
   match_day: number;
   first_half_played: boolean;
+  season?: number;
 }
 interface Club {
   name: string;
@@ -69,6 +70,8 @@ export interface AgentsDeps {
   leagueId: string;
   goalarsId: string;
   playersId: string;
+  /** The season tickets contract (v7 on); without it, no agent buys one. */
+  ticketsId?: string;
   ask: Ask | null;
   brain: BrainConfig | null;
   journal: Journal;
@@ -134,7 +137,7 @@ export class Agents {
     const fixtures = await this.league<[string, string][]>("fixtures_of", { match_day: day });
     const opponent = new Map<string, string>();
     for (const [h, a] of fixtures) opponent.set(h, a).set(a, h);
-    const ctx: Ctx = { day, clubs, table, opponent, squads: new Map(), lineups: new Map(), results: null };
+    const ctx: Ctx = { day, season: s.season ?? 1, clubs, table, opponent, squads: new Map(), lineups: new Map(), results: null };
 
     if (!s.first_half_played) {
       if (this.coaches.some((c) => clubs.has(c.account) && !this.d.journal.isDone(`market:${day}:${c.account}`))) await this.scanOffers();
@@ -233,7 +236,14 @@ export class Agents {
         formation: d.decision.formation,
       });
     }
-    this.log(c, ctx.day, "tactic", { ...out, half, source: d.source, refused: d.refused, evidence: d.evidence });
+    this.log(c, ctx.day, "tactic", {
+      ...out,
+      half,
+      source: d.source,
+      refused: d.refused,
+      evidence: d.evidence,
+      ...(d.decision.briefing ? { briefing: d.decision.briefing } : {}),
+    });
   }
 
   private async market(c: CoachAgent, ctx: Ctx) {
@@ -347,7 +357,7 @@ export class Agents {
     if (BigInt(fb.wallet) + BigInt(fb.salary) >= CLAIM_FROM) {
       await this.act(f, out, () => me.call(this.d.leagueId, "claim_player", { token_id: fb.token_id }, 60), { what: "collected" });
     }
-    const rules = await this.league<{ pack_price: string; week_length: number }>("rules");
+    const rules = await this.league<{ pack_price: string; week_length: number; season_ticket_price?: string; season_tickets_per_club?: number }>("rules");
     const wallet = whole(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: f.account }));
     const week = Math.floor((Math.max(1, ctx.day) - 1) / rules.week_length);
 
@@ -355,11 +365,18 @@ export class Agents {
     const strategy = club ? await this.strategySituation(f, ctx, fb.owner, 1) : undefined;
     const move = club ? undefined : await this.choices(ctx, fb);
     const packPrice = whole(rules.pack_price);
+    const ticketPrice = club ? await this.seasonTicketOffer(ctx, f, fb.owner, rules) : null;
+    const spend = {
+      character: f.character,
+      wallet,
+      pack_price: packPrice,
+      ...(ticketPrice !== null && wallet >= ticketPrice ? { season_ticket_price: ticketPrice } : {}),
+    };
     const d = await decideFootballer(this.d.ask, {
       character: f.character,
       ...(strategy ? { strategy } : {}),
       ...(captain ? { captain: captain.situation } : {}),
-      ...(wallet >= packPrice ? { spend: { character: f.character, wallet, pack_price: packPrice } } : {}),
+      ...(wallet >= Math.min(packPrice, spend.season_ticket_price ?? Infinity) ? { spend } : {}),
       ...(move?.choices.length ? { move: move.choices } : {}),
     });
     out.quote = d.decision.quote;
@@ -371,7 +388,19 @@ export class Agents {
         this.d.journal.markDone(`captain:${week}:${f.account}`);
       }
     }
-    if (d.decision.pack) await this.buyPack(f, fb, out, BigInt(rules.pack_price));
+    let left = wallet;
+    if (d.decision.season_ticket && spend.season_ticket_price !== undefined && this.d.ticketsId) {
+      const price = BigInt(rules.season_ticket_price!);
+      const ok = await this.act(
+        f,
+        out,
+        () =>
+          me.callChecked!(this.d.goalarsId, "ft_transfer_call", { receiver_id: this.d.leagueId, amount: price.toString(), msg: JSON.stringify({ season_ticket: fb.owner }) }, 150, ONE_YOCTO),
+        { what: "season_ticket", club: fb.owner, price: spend.season_ticket_price },
+      );
+      if (ok) left -= spend.season_ticket_price;
+    }
+    if (d.decision.pack && left >= packPrice) await this.buyPack(f, fb, out, BigInt(rules.pack_price));
     if (move && d.decision.choice) {
       const c = move.choices.find((x) => x.id === d.decision.choice);
       const target = c && move.clubs.get(c.club);
@@ -499,6 +528,16 @@ export class Agents {
     }
   }
 
+  /** The price of his club's season ticket, if it has some left and he holds none this season. */
+  private async seasonTicketOffer(ctx: Ctx, f: FootballerAgent, club: string, rules: { season_ticket_price?: string; season_tickets_per_club?: number }): Promise<number | null> {
+    if (!this.d.ticketsId || !rules.season_ticket_price) return null;
+    const sold = await this.league<number>("season_tickets_sold", { club_id: club, season: ctx.season });
+    if (sold >= (rules.season_tickets_per_club ?? 50)) return null;
+    const mine = await this.view<{ club: string; season: number }[]>(this.d.ticketsId, "tickets_of", { account_id: f.account });
+    if (mine.some((t) => t.club === club && t.season === ctx.season)) return null;
+    return whole(rules.season_ticket_price);
+  }
+
   // ---- Market data ----
 
   /** Reads offers made since the last look, and what became of the open ones. */
@@ -616,6 +655,7 @@ export class Agents {
       errors: e.errors ?? [],
       evidence: e.evidence ?? null,
       signature: null,
+      ...(e.briefing ? { briefing: e.briefing } : {}),
     });
   }
 
@@ -640,6 +680,7 @@ export class Agents {
 
 interface Ctx {
   day: number;
+  season: number;
   clubs: Map<string, Club>;
   table: Club[];
   opponent: Map<string, string>;

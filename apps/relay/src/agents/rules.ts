@@ -363,6 +363,8 @@ export function marketSituation(args: {
 export interface TacticDecision {
   formation: Formation;
   quote: string;
+  /** For season ticket holders only (the fan zone): the plan in a few sentences. */
+  briefing?: string;
 }
 export interface MarketDecision {
   /** A sell option id, or null. */
@@ -377,7 +379,8 @@ export function checkTactic(s: TacticSituation, d: unknown): { ok: TacticDecisio
   const x = d as Partial<TacticDecision> | null;
   if (!x || typeof x !== "object") return { ok: null, refused: ["not an object"] };
   if (!s.options.some((o) => o.id === x.formation)) return { ok: null, refused: [`formation ${String(x.formation)} is not an option`] };
-  return { ok: { formation: x.formation!, quote: cleanQuote(x.quote) }, refused: [] };
+  const briefing = cleanQuote(x.briefing, 400);
+  return { ok: { formation: x.formation!, quote: cleanQuote(x.quote), ...(briefing ? { briefing } : {}) }, refused: [] };
 }
 
 export function checkMarket(s: MarketSituation, d: unknown): { ok: MarketDecision | null; refused: string[] } {
@@ -404,15 +407,15 @@ export function checkMarket(s: MarketSituation, d: unknown): { ok: MarketDecisio
   return { ok: { sell, buy, quote: cleanQuote(x.quote) }, refused };
 }
 
-/** The quote is shown to players: plain text, one line, 160 characters at most, no links. */
-export function cleanQuote(q: unknown): string {
+/** The quote is shown to players: plain text, one line, 160 characters at most (or `max`), no links. */
+export function cleanQuote(q: unknown, max = 160): string {
   if (typeof q !== "string") return "";
   return q
     .replace(/https?:\/\/\S+|www\.\S+/gi, "")
     .replace(/[^\p{L}\p{N} .,;:!?'’()%+-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 160);
+    .slice(0, max);
 }
 
 const attackWeight: Record<Style, number> = { builder: 1, gambler: 1.6, careful: 0.7, tactician: 1 };
@@ -438,7 +441,13 @@ export function fallbackTactic(s: TacticSituation): TacticDecision {
       : s.half === 2 && us > them
         ? `Up ${us}-${them}: ${best.id} to see it out.`
         : `${best.id}: it suits the squad we have.`;
-  return { formation: best.id, quote: why };
+  const z = best.ours;
+  const t = s.theirs;
+  const edge = (a: number, b: number) => (a > b ? `ours ${a} against their ${b}` : `their ${b} against our ${a}`);
+  const briefing =
+    `${best.id}. Up front: ${edge(z.front, t.back)}. In midfield: ${edge(z.middle, t.middle)}. At the back: ${edge(z.back, t.front)}. ` +
+    (z.front - t.back >= z.back - t.front ? "We attack where they are weakest." : "We protect our goal first.");
+  return { formation: best.id, quote: why, briefing };
 }
 
 export function fallbackMarket(s: MarketSituation): MarketDecision {
@@ -488,10 +497,8 @@ export const FOOTBALLERS: Footballer[] = (() => {
   const positions: Position[] = ["Fw", "Mf", "Df", "Fw", "Mf", "Gk"];
   const out: Footballer[] = [];
   const clubs = [...COACHES.map((c) => c.club), ...COACHES.map((c) => c.club), null, null, null, null];
-  // Already on chain before the names went English (a footballer's name is in his NFT): French imports.
-  const signed: Record<number, string> = { 0: "Remi Duperray", 1: "Noa Sorel", 24: "Yanis Moulard", 48: "Remi Fourcade" };
   clubs.forEach((club, i) => {
-    const name = signed[i] ?? `${first[i % first.length]} ${last[(i * 5 + 3) % last.length]}`;
+    const name = `${first[i % first.length]} ${last[(i * 5 + 3) % last.length]}`;
     out.push({ id: `ai-${i + 1}`, name, position: positions[i % positions.length]!, character: characters[(i * 3 + 1) % 4]!, starts_at: club });
   });
   return out;
@@ -535,13 +542,21 @@ export interface SpendSituation {
   character: Character;
   wallet: number;
   pack_price: number;
+  /** Offered when his club has season tickets left and he holds none this season. */
+  season_ticket_price?: number;
 }
 
 /** What a footballer keeps in his wallet before he buys a pack (whole G). */
 export const SAVINGS: Record<Character, number> = { leader: 300_000, showman: 50_000, loyal: 800_000, mercenary: 500_000 };
 
-export function fallbackSpend(s: SpendSituation): { pack: boolean } {
-  return { pack: s.wallet >= s.pack_price + SAVINGS[s.character] };
+/** Loyal footballers and leaders back their club with a season ticket; anyone dresses up when he can afford it. */
+export function fallbackSpend(s: SpendSituation): { pack: boolean; season_ticket?: boolean } {
+  const ticket =
+    s.season_ticket_price !== undefined &&
+    (s.character === "loyal" || s.character === "leader") &&
+    s.wallet >= s.season_ticket_price + SAVINGS[s.character] / 2;
+  const left = s.wallet - (ticket ? s.season_ticket_price! : 0);
+  return { pack: left >= s.pack_price + SAVINGS[s.character], ...(s.season_ticket_price !== undefined ? { season_ticket: ticket } : {}) };
 }
 
 /** A free agent's choices: offers he received, and clubs he can join for free. */
@@ -575,13 +590,13 @@ export function fallbackMove(character: Character, choices: ClubChoice[]): { cho
 
 /** Checks a footballer's answer: each field must be one of its options. */
 export function checkFootballer(
-  options: { strategies?: boolean; candidates?: string[]; pack?: boolean; choices?: string[] },
+  options: { strategies?: boolean; candidates?: string[]; pack?: boolean; season_ticket?: boolean; choices?: string[] },
   d: unknown,
-): { ok: { strategy?: Strategy; vote?: string; pack?: boolean; choice?: string | null; quote: string } | null; refused: string[] } {
+): { ok: { strategy?: Strategy; vote?: string; pack?: boolean; season_ticket?: boolean; choice?: string | null; quote: string } | null; refused: string[] } {
   const x = d as Record<string, unknown> | null;
   if (!x || typeof x !== "object") return { ok: null, refused: ["not an object"] };
   const refused: string[] = [];
-  const ok: { strategy?: Strategy; vote?: string; pack?: boolean; choice?: string | null; quote: string } = { quote: cleanQuote(x.quote) };
+  const ok: { strategy?: Strategy; vote?: string; pack?: boolean; season_ticket?: boolean; choice?: string | null; quote: string } = { quote: cleanQuote(x.quote) };
   if (options.strategies && x.strategy !== undefined) {
     if (STRATEGIES.includes(x.strategy as Strategy)) ok.strategy = x.strategy as Strategy;
     else refused.push(`strategy ${String(x.strategy)} is not an option`);
@@ -593,6 +608,10 @@ export function checkFootballer(
   if (options.pack && x.pack !== undefined) {
     if (typeof x.pack === "boolean") ok.pack = x.pack;
     else refused.push("pack must be true or false");
+  }
+  if (options.season_ticket && x.season_ticket !== undefined) {
+    if (typeof x.season_ticket === "boolean") ok.season_ticket = x.season_ticket;
+    else refused.push("season_ticket must be true or false");
   }
   if (options.choices && x.choice !== undefined) {
     if (x.choice === null || x.choice === "none") ok.choice = null;

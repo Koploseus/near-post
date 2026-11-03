@@ -66,7 +66,22 @@ export async function decideTactic(a: Ask | null, s: TacticSituation): Promise<D
     `${COACH[s.style]} Pick the formation for the next half. ` +
     "Zones are mean ratings (1-99) of the players in the back, the middle and the front for each formation; `theirs` is the opponent's. " +
     "`score` is [ours, theirs]; `table` gives positions out of `clubs`.";
-  return decide(a, system, s, obj({ formation: { type: "string", enum: FORMATIONS }, quote }), (d) => checkTactic(s, d), () => fallbackTactic(s));
+  const withBriefing =
+    `${system} Also write \`briefing\`: two or three sentences for your season ticket holders, the plan and the zone that decides the match, with its numbers.`;
+  return decide(
+    a,
+    withBriefing,
+    s,
+    obj({ formation: { type: "string", enum: FORMATIONS }, quote, briefing: { type: "string", maxLength: 500 } }),
+    (d) => {
+      const r = checkTactic(s, d);
+      // A model that forgot the briefing still gets the rules' one.
+      const fb = fallbackTactic(s).briefing;
+      if (r.ok && !r.ok.briefing && fb) r.ok.briefing = fb;
+      return r;
+    },
+    () => fallbackTactic(s),
+  );
 }
 
 export async function decideMarket(a: Ask | null, s: MarketSituation): Promise<Decision<MarketDecision>> {
@@ -99,6 +114,7 @@ export interface FootballerDecision {
   strategy?: Strategy;
   vote?: string;
   pack?: boolean;
+  season_ticket?: boolean;
   choice?: string | null;
   quote: string;
 }
@@ -117,6 +133,12 @@ export async function decideFootballer(a: Ask | null, s: FootballerDay): Promise
   if (s.spend) {
     props.pack = { type: "boolean" };
     parts.push("Decide whether to spend `pack_price` G of your `wallet` on a pack of three cosmetic items (`pack`).");
+    if (s.spend.season_ticket_price !== undefined) {
+      props.season_ticket = { type: "boolean" };
+      parts.push(
+        "Decide whether to buy your club's season ticket for `season_ticket_price` G (`season_ticket`): the price goes to the club, and the ticket earns G at every full house of the club this season.",
+      );
+    }
   }
   if (s.move) {
     props.choice = { type: "string", enum: [...s.move.map((c) => c.id), "none"] };
@@ -130,6 +152,7 @@ export async function decideFootballer(a: Ask | null, s: FootballerDay): Promise
     strategies: !!s.strategy,
     ...(s.captain ? { candidates: [s.captain.me.id, ...s.captain.others.map((c) => c.id)] } : {}),
     pack: !!s.spend,
+    season_ticket: s.spend?.season_ticket_price !== undefined,
     ...(s.move ? { choices: s.move.map((c) => c.id) } : {}),
   };
   const fallback = (): FootballerDecision => {
@@ -141,7 +164,11 @@ export async function decideFootballer(a: Ask | null, s: FootballerDay): Promise
       quotes.push(f.quote);
     }
     if (s.captain) out.vote = fallbackCaptain(s.character, s.captain.me, s.captain.others).vote;
-    if (s.spend) out.pack = fallbackSpend(s.spend).pack;
+    if (s.spend) {
+      const sp = fallbackSpend(s.spend);
+      out.pack = sp.pack;
+      if (sp.season_ticket !== undefined) out.season_ticket = sp.season_ticket;
+    }
     if (s.move) {
       const m = fallbackMove(s.character, s.move);
       out.choice = m.choice;
@@ -162,7 +189,7 @@ export async function decideFootballer(a: Ask | null, s: FootballerDay): Promise
       // A field the model left out or got wrong is the rules' call.
       const f = fallback();
       const ok: FootballerDecision = { ...r.ok };
-      for (const k of ["strategy", "vote", "pack", "choice"] as const) if (k in f && !(k in ok)) (ok as unknown as Record<string, unknown>)[k] = f[k];
+      for (const k of ["strategy", "vote", "pack", "season_ticket", "choice"] as const) if (k in f && !(k in ok)) (ok as unknown as Record<string, unknown>)[k] = f[k];
       return { ok, refused: r.refused };
     },
     fallback,

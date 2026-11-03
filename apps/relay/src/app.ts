@@ -10,6 +10,7 @@ import type { Journal } from "./agents/journal.js";
 import type { Agent } from "./agents/roster.js";
 import type { Kickoffs } from "./schedule.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
+import { fanzoneMessage } from "./vault-message.js";
 
 const AccountId = z
   .string()
@@ -158,6 +159,48 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const agent = deps.agents?.roster.find((a) => a.account === id.data);
     if (!agent) return c.json({ error: "not_an_agent" }, 404);
     return c.json({ agent, entries: deps.agents!.journal.feed(50, id.data) });
+  });
+
+  // ---- Fan zone ----
+  //
+  // For season ticket holders only: the request is signed with a key of the
+  // account (checked on chain), and the account must hold a season ticket
+  // (checked on the tickets contract). What it gets: its tickets and its
+  // clubs' AI coach briefings.
+
+  const fanzoneByIp = new Limiter(60, 60 * 60_000, now);
+  app.post("/v1/fanzone", async (c) => {
+    const body = z
+      .object({ account_id: AccountId, public_key: z.string().startsWith("ed25519:"), ts: z.number().int(), signature: z.string().min(40).max(200) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    if (!fanzoneByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    if (!config.TICKETS_ID) return c.json({ error: "no_season_tickets" }, 404);
+    const { account_id, public_key, ts, signature } = body.data;
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    let ok = false;
+    try {
+      ok = PublicKey.fromString(public_key).verify(new TextEncoder().encode(fanzoneMessage(account_id, ts)), Buffer.from(signature, "base64"));
+    } catch {
+      ok = false;
+    }
+    if (!ok || !(await chain.hasKey(account_id, public_key))) return c.json({ error: "bad_signature" }, 401);
+    const tickets = await chain.view<{ token_id: string; club: string; season: number; number: number; balance: string; earned: string }[]>(
+      config.TICKETS_ID,
+      "tickets_of",
+      { account_id },
+    );
+    if (!tickets.length) return c.json({ error: "no_season_ticket" }, 403);
+    const clubs = [...new Set(tickets.map((t) => t.club))];
+    const briefings = (deps.agents?.journal.briefings(clubs, 20) ?? []).map((e) => ({
+      club: e.agent,
+      day: e.day,
+      half: e.half ?? 1,
+      quote: e.quote,
+      briefing: e.briefing,
+      at: e.at,
+    }));
+    return c.json({ tickets, briefings });
   });
 
   /** Gas top-up for a player's account that is nearly empty, a few times a day. */

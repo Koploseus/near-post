@@ -23,7 +23,10 @@ const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_K
 const kickoffs = new Kickoffs();
 const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
 const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
-const agents = agentsOn ? { roster: roster(config.PARENT_ACCOUNT_ID), journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents.json` : null) } : undefined;
+// One journal per league: a new league's match days start again at 1.
+const agents = agentsOn
+  ? { roster: roster(config.PARENT_ACCOUNT_ID), journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null) }
+  : undefined;
 const app = createApp(config, chain, { mailer, kickoffs, vaults, ...(agents ? { agents } : {}) });
 if (config.WEB_DIST) {
   // The web app uses hash routes: only files, and index.html for "/".
@@ -74,6 +77,7 @@ if (agents && config.AGENTS_SEED) {
       leagueId: config.LEAGUE_ID!,
       goalarsId: config.GOALARS_ID!,
       playersId: config.PLAYERS_ID!,
+      ...(config.TICKETS_ID ? { ticketsId: config.TICKETS_ID } : {}),
       ask: askWith(brain),
       brain,
       journal: agents.journal,
