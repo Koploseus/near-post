@@ -67,6 +67,7 @@ function PickClub({ me }: { me: Player }) {
     <section className="paper panel" aria-labelledby="pick-title">
       <span className="k">STEP 2 OF 2</span>
       <h2 id="pick-title">Sign for a club</h2>
+      <FoundClub me={me} />
       <p className="note">
         {me.name} is a free agent. Give a club his registration (his NFT) and he joins its squad. You keep playing him,
         and his wallet stays yours, wherever he goes. A squad is eleven and one more: you take the place of its weakest
@@ -202,6 +203,38 @@ function Account() {
       >
         Sign out
       </button>
+    </div>
+  );
+}
+
+/** Or start your own: the club is your account, eleven academy kids sign at once, and your footballer joins them. */
+function FoundClub({ me }: { me: Player }) {
+  const { session, refresh } = useGame();
+  const [name, setName] = useState("");
+  const [open, setOpen] = useState(false);
+  if (!session) return null;
+  if (!open)
+    return (
+      <button type="button" className="link" onClick={() => setOpen(true)}>
+        Or found your own club
+      </button>
+    );
+  return (
+    <div className="form found-club">
+      <label htmlFor="club-name">Club name</label>
+      <input id="club-name" maxLength={32} value={name} onChange={(e) => setName(e.target.value)} />
+      <Action
+        label="FOUND MY CLUB"
+        disabled={name.trim().length < 1}
+        run={async () => {
+          await leagueCall(session, "create_club", { name: name.trim() }, 150);
+          // His footballer is already the club's (the club is his account): bring him into the squad.
+          await leagueCall(session, "recall_player", { token_id: me.token_id }, 30);
+        }}
+        done={() => setTimeout(refresh, 2500)}
+        success={`${name.trim()} is founded`}
+      />
+      <p className="note">You manage it: the formation (until the squad elects a captain), the market, the season tickets it sells.</p>
     </div>
   );
 }
