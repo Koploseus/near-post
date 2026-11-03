@@ -120,26 +120,26 @@ function strike(s: PenaltySetup, k: number, start: number, down: Press, up: Pres
   const speed = 13 + 17 * power;
   // Harder hits drift more; a better player drifts less.
   const control = 1.15 - 0.6 * (s.level / 99);
-  const drift = (0.12 + 0.9 * power * power) * control;
+  const drift = (0.15 + 1.15 * power * power) * control;
   const target = {
     x: aim.x + p.driftX * drift,
-    y: Math.max(0.05, aim.y + p.driftY * drift * 0.7 + 0.35 * power * power * control),
+    y: Math.max(0.05, aim.y + p.driftY * drift * 0.7 + 0.5 * power * power * control),
   };
   const flight = Math.round((DISTANCE_M / speed) * 1000);
   // The keeper gets sharper as the trained skill rises.
   const from = sway(p.phase, up.t - start);
-  const reads = p.readRoll < 0.22 + 0.33 * hard;
+  const reads = p.readRoll < 0.28 + 0.3 * hard;
   const to = reads ? target.x + (p.driftX * 0.5) : p.guess;
-  const react = Math.round(330 - 150 * hard);
-  const vk = 6.2 + 1.5 * hard; // lateral m/s when diving
+  const react = Math.round(300 - 130 * hard);
+  const vk = 7.0 + 1.8 * hard; // lateral m/s when diving
   const travel = vk * Math.max(0, (flight - react) / 1000);
   const at = from + Math.max(-travel, Math.min(travel, to - from));
-  const reachUp = 2.25 - 0.22 * Math.abs(at); // diving to the corners, he reaches less high
+  const reachUp = 2.4 - 0.1 * Math.abs(at); // diving to the corners, he reaches less high
   let result: Result;
   if (target.y > GOAL_M.height + 0.02) result = "over";
   else if (Math.abs(target.x) > GOAL_M.halfWidth + 0.02) result = "wide";
   else if (Math.abs(Math.abs(target.x) - GOAL_M.halfWidth) < 0.08 || Math.abs(target.y - GOAL_M.height) < 0.06) result = "post";
-  else if (Math.abs(target.x - at) < 0.9 && target.y < reachUp) result = "saved";
+  else if (Math.abs(target.x - at) < 1.0 && target.y < reachUp) result = "saved";
   // Down the middle, his trailing legs block low shots even when he dives.
   else if (Math.abs(target.x - from) < 0.55 && target.y < 1.1) result = "saved";
   else result = "goal";

@@ -138,10 +138,11 @@ describe("football drills", () => {
     let middle = 0;
     for (const seed of seeds("c7", 40)) {
       const setup = penaltySetup(seed, 50);
-      corners += goals(penalties(setup, kickAll(5, (k) => (k % 2 ? 2.9 : -2.9), 0.7)));
-      middle += goals(penalties(setup, kickAll(5, () => 0, 0.8)));
+      // A firm shot (200 ms swipe): a slow one gives the keeper time.
+      corners += goals(penalties(setup, kickAll(5, (k) => (k % 2 ? 2.9 : -2.9), 0.7, 200)));
+      middle += goals(penalties(setup, kickAll(5, () => 0, 0.8, 200)));
     }
-    expect(corners / 200).toBeGreaterThan(0.55);
+    expect(corners / 200).toBeGreaterThan(0.5);
     expect(middle / 200).toBeLessThan(corners / 200 - 0.2);
   });
 
