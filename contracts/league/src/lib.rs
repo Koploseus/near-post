@@ -965,11 +965,16 @@ impl League {
     }
 
     /// The caller takes a slot (0 to 10) of his club's formation for the next
-    /// half, which also reports him fit. Before kick-off or at half-time.
+    /// match day, which also reports him fit. Until a minute before kick-off:
+    /// then the free slots go to the best of the squad for the role.
     /// A slot another person took is not free; his own slot he can leave.
     pub fn take_slot(&mut self, slot: u8) {
         let (token, club) = self.my_player_and_club();
         require!((slot as usize) < ELEVEN, "a slot is 0 to 10");
+        require!(
+            env::block_timestamp().saturating_add(MINUTE_NS) <= self.kickoff_ns,
+            "the team sheet closed a minute before kick-off"
+        );
         let day = self.match_day;
         self.reported.insert((token.clone(), day));
         let mut slots = self
@@ -3007,6 +3012,8 @@ fn star(m: &MatchResult, players: &LookupMap<String, Player>) -> Option<Star> {
             EventKind::Foul => add(at(side, k), -2),
             EventKind::Yellow => add(at(side, k), -4),
             EventKind::Red => add(at(side, k), -15),
+            EventKind::Assist => add(at(side, k), 6),
+            EventKind::Tackle => add(at(side, k), 1),
             EventKind::Corner | EventKind::FreeKick | EventKind::Penalty => {}
         }
     }

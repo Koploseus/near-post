@@ -38,7 +38,31 @@ describe("season stats from match sheets", () => {
     expect(lines.get("a4")).toMatchObject({ fouls: 1, yellows: 1 });
     // An own goal "for" home is scored by slot 3 of the away eleven.
     expect(lines.get("a3")).toMatchObject({ own_goals: 1 });
-    expect(lines.get("h0")).toMatchObject({ apps: 1 });
+    expect(lines.get("h0")).toMatchObject({ apps: 1, clean_sheets: 0 });
+  });
+
+  it("counts assists, tackles, penalties and clean sheets", () => {
+    const lines = new Map<string, Line>();
+    count(
+      lines,
+      sheet([
+        { second: 10, home: true, kind: "tackle", player: 6 },
+        { second: 20, home: true, kind: "goal", player: 9 },
+        { second: 20, home: true, kind: "assist", player: 7 },
+        { second: 30, home: false, kind: "foul", player: 2 },
+        { second: 50, home: true, kind: "penalty", player: 9 },
+        { second: 52, home: true, kind: "goal", player: 9 },
+        { second: 60, home: true, kind: "penalty", player: 10 },
+        { second: 62, home: true, kind: "saved", player: 10 },
+      ]),
+    );
+    expect(lines.get("h7")).toMatchObject({ assists: 1 });
+    expect(lines.get("h6")).toMatchObject({ tackles: 1 });
+    expect(lines.get("h9")).toMatchObject({ goals: 2, penalties: 1, penalties_scored: 1 });
+    expect(lines.get("h10")).toMatchObject({ penalties: 1, penalties_scored: 0 });
+    // Home conceded nothing: its keeper keeps a clean sheet; away conceded two.
+    expect(lines.get("h0")).toMatchObject({ clean_sheets: 1 });
+    expect(lines.get("a0")).toMatchObject({ clean_sheets: 0 });
   });
 
   it("ignores a match that is not finished", () => {

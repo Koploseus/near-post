@@ -7,7 +7,7 @@
 
 import type { Chain } from "./chain.js";
 
-type Kind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow" | "red" | "free_kick" | "penalty";
+type Kind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow" | "red" | "free_kick" | "penalty" | "assist" | "tackle";
 
 export interface Sheet {
   home: string;
@@ -34,6 +34,14 @@ export interface Line {
   reds: number;
   own_goals: number;
   motm: number;
+  /** The last pass before a goal (match days since the engine records it). */
+  assists: number;
+  /** Balls won off a dribbler (same). */
+  tackles: number;
+  /** Matches in goal without conceding. */
+  clean_sheets: number;
+  penalties: number;
+  penalties_scored: number;
 }
 
 /** Adds one finished match to the lines, by token. */
@@ -43,7 +51,7 @@ export function count(lines: Map<string, Line>, m: Sheet) {
     if (!token) return null;
     let l = lines.get(token);
     if (!l) {
-      l = { token_id: token, club, apps: 0, goals: 0, shots: 0, on_target: 0, saves: 0, fouls: 0, yellows: 0, reds: 0, own_goals: 0, motm: 0 };
+      l = { token_id: token, club, apps: 0, goals: 0, shots: 0, on_target: 0, saves: 0, fouls: 0, yellows: 0, reds: 0, own_goals: 0, motm: 0, assists: 0, tackles: 0, clean_sheets: 0, penalties: 0, penalties_scored: 0 };
       lines.set(token, l);
     }
     l.club = club;
@@ -100,10 +108,37 @@ export function count(lines: Map<string, Line>, m: Sheet) {
         if (l) l.reds++;
         break;
       }
+      case "assist": {
+        const l = line(own[e.player], club);
+        if (l) l.assists++;
+        break;
+      }
+      case "tackle": {
+        const l = line(own[e.player], club);
+        if (l) l.tackles++;
+        break;
+      }
+      case "penalty": {
+        const l = line(own[e.player], club);
+        if (l) {
+          l.penalties++;
+          // The kick is the next event of the same side and player.
+          const kick = m.events.slice(i + 1).find((x) => x.home === e.home && x.player === e.player && ["goal", "saved", "missed"].includes(x.kind));
+          if (kick?.kind === "goal") l.penalties_scored++;
+        }
+        break;
+      }
       default:
         break;
     }
   });
+  // Clean sheets: the keepers (slot 0, either half) of a side that conceded nothing.
+  for (const side of [0, 1] as const) {
+    const conceded = m.events.filter((e) => (e.kind === "goal" && e.home === (side === 1)) || (e.kind === "own_goal" && e.home === (side === 1))).length;
+    if (conceded > 0) continue;
+    const keepers = new Set([m.elevens[side]?.[0], m.elevens[2 + side]?.[0]].filter((t): t is string => !!t));
+    for (const k of keepers) line(k, side === 0 ? m.home : m.away)!.clean_sheets++;
+  }
   const star = m.stats.man_of_the_match?.player;
   if (star && lines.has(star)) lines.get(star)!.motm++;
 }
@@ -113,6 +148,8 @@ export interface SeasonStats {
   /** Match days counted: first to last. */
   from: number;
   to: number;
+  /** The first match day of the season whose sheets record assists and tackles (the engine added them mid-season), or null. */
+  assists_from: number | null;
   players: (Line & { name: string })[];
 }
 
@@ -157,10 +194,15 @@ export class Stats {
       const p = await this.chain.view<{ name: string } | null>(this.leagueId, "get_player", { token_id: t }).catch(() => null);
       this.names.set(t, p?.name ?? t);
     }
+    let assistsFrom: number | null = null;
+    for (let d = from; d <= to && assistsFrom === null; d++) {
+      if ((this.days.get(d) ?? []).some((m) => m.events.some((e) => e.kind === "assist" || e.kind === "tackle"))) assistsFrom = d;
+    }
     const value: SeasonStats = {
       season: s.season,
       from,
       to,
+      assists_from: assistsFrom,
       players: [...lines.values()].map((l) => ({ ...l, name: this.names.get(l.token_id) ?? l.token_id })),
     };
     this.cached = { at: this.now(), value };

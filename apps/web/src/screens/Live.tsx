@@ -22,6 +22,8 @@ const ICON: Record<MatchEvent["kind"], string> = {
   red: "🟥",
   free_kick: "◠",
   penalty: "◉",
+  assist: "",
+  tackle: "",
 };
 
 /** "an academy kid shoots wide" → "An academy kid shoots wide". */
@@ -151,8 +153,10 @@ export function MatchView({
   const line = (e: MatchEvent & { half: 0 | 1 }) => {
     const n = name(e);
     switch (e.kind) {
-      case "goal":
-        return `GOAL! ${n}`;
+      case "goal": {
+        const a = shown.find((x) => x.kind === "assist" && x.second === e.second && x.home === e.home);
+        return a ? `GOAL! ${n} (assist ${name(a)})` : `GOAL! ${n}`;
+      }
       case "own_goal":
         return `Own goal, ${n}`;
       case "saved":
@@ -173,6 +177,8 @@ export function MatchView({
         return `Free kick on goal: ${n} steps up`;
       case "penalty":
         return `PENALTY! ${n} takes it`;
+      default:
+        return "";
     }
   };
   // Big moments replay as a short animation, as they are revealed.
@@ -212,6 +218,7 @@ export function MatchView({
     ["Shots", count(true, ["goal", "saved", "missed"]), count(false, ["goal", "saved", "missed"])],
     ["On target", count(true, ["goal", "saved"]), count(false, ["goal", "saved"])],
     ["Corners", count(true, ["corner"]), count(false, ["corner"])],
+    ["Tackles", count(true, ["tackle"]), count(false, ["tackle"])],
     ["Fouls", count(true, ["foul"]), count(false, ["foul"])],
     ["Yellow cards", count(true, ["yellow"]), count(false, ["yellow"])],
     ["Red cards", count(true, ["red"]), count(false, ["red"])],
@@ -248,7 +255,7 @@ export function MatchView({
         {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
-            CHANGE SLOT OR STRATEGY
+            VOTE THE SECOND-HALF STRATEGY
           </a>
         )}
       </section>
@@ -260,7 +267,10 @@ export function MatchView({
           <h3>{final ? "Every action" : "Live"}</h3>
           <ol>
             {shown.length === 0 && <li className="note">Kick-off. The ball is rolling.</li>}
-            {[...shown].reverse().map((e, i) => (
+            {[...shown]
+              .reverse()
+              .filter((e) => e.kind !== "assist" && e.kind !== "tackle")
+              .map((e, i) => (
               <li key={`${e.half}-${e.second}-${i}`} className={`ev ${e.kind} ${e.home ? "h" : "a"}`}>
                 <span className="ev-min">{minuteLabel(e.second, e.half)}</span>
                 <span className="ev-icon" aria-hidden="true">

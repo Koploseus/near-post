@@ -1330,7 +1330,7 @@ fn a_slot_taken_by_someone_else_is_not_free() {
 }
 
 #[test]
-fn at_half_time_people_change_slot_and_strategy() {
+fn at_half_time_people_change_strategy_but_not_slot() {
     let mut l = league_with(2, 0);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
     as_caller("koplo.testnet");
@@ -1341,16 +1341,52 @@ fn at_half_time_people_change_slot_and_strategy() {
     let m = &first[0];
     let side = usize::from(m.away == acc("c0.testnet"));
     assert_eq!(m.strategies[side], Strategy::Defend);
-    as_caller("koplo.testnet");
-    l.take_slot(10);
+    at(
+        "koplo.testnet",
+        l.next_match_at_ns - MINUTE_MS * 1_000_000,
+        3,
+    );
     l.vote_strategy(Strategy::Attack);
     at("anyone.testnet", l.next_match_at_ns, 2);
     let m = l.play_match_day().remove(0);
     assert_eq!(
-        (m.elevens[side][9].clone(), m.elevens[2 + side][10].clone()),
+        (m.elevens[side][9].clone(), m.elevens[2 + side][9].clone()),
         (token.clone(), token)
     );
     assert_eq!(m.strategies[2 + side], Strategy::Attack);
+}
+
+#[test]
+#[should_panic(expected = "the team sheet closed a minute before kick-off")]
+fn the_team_sheet_closes_a_minute_before_kick_off() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    at("koplo.testnet", l.kickoff_ns - 59 * 1_000_000_000, 1);
+    l.take_slot(9);
+}
+
+#[test]
+fn a_slot_can_be_taken_until_a_minute_before_kick_off() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    at("koplo.testnet", l.kickoff_ns - 61 * 1_000_000_000, 1);
+    l.take_slot(9);
+    assert!(l.lineup(acc("c0.testnet")).chosen[9]);
+}
+
+#[test]
+#[should_panic(expected = "the team sheet closed a minute before kick-off")]
+fn no_slot_at_half_time() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    at("anyone.testnet", l.next_match_at_ns, 2);
+    l.play_match_day();
+    at(
+        "koplo.testnet",
+        l.next_match_at_ns - 2 * MINUTE_MS * 1_000_000,
+        3,
+    );
+    l.take_slot(9);
 }
 
 #[test]

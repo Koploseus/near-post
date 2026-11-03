@@ -126,6 +126,11 @@ pub enum EventKind {
     FreeKick,
     /// A penalty; the kick follows (goal, saved, missed).
     Penalty,
+    /// The last pass before an open-play goal: right after that `Goal`, for
+    /// the same side.
+    Assist,
+    /// A man who took the ball off a dribbler (`player` is the tackler).
+    Tackle,
 }
 
 /// One moment of a match. `second` runs from 0 (kick-off) to the end of the
@@ -343,6 +348,8 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
     }
     let mut t: u32 = 0;
     let mut fouls: u32 = 0;
+    // Who gave the holder the ball, while his side keeps it (for assists).
+    let mut passer: Option<usize> = None;
     let mut end: Option<u32> = None;
     let push = |out: &mut Half, t: u32, home: bool, kind: EventKind, player: usize| {
         out.events.push(Event {
@@ -413,6 +420,9 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
                 (27 + (me.shooting as i32 - gk_def) / 3 - if long { 10 } else { 0 }).clamp(8, 60),
             ) {
                 push(&mut out, t, side == 0, EventKind::Goal, holder);
+                if let Some(a) = passer.filter(|a| *a != holder) {
+                    push(&mut out, t, side == 0, EventKind::Assist, a);
+                }
                 holder = p.pick(other, &[Role::St, Role::Cm], None).unwrap_or(0);
                 zone = 1;
                 elapsed = p.between(50, 80);
@@ -458,6 +468,7 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
             }
             out.possession[side] += elapsed;
             side = next_side;
+            passer = None;
         } else if r < w_shot + w_pass {
             // A pass, forward half the time.
             let forward = zone < 2 && p.chance(40 + p.strategy_factor(side, true) / 5);
@@ -478,12 +489,14 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
             };
             out.possession[side] += elapsed;
             if ok {
+                passer = Some(holder);
                 holder = target.unwrap_or(holder);
                 zone = to_zone;
             } else if let Some(m) = marker {
                 side = other;
                 holder = m;
                 zone = 2 - zone;
+                passer = None;
             }
         } else if r < w_shot + w_pass + w_dribble {
             // Taking a man on.
@@ -497,9 +510,11 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
             if ok {
                 zone = (zone + 1).min(2);
             } else if let Some(m) = marker {
+                push(&mut out, t, other == 0, EventKind::Tackle, m);
                 side = other;
                 holder = m;
                 zone = 2 - zone;
+                passer = None;
             }
         } else {
             // Fouled: maybe a card, maybe a set piece.
@@ -507,6 +522,7 @@ pub fn play_half(seed: [u8; 32], half: u8, home: &Side, away: &Side, kick_off_ho
             let them = other == 0;
             push(&mut out, t, them, EventKind::Foul, m);
             fouls += 1;
+            passer = None;
             if p.roll(1_000) < 12 {
                 push(&mut out, t + 1, them, EventKind::Red, m);
                 p.off[other][m] = true;
@@ -947,5 +963,67 @@ mod tests {
             kicks > 100 && theirs * 100 >= kicks * 95,
             "{theirs} of {kicks}"
         );
+    }
+
+    #[test]
+    fn assists_follow_open_play_goals_and_tackles_win_the_ball() {
+        let (a, b) = (
+            side(60, Formation::F442, Strategy::Balanced),
+            side(60, Formation::F442, Strategy::Balanced),
+        );
+        let ms = matches(200, &a, &b);
+        let (mut goals, mut assists, mut tackles) = (0, 0, 0);
+        for (h1, h2) in &ms {
+            for half in [h1, h2] {
+                for w in half.events.windows(2) {
+                    if w[1].kind == EventKind::Assist {
+                        // Right after a goal of the same side, at the same second, by someone else.
+                        assert_eq!(w[0].kind, EventKind::Goal);
+                        assert_eq!((w[0].home, w[0].second), (w[1].home, w[1].second));
+                        assert_ne!(w[0].player, w[1].player);
+                    }
+                }
+                goals += half
+                    .events
+                    .iter()
+                    .filter(|e| e.kind == EventKind::Goal)
+                    .count();
+                assists += half
+                    .events
+                    .iter()
+                    .filter(|e| e.kind == EventKind::Assist)
+                    .count();
+                tackles += half
+                    .events
+                    .iter()
+                    .filter(|e| e.kind == EventKind::Tackle)
+                    .count();
+            }
+        }
+        let n = ms.len() as f64;
+        println!(
+            "per match: {:.2} goals, {:.2} assists, {:.1} tackles",
+            goals as f64 / n,
+            assists as f64 / n,
+            tackles as f64 / n
+        );
+        assert!(
+            assists > 0 && assists < goals,
+            "most goals but not all have an assist"
+        );
+        assert!(
+            (5.0..60.0).contains(&(tackles as f64 / n)),
+            "tackles per match"
+        );
+        // Neither counts as a goal.
+        for (h1, h2) in &ms {
+            let all: Vec<Event> = h1.events.iter().chain(h2.events.iter()).copied().collect();
+            let g = all
+                .iter()
+                .filter(|e| matches!(e.kind, EventKind::Goal | EventKind::OwnGoal))
+                .count() as u8;
+            let (x, y) = score(&all);
+            assert_eq!(x + y, g);
+        }
     }
 }

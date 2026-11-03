@@ -143,6 +143,15 @@ export function keyframes(events: MatchEvent[], start: number, end: number, kick
         push({ t, ball: [ahead(s, 11), 50], side: s, carrier: e.player, dead: true });
         break;
       }
+      case "tackle": {
+        // `home` is the tackler's side: the other side was running at him.
+        const runner = (1 - s) as Side;
+        play(t, runner, [ahead(runner, 30 + noise(t + 12) * 35), y0]);
+        push({ t: t + 1, ball: last().ball, side: s, carrier: e.player });
+        break;
+      }
+      case "assist":
+        break; // drawn with its goal
       case "free_kick": {
         const y = 32 + noise(t + 11) * 36;
         push({ t: t - 12, ball: [ahead(s, 24), y], side: s, carrier: e.player, dead: true });

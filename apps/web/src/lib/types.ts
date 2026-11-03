@@ -21,7 +21,7 @@ export interface Star {
 export type Role = "Gk" | "Lb" | "Cb" | "Rb" | "Dm" | "Cm" | "Lm" | "Rm" | "Am" | "Lw" | "Rw" | "St";
 export type Formation = "4-4-2" | "4-3-3" | "3-5-2" | "4-2-3-1";
 export type Strategy = "defend" | "balanced" | "attack";
-export type EventKind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow" | "red" | "free_kick" | "penalty";
+export type EventKind = "goal" | "own_goal" | "saved" | "missed" | "corner" | "foul" | "yellow" | "red" | "free_kick" | "penalty" | "assist" | "tackle";
 
 export interface MatchEvent {
   second: number;
