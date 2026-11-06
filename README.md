@@ -14,10 +14,82 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > **Judges: [JUDGE-PATH.md](JUDGE-PATH.md)** walks through the live app in
 > 10 minutes, with what to check on chain at each step.
 >
-> **Status, 3 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested, and run on **testnet** (v7, below). The relay
-> signs players in by email, pays their gas and plays match days; 76 AI agents
-> play in the league. Live at https://near-post.fly.dev.
+> **Check the money in one command:** `node scripts/verify.mjs` (no keys, no
+> install) replays the last 10 match days from the chain and checks every mint
+> and burn against the rules (below).
+>
+> **Status, 6 November 2026.** Five contracts compile reproducibly, are
+> unit-tested and sandbox-tested (148 Rust tests, 115 TypeScript tests), and
+> run on **testnet** (v7, below). The relay signs players in by email, pays
+> their gas and plays match days; 76 AI agents play in the league. Live at
+> https://near-post.fly.dev.
+
+## The mechanic: no fans, no money
+
+G is minted only for people who show up:
+
+- **A goal mints 600k G scaled by how full the scoring club's stand is.** An
+  empty stand mints nothing, whatever the score (x2 after the 90th minute, x2
+  in a derby).
+- **A full house mints 100k G per fan present** (a stand is full at 60% of
+  the club's fans), and pays the club's season tickets.
+- **A stand that is not full burns 2% of its club's treasury.**
+- **Spending burns:** training 400k G, a pack 500k G, 3% of every transfer,
+  10% of a relegated club's treasury, an own goal up to 600k G.
+- Onboarding: 1M G when an account first joins a club, then 1M G on each of its
+  first 4 stadium check-ins, so four of the five million also need the
+  account to show up. It shows apart from the rest on the chart and in the
+  check below.
+
+So the supply follows the crowds. On testnet, match days whose stands were
+half full or more minted about **+7M G net**; days with empty stands burned
+about **650k G** (figures from the script below, they change every day).
+
+**Check it yourself.** One command, Node only, read-only:
+
+```
+node scripts/verify.mjs            # the last 10 match days; --days 30 for more
+```
+
+It reads the league, the token and the stands on chain and, for each match
+day, recomputes and checks: who had a full house (present ≥ 60% of fans), each
+full-house mint, each burn and that only stands that were not full burned,
+each goal's mint from its scorer's stand fill (empty stand: nothing), that
+season tickets paid only on full houses, and the supply against the 10B cap. It
+also checks that each deployed contract runs `contracts/res/*.wasm` (sha256
+against the on-chain code hash), and lists who spends G. Excerpt of a run on 6
+November 2026:
+
+```
+  day  fans in  full   goals that   minted by      onboarding    burned
+       stands  houses minted G     presence
+  158      0%    0/8       0/49             0 G           0 G     47,857.3 G
+  157      0%    0/8       0/36             0 G           0 G    652,915.6 G
+  156     95%    6/8       7/32     6,099,980 G           0 G      3,288.4 G
+  155      0%    0/8       0/58             0 G           0 G    338,281.3 G
+  153     68%    3/8      17/48     7,649,900 G           0 G     36,893.9 G
+  ...
+✓ 432 checks passed, 0 failed
+```
+
+The same numbers, as a chart, on the Goalars page (Stands → Goalars, "No fans,
+no money"): the share of fans in the stands as a line, G minted above the axis,
+G burned below.
+
+## An economy of 76 agents
+
+The league never runs empty: 24 AI coaches run the fictional clubs and 52 AI
+footballers play in it. Each is an ordinary NEAR account with its own G wallet,
+calling the same contract methods as people, with the same rights. Coaches
+buy and sell players (every sale burns 3%) and pick formations; footballers
+report for matches, vote the captain and the strategy, buy packs (500k G
+burned each), wear what they unbox, and sign for clubs as free agents. A
+model on NEAR AI Cloud picks among options the code computed, and the code
+checks every field before signing (details in
+[AI coaches and AI footballers](#ai-coaches-and-ai-footballers)). Their
+spending shows in the ledger: over match days 114–158 the AI footballers bought
+28 packs (14M G burned) and transfers burned 656k G in sale tax
+(`node scripts/verify.mjs`, section 5).
 
 ## The game in one minute
 
@@ -505,9 +577,22 @@ React 19.3.1, Hono 4.13.14, near-api-js 7.4.0, Vitest 5.0.5, Zod 4.6.7.
 Hono is one patch behind the newest because pnpm's minimum-release-age policy
 refuses packages published less than a day ago.
 
+## Built during the hackathon
+
+- The announcement was on 19 October 2026; this repository's first commit is
+  from 1 November 2026. All the code here was written in the hackathon window;
+  nothing is carried over from an earlier product.
+- The code was written with Claude Code (AI-generated, reviewed and tested by
+  the author). No template or boilerplate repository was used. Libraries and
+  tools are pinned under [Versions](#versions); the contracts use near-sdk, the
+  apps near-api-js, React, Vite and Hono.
+- NEAR features used: NEP-141 (G), NEP-171/178/181/199 (players, season
+  tickets), NEP-245 (items), NEP-366 meta-transactions (gas paid by the relay),
+  NEP-330 reproducible builds, NEAR AI Cloud (agents' decisions in a TEE).
+
 ## The other project
 
-The same author also submits **Euthyna** (https://github.com/Euthyna-wallets/MandateOS),
+The same author also submits **Euthyna** (https://github.com/Euthyna-wallets/Euthyna),
 a separate project: companies run by AI agents with keyless on-chain vaults
 that only a DAO vote can move. The two projects share no code.
 
