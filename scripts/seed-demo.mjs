@@ -65,7 +65,8 @@ const call = async (acct, method, args, tgas = 50) => {
 };
 
 // Storage for the new clubs (skipped with SKIP_TOPUP=1), squads, fans and stands is paid by the contracts.
-const version = LEAGUE.match(/^league-(v\d+)\./)?.[1] ?? "v3";
+const version = LEAGUE.match(/^league-([^.]+)\./)?.[1];
+if (!version) throw new Error(`not a league account: ${LEAGUE}`);
 for (const [prefix, fund] of [[`league-${version}`, 15], [`players-${version}`, 5], [`goalars-${version}`, 3]]) {
   if (process.env.SKIP_TOPUP) break;
   const r = await parent.transfer({ receiverId: `${prefix}.${PARENT}`, amount: near(fund) });
