@@ -114,14 +114,19 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
   only our three contracts and the game's methods, up to 300 Tgas, a few
   hundred calls a day. Match days kick off on their own: the relay plays them
   when due (anyone still can).
-- **Divisions of 20, promotion and relegation.** A new club joins the lowest
-  division with room (a new one opens below when all are full). A season is
-  19 match days, a full round of a 20-club division; at its end the bottom
-  three of each division swap with the top three of the one below (fewer
-  when a division is small), the final tables are kept on chain
-  (`final_table`) and every club starts again on zero. `play_match_day`
-  plays one division per call, so the gas of a call never grows with the
-  league (107 Tgas at most for a 20-club division in the sandbox).
+- **Seasons of 26 match days, divisions of 14, champions on chain.** A new
+  club joins the lowest division with room (a new one opens below when all
+  are full). A season is 26 match days: every club of a 14-club division
+  meets every other club twice, once at home and once away (two legs of 13
+  rounds; a smaller division keeps alternating legs, so it never sits idle).
+  At its end the top club of each division is champion, the bottom three of
+  each division swap with the top three of the one below (fewer when a
+  division is small) and every club starts again on zero. The final tables
+  are kept on chain forever, with each club's record and who went up or down
+  (`final_table`), and `champions` lists the winners season by season; the
+  Club → Seasons page shows the season's progress, the last champions, the
+  roll of honour and each club's history. `play_match_day` plays one
+  division per call, so the gas of a call never grows with the league.
 - **A wardrobe of NFT items.** Haircuts, boots and headbands are NEP-245
   items in four rarities. A pack of three costs 500k G, burned
   (`ft_transfer_call` with `{"pack":{}}`; common 70%, rare 22%, epic 7%,
@@ -343,8 +348,10 @@ Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
 attester's public key). A match day kicks off every 30 minutes: two halves of
 ten minutes and five minutes of half-time. The relay plays each half when it
-is due (anyone can). The league has 24 fictional clubs in two divisions,
-8 of them in 4 derbies, a demo crowd and the AI agents above.
+is due (anyone can). That pace is for the hackathon, so a season (26 match
+days) ends in 13 hours; a real league would play one match day a day. The
+league has 24 fictional clubs in two divisions, 8 of them in 4 derbies, a
+demo crowd and the AI agents above.
 
 v1 to v4 (1 and 2 November) stay on `*-v1` to `*-v4.near-post.testnet`;
 they are no longer used.
@@ -558,7 +565,6 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
 - A half is played in one transaction, so its events are on chain (and
   readable) as soon as it is played; the app only reveals them over ten
   minutes, as the original site did.
-- No seasons yet: no promotion, no relegation burn.
 
 - Match randomness comes from NEAR's block random seed. A block producer
   could in theory bias it. Acceptable for a game without bets; there are no bets.

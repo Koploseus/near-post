@@ -14,6 +14,7 @@ import { LockerRoom } from "./screens/LockerRoom.js";
 import { HairBack, HairFront, LookDefs, SKIN } from "./screens/Look.js";
 import { Market } from "./screens/Market.js";
 import { Match } from "./screens/Match.js";
+import { Seasons } from "./screens/Seasons.js";
 import { Stands } from "./screens/Stands.js";
 import { Try } from "./screens/Try.js";
 
@@ -26,6 +27,7 @@ const ROUTES = {
   g: { tab: "stands", view: Goalars },
   tickets: { tab: "stands", view: SeasonTickets },
   match: { tab: "club", view: Match },
+  seasons: { tab: "club", view: Seasons },
   album: { tab: "club", view: Album },
   market: { tab: "club", view: Market },
   ai: { tab: "club", view: Agents },
@@ -121,9 +123,10 @@ function Header({ tab }: { tab: Tab }) {
 }
 
 /** Results, album and market: the club's pages. (The AI agents' page, #/ai, is linked from Today.) */
-export function ClubTabs({ current }: { current: "match" | "album" | "market" | "ai" }) {
+export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "ai" }) {
   const tabs = [
     ["match", "Results"],
+    ["seasons", "Seasons"],
     ["album", "Album"],
     ["market", "Market"],
   ] as const;
@@ -164,7 +167,7 @@ export function App() {
     <GameProvider>
       <Header tab={tab} />
       <main className="wrap page">
-        {(r === "match" || r === "album" || r === "market" || r === "ai") && <ClubTabs current={r} />}
+        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "ai") && <ClubTabs current={r} />}
         {(r === "stands" || r === "g" || r === "tickets") && <StandsTabs current={r} />}
         <View />
       </main>

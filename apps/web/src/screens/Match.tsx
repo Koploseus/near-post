@@ -3,6 +3,7 @@ import { clubName, minute, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { serverNow } from "../lib/time.js";
 import { league } from "../lib/near.js";
+import { seasonOf, seasonProgress } from "../lib/seasons.js";
 import type { Club, MatchResult } from "../lib/types.js";
 
 function useNow(everyMs = 1000) {
@@ -35,8 +36,13 @@ export function Match() {
     <div className="match">
       <section className="panel ink" aria-label="Next match day">
         <span className="eyebrow">
-          SEASON {schedule?.season ?? 1} · MATCH DAY {schedule?.season_day ?? day} OF {schedule?.season_days ?? 19}
+          SEASON {schedule?.season ?? 1} · MATCH DAY {schedule?.season_day ?? day} OF {schedule?.season_days ?? 26}
         </span>
+        {schedule && (
+          <div className="season-bar thin" role="progressbar" aria-label="Season" aria-valuemin={0} aria-valuemax={schedule.season_days} aria-valuenow={seasonProgress(schedule).played}>
+            <div style={{ width: `${Math.round(seasonProgress(schedule).share * 100)}%` }} />
+          </div>
+        )}
         {schedule?.first_half_played ? (
           <h2>
             Live now · <a href="#/live">follow the match →</a>
@@ -53,7 +59,7 @@ export function Match() {
             <select value={shown} onChange={(e) => setShown(Number(e.target.value))}>
               {Array.from({ length: Math.min(last, 96) }, (_, i) => last - i).map((d) => (
                 <option key={d} value={d}>
-                  {d}
+                  {schedule ? `Season ${seasonOf(d, schedule.season_days).season} · day ${seasonOf(d, schedule.season_days).day}` : d}
                 </option>
               ))}
             </select>
@@ -62,7 +68,7 @@ export function Match() {
       </section>
 
       <section className="paper panel" aria-label={`Results of match day ${last}`}>
-        <h2>{shown > 0 ? `Match day ${shown}` : "No match played yet"}</h2>
+        <h2>{shown > 0 ? (schedule ? `Season ${seasonOf(shown, schedule.season_days).season} · match day ${seasonOf(shown, schedule.season_days).day}` : `Match day ${shown}`) : "No match played yet"}</h2>
         {data?.results.map((m, i) => (
           <Fragment key={`${m.home}-${m.away}`}>
           {(i === 0 || data.results[i - 1]!.division !== m.division) && (data.results.at(-1)?.division ?? 1) > 1 && <h3 className="div-head">Division {m.division}</h3>}
@@ -88,7 +94,9 @@ export function Match() {
 
       {divisions(data?.table ?? []).map((clubs, d, all) => (
         <section className="paper panel" aria-label={`Division ${d + 1} table`} key={d}>
-          <h2>Division {d + 1}</h2>
+          <h2>
+            Division {d + 1} · season {schedule?.season ?? 1}
+          </h2>
           <table className="table">
             <thead>
               <tr>
@@ -108,6 +116,7 @@ export function Match() {
                     <td>{i + 1}</td>
                     <td>
                       {c.name}
+                      {i === 0 && c.played > 0 && <span className="zone"> leader</span>}
                       {up && <span className="zone"> ▲</span>}
                       {down && <span className="zone"> ▼</span>}
                     </td>
@@ -119,7 +128,9 @@ export function Match() {
               })}
             </tbody>
           </table>
-          {all.length > 1 && <p className="note">▲ promoted, ▼ relegated at the end of the season (match day {schedule?.season_days ?? 19}).</p>}
+          <p className="note">
+            {all.length > 1 ? `▲ promoted, ▼ relegated at the end of the season (match day ${schedule?.season_days ?? 26}). ` : ""}The top club after match day {schedule?.season_days ?? 26} is champion. <a href="#/seasons">Past champions →</a>
+          </p>
         </section>
       ))}
     </div>

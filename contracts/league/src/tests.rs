@@ -132,22 +132,22 @@ fn play_day(l: &mut League, seed: u8) -> Vec<MatchResult> {
 }
 
 #[test]
-fn twenty_clubs_a_division_then_a_new_one_below() {
-    let l = league_with(23, 0);
+fn fourteen_clubs_a_division_then_a_new_one_below() {
+    let l = league_with(17, 0);
     assert_eq!(l.schedule().divisions, 2);
-    assert_eq!(l.division_table(1).len(), 20);
+    assert_eq!(l.division_table(1).len(), 14);
     assert_eq!(l.division_table(2).len(), 3);
-    assert_eq!(l.get_club(acc("c20.testnet")).unwrap().division, 2);
-    assert_eq!(l.table().len(), 23);
-    assert_eq!(l.fixtures_of(1).len(), 10 + 1);
+    assert_eq!(l.get_club(acc("c14.testnet")).unwrap().division, 2);
+    assert_eq!(l.table().len(), 17);
+    assert_eq!(l.fixtures_of(1).len(), 7 + 1);
 }
 
 #[test]
 fn one_division_per_call_and_the_day_closes_after_the_last() {
-    let mut l = league_with(24, 0);
+    let mut l = league_with(18, 0);
     at("anyone.testnet", l.next_match_at_ns, 1);
     let d1 = l.play_match_day();
-    assert!(d1.iter().all(|m| m.division == 1) && d1.len() == 10);
+    assert!(d1.iter().all(|m| m.division == 1) && d1.len() == 7);
     assert!(
         !l.schedule().first_half_played,
         "division 2 has not kicked off"
@@ -162,7 +162,7 @@ fn one_division_per_call_and_the_day_closes_after_the_last() {
     l.play_match_day();
     assert_eq!(l.match_day, 2);
     let all = l.results(1);
-    assert_eq!(all.len(), 12);
+    assert_eq!(all.len(), 9);
     assert!(all.iter().all(|m| m.full_time));
 }
 
@@ -183,38 +183,79 @@ fn a_season_ends_with_promotion_and_relegation() {
     assert_eq!(l.season(), 2);
     let top = l.final_table(1, 1);
     let below = l.final_table(1, 2);
-    assert_eq!((top.len(), below.len()), (20, 6));
-    for c in &top[17..] {
-        let club = l.get_club(c.clone()).unwrap();
+    assert_eq!((top.len(), below.len()), (14, 12));
+    // Each club played the other thirteen home and away.
+    assert!(top.iter().all(|r| r.played == 26));
+    // The smaller division keeps playing: two legs, then a third begins.
+    assert!(below.iter().all(|r| r.played == 26));
+    for r in &top[11..] {
+        assert_eq!(r.moved, -1);
+        let club = l.get_club(r.club_id.clone()).unwrap();
         assert_eq!(club.division, 2, "relegated");
         assert!(club.treasury.0 <= 900_000, "a relegated club burns a tenth");
     }
-    assert!(l.get_club(top[0].clone()).unwrap().treasury.0 > 950_000);
-    for c in &below[..3] {
-        assert_eq!(l.get_club(c.clone()).unwrap().division, 1, "promoted");
+    assert!(top[..11].iter().all(|r| r.moved == 0));
+    assert!(l.get_club(top[0].club_id.clone()).unwrap().treasury.0 > 950_000);
+    for r in &below[..3] {
+        assert_eq!(r.moved, 1);
+        assert_eq!(
+            l.get_club(r.club_id.clone()).unwrap().division,
+            1,
+            "promoted"
+        );
     }
-    assert_eq!(l.get_club(top[0].clone()).unwrap().division, 1);
-    assert_eq!(l.division_table(1).len(), 20);
-    assert_eq!(l.division_table(2).len(), 6);
+    assert!(below[3..].iter().all(|r| r.moved == 0));
+    assert_eq!(l.get_club(top[0].club_id.clone()).unwrap().division, 1);
+    assert_eq!(l.division_table(1).len(), 14);
+    assert_eq!(l.division_table(2).len(), 12);
+    // The champions of the season, one per division, are kept.
+    let champs = l.champions(None, None);
+    assert_eq!(champs.len(), 2);
+    assert_eq!((champs[0].season, champs[0].division), (1, 1));
+    assert_eq!(champs[0].club_id, top[0].club_id);
+    assert_eq!(champs[0].points, top[0].points);
+    assert_eq!(
+        (champs[1].division, &champs[1].club_id),
+        (2, &below[0].club_id)
+    );
     // A new season starts on zero.
     assert!(l.table().iter().all(|c| c.points == 0 && c.played == 0));
     assert_eq!(l.schedule().season_day, 1);
+    assert_eq!(l.schedule().season_days, 26);
 }
 
 #[test]
-fn a_twenty_club_division_meets_everyone_once_a_season() {
-    let mut l = league_with(20, 0);
+fn a_fourteen_club_division_meets_everyone_home_and_away() {
+    let l = league_with(14, 0);
     let mut met = std::collections::BTreeSet::new();
+    let mut home = std::collections::BTreeMap::new();
     for d in 1..=SEASON_DAYS {
-        for (h, a) in l.fixtures_of(d) {
-            assert!(
-                met.insert(if h < a { (h, a) } else { (a, h) }),
-                "a pair met twice"
-            );
+        let f = l.fixtures_of(d);
+        assert_eq!(f.len(), 7, "everyone plays every match day");
+        for (h, a) in f {
+            *home.entry(h.clone()).or_insert(0) += 1;
+            assert!(met.insert((h, a)), "the same home match twice");
         }
     }
-    assert_eq!(met.len(), 190);
-    let _ = &mut l;
+    // 14 x 13 ordered pairs: each club hosts each other club once.
+    assert_eq!(met.len(), 182);
+    assert!(home.values().all(|n| *n == 13));
+}
+
+#[test]
+fn season_fixtures_swap_home_and_away_in_the_second_leg() {
+    for n in [2usize, 6, 13, 14] {
+        let rounds = (n + n % 2 - 1) as u32;
+        for r in 0..rounds {
+            let first = season_fixtures(n, r);
+            let second = season_fixtures(n, r + rounds);
+            assert_eq!(first.len(), second.len());
+            for ((h, a), (h2, a2)) in first.iter().zip(&second) {
+                assert_eq!((h, a), (a2, h2));
+            }
+        }
+    }
+    assert!(season_fixtures(1, 0).is_empty());
 }
 
 #[test]

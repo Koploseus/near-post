@@ -164,6 +164,33 @@ export interface Schedule {
   divisions: number;
 }
 
+/** A club's line in a division's final table (league `final_table`). */
+export interface FinalRow {
+  club_id: string;
+  name: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goals_for: number;
+  goals_against: number;
+  points: number;
+  /** 1 promoted, -1 relegated, 0 stayed. */
+  moved: number;
+}
+
+/** A division's winner in a past season (league `champions`). */
+export interface Champion {
+  season: number;
+  division: number;
+  club_id: string;
+  name: string;
+  points: number;
+  won: number;
+  drawn: number;
+  lost: number;
+}
+
 export interface Career {
   trained_by: string;
   past_clubs: string[];

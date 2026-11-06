@@ -36,7 +36,7 @@ pub use wardrobe::Look;
 
 pub use live::{Event, EventKind, FORMATIONS, Formation, Role, Strategy};
 use play::{ByteStream, ELEVEN, FORMATION, derive_seed, training_gain};
-pub use play::{GoalKind, Position, Skill, Skills, fixtures};
+pub use play::{GoalKind, Position, Skill, Skills, fixtures, season_fixtures};
 
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::json_types::{U64, U128};
@@ -50,11 +50,12 @@ use near_sdk::{
 pub const ONE_G: u128 = 1_000_000;
 /// The fixture list is bounded so a match day always fits in one transaction.
 /// Clubs in a division, and how many go up and down each season.
-pub const DIVISION_SIZE: usize = 20;
+pub const DIVISION_SIZE: usize = 14;
 pub const MOVERS: usize = 3;
-/// Match days in a season: a full round of a 20-club division.
-pub const SEASON_DAYS: u32 = 19;
-/// Clubs in the whole league (ten divisions).
+/// Match days in a season: a 14-club division plays home and away against
+/// every other club (two legs of 13 rounds).
+pub const SEASON_DAYS: u32 = 26;
+/// Clubs in the whole league (about fourteen divisions).
 pub const MAX_CLUBS: u32 = 200;
 /// Match sheets are kept this many match days, then deleted to free their
 /// storage (two days of match days every 30 minutes).
@@ -520,6 +521,38 @@ pub struct MatchResult {
     pub division: u8,
 }
 
+/// A club's line in a division's final table, kept forever.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FinalRow {
+    pub club_id: AccountId,
+    /// The club's name when the season ended.
+    pub name: String,
+    pub played: u32,
+    pub won: u32,
+    pub drawn: u32,
+    pub lost: u32,
+    pub goals_for: u32,
+    pub goals_against: u32,
+    pub points: u32,
+    /// 1 promoted, -1 relegated, 0 stayed.
+    pub moved: i8,
+}
+
+/// The club that won a division in a past season.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Champion {
+    pub season: u32,
+    pub division: u8,
+    pub club_id: AccountId,
+    pub name: String,
+    pub points: u32,
+    pub won: u32,
+    pub drawn: u32,
+    pub lost: u32,
+}
+
 /// How a club's stand ended on a match day.
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq)]
@@ -589,7 +622,7 @@ pub struct League {
     /// (match day, division index) -> its results.
     day_results: LookupMap<(u32, u8), Vec<MatchResult>>,
     /// (season, division) -> final standings, champion first.
-    final_tables: LookupMap<(u32, u8), Vec<AccountId>>,
+    final_tables: LookupMap<(u32, u8), Vec<FinalRow>>,
     formations: LookupMap<AccountId, Formation>,
     /// (club, match day) -> the slots people took, by slot.
     slots: LookupMap<(AccountId, u32), Vec<Option<String>>>,
@@ -1532,12 +1565,42 @@ impl League {
         clubs
     }
 
-    /// How a division finished a past season, champion first.
-    pub fn final_table(&self, season: u32, division: u8) -> Vec<AccountId> {
+    /// How a division finished a past season, champion first, with who went
+    /// up and who went down.
+    pub fn final_table(&self, season: u32, division: u8) -> Vec<FinalRow> {
         self.final_tables
             .get(&(season, division))
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Champions of past seasons, the latest first: every division's winner,
+    /// season by season, from `before` (exclusive, default the current
+    /// season) back, at most `limit` seasons (default 10, at most 50).
+    pub fn champions(&self, before: Option<u32>, limit: Option<u32>) -> Vec<Champion> {
+        let last = before.unwrap_or(self.season).min(self.season);
+        let limit = limit.unwrap_or(10).min(50);
+        let mut out = Vec::new();
+        for season in (last.saturating_sub(limit).max(1)..last).rev() {
+            for division in 1..=u8::MAX {
+                let Some(t) = self.final_tables.get(&(season, division)) else {
+                    break;
+                };
+                if let Some(w) = t.first() {
+                    out.push(Champion {
+                        season,
+                        division,
+                        club_id: w.club_id.clone(),
+                        name: w.name.clone(),
+                        points: w.points,
+                        won: w.won,
+                        drawn: w.drawn,
+                        lost: w.lost,
+                    });
+                }
+            }
+        }
+        out
     }
 
     /// How many welcome bonuses an account has received, or None before its signup grant.
@@ -2270,17 +2333,41 @@ impl League {
     fn end_season(&mut self) {
         let n = self.divisions.len();
         let mut burned: u128 = 0;
-        let mut tables: Vec<Vec<AccountId>> = (0..n)
+        let mut rows: Vec<Vec<FinalRow>> = (0..n)
             .map(|d| {
                 self.division_table(d as u8 + 1)
                     .into_iter()
-                    .map(|c| c.manager)
+                    .map(|c| FinalRow {
+                        club_id: c.manager,
+                        name: c.name,
+                        played: c.played,
+                        won: c.won,
+                        drawn: c.drawn,
+                        lost: c.lost,
+                        goals_for: c.goals_for,
+                        goals_against: c.goals_against,
+                        points: c.points,
+                        moved: 0,
+                    })
                     .collect()
             })
             .collect();
-        for (d, t) in tables.iter().enumerate() {
-            self.final_tables
-                .insert((self.season, d as u8 + 1), t.clone());
+        let mut tables: Vec<Vec<AccountId>> = rows
+            .iter()
+            .map(|t| t.iter().map(|r| r.club_id.clone()).collect())
+            .collect();
+        for d in 0..n.saturating_sub(1) as usize {
+            let k = MOVERS.min(tables[d].len() / 2).min(tables[d + 1].len() / 2);
+            let len = rows[d].len();
+            for r in &mut rows[d][len - k..] {
+                r.moved = -1;
+            }
+            for r in &mut rows[d + 1][..k] {
+                r.moved = 1;
+            }
+        }
+        for (d, t) in rows.into_iter().enumerate() {
+            self.final_tables.insert((self.season, d as u8 + 1), t);
         }
         for d in 0..n.saturating_sub(1) as usize {
             let k = MOVERS.min(tables[d].len() / 2).min(tables[d + 1].len() / 2);
@@ -2345,7 +2432,7 @@ impl League {
 
     fn division_fixtures(&self, div: u8, match_day: u32) -> Vec<(AccountId, AccountId)> {
         let ids = self.divisions.get(div as u32).cloned().unwrap_or_default();
-        fixtures(ids.len(), (match_day.max(1) - 1) % SEASON_DAYS)
+        season_fixtures(ids.len(), (match_day.max(1) - 1) % SEASON_DAYS)
             .into_iter()
             .map(|(h, a)| (ids[h].clone(), ids[a].clone()))
             .collect()

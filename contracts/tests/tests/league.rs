@@ -381,7 +381,7 @@ async fn a_match_day_end_to_end() -> Result<()> {
 async fn two_divisions_play_one_call_per_division_and_half() -> Result<()> {
     let game = deploy().await?;
     let mut managers = Vec::new();
-    for i in 0..32 {
+    for i in 0..28 {
         let m = game.account().await?;
         game.call(&m, "create_club", json!({ "name": format!("Club {i}") }))
             .await?
@@ -427,8 +427,8 @@ async fn two_divisions_play_one_call_per_division_and_half() -> Result<()> {
         }
         managers.push(m);
     }
-    // A full week: two divisions (20 and 12 clubs), one call per division
-    // and half; the last day also elects 32 captains.
+    // A full week: two full divisions (14 clubs each), one call per division
+    // and half; the last day also elects 28 captains.
     let mut worst = 0;
     for day in 1..=7 {
         let calls = game.play_full_day(&managers[0]).await?;
@@ -437,7 +437,7 @@ async fn two_divisions_play_one_call_per_division_and_half() -> Result<()> {
             .iter()
             .map(|c| league_gas(c, game.league.id()))
             .collect();
-        println!("32 clubs in 2 divisions, match day {day}: {gas:?} Tgas per call");
+        println!("28 clubs in 2 divisions, match day {day}: {gas:?} Tgas per call");
         for c in calls {
             c.into_result()?;
         }
@@ -453,7 +453,7 @@ async fn two_divisions_play_one_call_per_division_and_half() -> Result<()> {
         .await?;
     assert_eq!(captain["votes"], 1);
     let table = game.view("table", json!({})).await?;
-    assert_eq!(table.as_array().unwrap().len(), 32);
+    assert_eq!(table.as_array().unwrap().len(), 28);
     let total: String = game.players.view("nft_total_supply").await?.json()?;
     assert_eq!(total, "360");
     Ok(())
