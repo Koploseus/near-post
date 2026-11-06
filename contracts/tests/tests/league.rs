@@ -455,7 +455,7 @@ async fn two_divisions_play_one_call_per_division_and_half() -> Result<()> {
     let table = game.view("table", json!({})).await?;
     assert_eq!(table.as_array().unwrap().len(), 28);
     let total: String = game.players.view("nft_total_supply").await?.json()?;
-    assert_eq!(total, "360");
+    assert_eq!(total, "315"); // 28 elevens and 7 persons
     Ok(())
 }
 

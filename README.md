@@ -126,7 +126,8 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
   (`final_table`), and `champions` lists the winners season by season; the
   Club → Seasons page shows the season's progress, the last champions, the
   roll of honour and each club's history. `play_match_day` plays one
-  division per call, so the gas of a call never grows with the league.
+  division per call, so the gas of a call never grows with the league (86
+  Tgas at most for a 14-club division in the sandbox).
 - **A wardrobe of NFT items.** Haircuts, boots and headbands are NEP-245
   items in four rarities. A pack of three costs 500k G, burned
   (`ft_transfer_call` with `{"pack":{}}`; common 70%, rare 22%, epic 7%,
