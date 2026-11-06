@@ -616,3 +616,4 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
   .honours button { flex-direction: column; gap: 4px; }
   .final-table .table th:nth-child(4), .final-table .table td:nth-child(4), .final-table .table th:nth-child(5), .final-table .table td:nth-child(5), .final-table .table th:nth-child(6), .final-table .table td:nth-child(6) { display: none; }
 }
+.champions-banner.mini .link { color: var(--ink); font-weight: 800; text-decoration: underline; }
