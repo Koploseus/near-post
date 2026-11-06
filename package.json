@@ -12,6 +12,7 @@
     "build": "pnpm -r build",
     "dev:relay": "pnpm --filter @near-post/relay dev",
     "dev:web": "pnpm --filter @near-post/web dev",
-    "sim": "pnpm --filter @near-post/sim sim"
+    "sim": "pnpm --filter @near-post/sim sim",
+    "verify": "node scripts/verify.mjs"
   }
 }

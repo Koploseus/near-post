@@ -13,6 +13,13 @@ a half.
 
 ---
 
+## 0. Check the money, from a terminal (1 min)
+
+| Do | See | Proof |
+| --- | --- | --- |
+| `node scripts/verify.mjs` (Node only, no install, no key) | A table of the last 10 match days (fans in the stands, G minted by presence, onboarding, G burned), then `✓ N checks passed, 0 failed`. | It recomputes every stand, full-house mint, burn and goal mint from `results`, `stand_result` and `ledger` on `league-v7`, and checks each contract runs `contracts/res/*.wasm`. A goal behind an empty stand mints nothing. |
+| **Stands → Goalars**, "No fans, no money" | The same days as a chart: the stand line goes up, the yellow bars (G minted) appear; it goes down, only red (burned). | Read by your browser from the league contract. |
+
 ## 1. Watch, without signing in (2 min)
 
 | Do | See | Proof |

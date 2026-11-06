@@ -571,3 +571,21 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 .try-banner .cta { flex: none; }
 .try-banner .cta { display: inline-flex; align-items: center; justify-content: center; }
 @media (max-width: 600px) { .pen3d-hint { font-size: 12px; padding: 4px 10px; } .pen3d-loading { aspect-ratio: 5 / 4; } }
+
+/* G page: match by match (stand fill line, minted up, burned down) */
+.breath-chart { margin: 8px 0 4px; }
+.breath-chart svg { width: 100%; height: auto; display: block; }
+.breath-chart .axis { stroke: var(--ink); stroke-width: 1.5; }
+.breath-chart .minted { fill: var(--yellow); }
+.breath-chart .onboarding { fill: var(--blue, #2F5DA8); opacity: .45; }
+.breath-chart .burned { fill: var(--red); }
+.breath-chart .fill-line { fill: none; stroke: var(--blue, #2F5DA8); stroke-width: 2.5; stroke-linejoin: round; }
+.breath-chart .fill-dot { fill: var(--paper, #F3EAD7); stroke: var(--blue, #2F5DA8); stroke-width: 2; }
+.breath-chart .tick { font: 11px Archivo, sans-serif; fill: var(--ink); text-anchor: middle; opacity: .75; }
+.breath-chart .tick.left { text-anchor: start; }
+.breath-chart .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; margin-top: 6px; }
+.breath-chart .sw { display: inline-block; width: 12px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.breath-chart .sw.minted { background: var(--yellow); }
+.breath-chart .sw.onboarding { background: var(--blue, #2F5DA8); opacity: .45; }
+.breath-chart .sw.burned { background: var(--red); }
+.breath-chart .sw.fill { background: none; border-top: 3px solid var(--blue, #2F5DA8); height: 0; border-radius: 0; }
