@@ -43,7 +43,10 @@ G is minted only for people who show up:
 
 So the supply follows the crowds. On testnet, match days whose stands were
 half full or more minted about **+7M G net**; days with empty stands burned
-about **650k G** (figures from the script below, they change every day).
+about **650k G** (figures from the script below, they change every day). Most
+fans there are still our demo crowd of 26 accounts, which comes one match day
+in three (see [Deploy on Fly.io](#deploy-on-flyio)); real fans move the same
+numbers through the same contract calls.
 
 **Check it yourself.** One command, Node only, read-only:
 
