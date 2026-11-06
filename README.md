@@ -20,7 +20,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 >
 > **Status, 6 November 2026.** Five contracts compile reproducibly, are
 > unit-tested and sandbox-tested (148 Rust tests, 115 TypeScript tests), and
-> run on **testnet** (v7, below). The relay signs players in by email, pays
+> run on **testnet** (v8, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
@@ -332,18 +332,18 @@ view, the last 600, with the match day, the reason and the club).
 
 Do this - see that: sign in, follow a club, buy its season ticket (Stands →
 Season tickets); fill the stand with other fans; after the match day the
-ticket shows its share, and `tickets_of` on `tickets-v7.near-post.testnet`
+ticket shows its share, and `tickets_of` on `tickets-v8.near-post.testnet`
 shows the same balance.
 
-## Live on testnet (v7)
+## Live on testnet (v8)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v7.near-post.testnet`](https://testnet.nearblocks.io/address/league-v7.near-post.testnet) |
-| Goalars | [`goalars-v7.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v7.near-post.testnet) |
-| Players | [`players-v7.near-post.testnet`](https://testnet.nearblocks.io/address/players-v7.near-post.testnet) |
-| Items | [`items-v7.near-post.testnet`](https://testnet.nearblocks.io/address/items-v7.near-post.testnet) |
-| Season tickets | [`tickets-v7.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v7.near-post.testnet) |
+| League | [`league-v8.near-post.testnet`](https://testnet.nearblocks.io/address/league-v8.near-post.testnet) |
+| Goalars | [`goalars-v8.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v8.near-post.testnet) |
+| Players | [`players-v8.near-post.testnet`](https://testnet.nearblocks.io/address/players-v8.near-post.testnet) |
+| Items | [`items-v8.near-post.testnet`](https://testnet.nearblocks.io/address/items-v8.near-post.testnet) |
+| Season tickets | [`tickets-v8.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v8.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -354,14 +354,15 @@ days) ends in 13 hours; a real league would play one match day a day. The
 league has 24 fictional clubs in two divisions, 8 of them in 4 derbies, a
 demo crowd and the AI agents above.
 
-v1 to v4 (1 and 2 November) stay on `*-v1` to `*-v4.near-post.testnet`;
-they are no longer used.
+v1 to v7 (1 to 6 November) stay on `*-v1` to `*-v7.near-post.testnet`;
+they are no longer used. v8 (6 November) is a fresh league for seasons of
+26 match days and divisions of 14.
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v7.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v7.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v8.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v8.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -375,7 +376,7 @@ pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
-The web app reads the v7 contracts on testnet. Email sign-in goes through the
+The web app reads the v8 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
