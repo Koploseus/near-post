@@ -60,6 +60,24 @@ pub fn fixtures(n: usize, round: u32) -> Vec<(usize, usize)> {
     out
 }
 
+/// Match day `day` (0-based) of a season played home and away: the first
+/// leg is the round robin of `fixtures`, the second the same rounds with home
+/// and away swapped. A division smaller than full keeps alternating legs
+/// until the season ends, so it never sits idle.
+pub fn season_fixtures(n: usize, day: u32) -> Vec<(usize, usize)> {
+    let rounds = (n + n % 2).saturating_sub(1) as u32;
+    if rounds == 0 {
+        return Vec::new();
+    }
+    let (leg, round) = (day / rounds, day % rounds);
+    let f = fixtures(n, round);
+    if leg % 2 == 1 {
+        f.into_iter().map(|(h, a)| (a, h)).collect()
+    } else {
+        f
+    }
+}
+
 /// A seed from the block's random seed and a few numbers (match day, index...).
 pub fn derive_seed(block_seed: [u8; 32], parts: &[u64]) -> [u8; 32] {
     let mut input = Vec::with_capacity(32 + 8 * parts.len());

@@ -5,7 +5,7 @@ import { serverNow } from "../lib/time.js";
 import { clock, liveDay, scoreOf, visible } from "../lib/live.js";
 import { league } from "../lib/near.js";
 import { ROLE_NAME } from "../lib/pitch.js";
-import type { Club, Lineup, MatchResult, Stand } from "../lib/types.js";
+import type { Champion, Club, Lineup, MatchResult, Stand } from "../lib/types.js";
 import { agentFeed, useAgents } from "../lib/agents.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 
@@ -87,6 +87,8 @@ export function Dashboard() {
   const at = Math.max(0, mine.findIndex((x) => x.manager === clubId));
   const from = Math.max(0, Math.min(at - 2, mine.length - 5));
   const around = mine.slice(from, from + 5);
+  const season = schedule?.season ?? 1;
+  const { data: champs } = useData(() => (season > 1 ? league<Champion[]>("champions", { before: null, limit: 1 }) : Promise.resolve([])), [season]);
 
   const nextCard = (
     <a className={`next-card${session ? "" : " landing"}`} href={next.href}>
@@ -190,7 +192,9 @@ export function Dashboard() {
         )}
         {around.length > 0 && (
           <section className="paper panel">
-            <span className="k">DIVISION {division}</span>
+            <span className="k">
+              DIVISION {division} · SEASON {season} · DAY {schedule?.season_day ?? 1}/{schedule?.season_days ?? 26}
+            </span>
             <ol className="mini-table ranked">
               {around.map((x, i) => (
                 <li key={x.manager} className={x.manager === clubId ? "mine" : ""}>
@@ -204,6 +208,17 @@ export function Dashboard() {
               Full table and results →
             </a>
           </section>
+        )}
+        {champs && champs.length > 0 && (
+          <a className="panel champions-banner mini" href="#/seasons">
+            <span className="k">SEASON {champs[0]!.season} CHAMPIONS</span>
+            {champs.map((c) => (
+              <span key={c.division} className={c.club_id === clubId ? "mine" : ""}>
+                🏆 <b>{c.name}</b> · Division {c.division} · {c.points} pts
+              </span>
+            ))}
+            <span className="link">All seasons →</span>
+          </a>
         )}
         <AiDesk day={day} />
       </aside>
