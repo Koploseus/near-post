@@ -680,9 +680,12 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 .here .face-head { border-radius: 50%; background: #e2d6ba; border: 2px solid #3ad16a; }
 .wall-form { display: grid; gap: 8px; }
 .wall-form textarea { width: 100%; resize: vertical; min-height: 54px; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 6px; background: #fffaf0; color: var(--ink); font: inherit; font-size: 15px; }
-.wall-actions { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.wall-actions .cta { flex: none; min-height: 40px; padding: 0 18px; font-size: 14px; }
-.shouts { display: flex; flex-wrap: wrap; gap: 6px; }
+.wall-compose { display: flex; gap: 8px; align-items: stretch; }
+.wall-compose textarea { flex: 1; min-width: 0; }
+.wall-compose .cta { flex: none; min-height: 0; padding: 0 16px; font-size: 14px; }
+/* Quick shouts: one row that scrolls sideways, never a column of pills. */
+.shouts { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.shouts .chip { flex: none; }
 .shouts .chip { font-size: 12px; min-height: 30px; padding: 4px 10px; border-width: 2px; white-space: nowrap; }
 .wall .err { margin: 0; color: var(--red); font-weight: 700; font-size: 14px; }
 .posts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -701,17 +704,30 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
   .today.signed .today-side { grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 }
 @media (max-width: 900px) {
-  .today.signed { grid-template-columns: 1fr; }
-  .today-player { position: static; grid-template-columns: 120px minmax(0, 1fr); justify-items: start; text-align: left; align-items: center; column-gap: 14px; }
-  .today-player > .k:first-child { grid-column: 1 / -1; }
-  .today-player .avatar-stage { grid-row: span 4; }
-  .today-player .avatar-stage svg { width: auto; height: 118px; }
-  .today-player .player-facts, .today-player .cabinet, .today-player .skill-bars, .today-player > .k:not(:first-child), .today-player .link { grid-column: 1 / -1; }
-  .today-player .cabinet { justify-content: flex-start; }
-  .today-player .skill-bars { display: none; }
-  .today.signed .today-player { order: 0; }
-  .today.signed .today-main { order: 1; }
-  .today.signed .today-side { order: 2; }
+  /* One column, cards in the order that matters on a phone: the match, what to do, you, the squad, the rest. */
+  .today.signed { grid-template-columns: 1fr; gap: 14px; }
+  .today.signed .today-main, .today.signed .today-side { display: contents; }
+  .today.signed > * > *, .today.signed > .today-player { order: 10; margin: 0; }
+  .today.signed .hero { order: 1; }
+  .today.signed .next-card { order: 2; }
+  .today.signed .today-player { order: 3; }
+  .today.signed .today-list { order: 4; }
+  .today.signed .wall { order: 5; }
+  .today.signed .last-match { order: 6; }
+  /* You: a compact strip, not a poster. */
+  .today-player { position: static; grid-template-columns: 84px minmax(0, 1fr); justify-items: start; text-align: left; align-items: center; gap: 4px 12px; padding: 14px 16px; }
+  .today-player > .k:first-child, .today-player .skill-bars, .today-player > .k:not(:first-child) { display: none; }
+  .today-player .avatar-stage { grid-row: 1 / span 5; align-self: start; width: 84px; padding-top: 4px; }
+  .today-player .avatar-stage svg { width: auto; height: 96px; }
+  .avatar-rating { font-size: 15px; top: 4px; right: 4px; padding: 1px 5px; }
+  .today-player h3 { font-size: 17px; margin: 0; }
+  .today-player .player-facts { grid-column: 2; margin: 2px 0 0; padding: 4px 0; border-bottom: 0; font-size: 14px; }
+  .today-player .cabinet { grid-column: 2; justify-content: flex-start; gap: 10px; }
+  .today-player .cabinet li { font-size: 18px; grid-auto-flow: column; align-items: center; gap: 3px; }
+  .today-player > .note { grid-column: 2; }
+  .today-player .link { grid-column: 2; justify-self: start; font-size: 14px; }
+  .today-player h3, .today-player > p.note { grid-column: 2; }
+}
 }
 @media (max-width: 720px) {
   .top-band { margin-bottom: 14px; }
@@ -728,5 +744,15 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 }
 @media (max-width: 440px) {
   .online-pill .lbl { display: none; }
+  .brand img { width: 40px; height: auto; }
+  .brand { font-size: 15px; letter-spacing: .5px; gap: 6px; }
+  .me-chip { gap: 6px; padding: 3px 10px 3px 3px; }
+  .me-text b { display: none; }
   .me-text em { font-size: 12px; }
+  a.me-chip.cta { padding: 8px 12px; font-size: 13px; min-height: 0; }
+  .top-right { gap: 6px; }
+}
+@media (max-width: 720px) {
+  .brand-text em { display: none; }
+  .brand-text { white-space: nowrap; }
 }

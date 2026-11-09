@@ -79,25 +79,25 @@ export function Wall({ clubId, compact = false }: { clubId: string; compact?: bo
             void send(text);
           }}
         >
-          <textarea
-            value={text}
-            maxLength={WALL_MAX}
-            rows={2}
-            placeholder="Say something to the squad…"
-            onChange={(e) => setText(e.target.value)}
-            aria-label="Post on the team wall"
-          />
-          <div className="wall-actions">
-            <div className="shouts">
-              {SHOUTS.slice(0, compact ? 3 : SHOUTS.length).map((s) => (
-                <button key={s} type="button" className="chip" disabled={busy} onClick={() => void send(s)}>
-                  {s}
-                </button>
-              ))}
-            </div>
+          <div className="wall-compose">
+            <textarea
+              value={text}
+              maxLength={WALL_MAX}
+              rows={2}
+              placeholder="Say something to the squad…"
+              onChange={(e) => setText(e.target.value)}
+              aria-label="Post on the team wall"
+            />
             <button className="cta small" type="submit" disabled={busy || !text.trim()}>
               {busy ? "…" : "POST"}
             </button>
+          </div>
+          <div className="shouts" aria-label="Quick shouts">
+            {SHOUTS.map((s) => (
+              <button key={s} type="button" className="chip" disabled={busy} onClick={() => void send(s)}>
+                {s}
+              </button>
+            ))}
           </div>
           {err && <p className="err">{err}</p>}
         </form>
@@ -117,7 +117,6 @@ export function Wall({ clubId, compact = false }: { clubId: string; compact?: bo
                 <div>
                   <span className="post-who">
                     <b>{p.name}</b>
-                    {p.ai && <span className="ai-tag">{p.ai === "coach" ? "AI COACH" : "AI"}</span>}
                     {online.has(p.account) && <span className="online-dot inline" title="Online now" />}
                     <em>{ago(p.at, now)}</em>
                   </span>

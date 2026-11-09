@@ -151,7 +151,7 @@ export function Dashboard() {
         )}
 
         {checklist.length > 0 && (
-          <section className="paper panel">
+          <section className="paper panel today-list">
             <span className="k">TODAY</span>
             <ul className="todo">
               {checklist.map((t) => (
