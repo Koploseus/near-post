@@ -57,6 +57,7 @@ slots are open.
 
 {"error": "..."} with 400 (bad request), 401 (bad or missing token),
 409 (not possible now, e.g. no club yet), 422 (the contract refused, with
-its reason), 429 (slow down).
+its reason), 429 (slow down), 503 "rpc_busy" (the network was busy: the action
+may still have gone through, so read GET /v1/bot/me before trying again).
 `;
 }
