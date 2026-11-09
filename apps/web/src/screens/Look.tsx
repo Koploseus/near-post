@@ -164,6 +164,64 @@ function hairColor(look: Look | undefined, n: number): string {
   }
 }
 
+/**
+ * Ears, brows, eyes, nose and mouth on the head (ellipse at (30, 25), 11 × 13).
+ * Each footballer gets his own set from his number: no two squads look alike.
+ */
+export function Face({ n, skin }: { n: number; skin: string }) {
+  const brow = (n >> 3) % 3; // flat, raised, frowning
+  const mouth = (n >> 5) % 3; // grin, smile, flat
+  const eyes = (n >> 7) % 2; // dots, round
+  const ink = "#1B2340";
+  return (
+    <>
+      <ellipse cx="19.2" cy="26" rx="2" ry="3" fill={skin} stroke="#000" strokeOpacity=".15" strokeWidth=".5" />
+      <ellipse cx="40.8" cy="26" rx="2" ry="3" fill={skin} stroke="#000" strokeOpacity=".15" strokeWidth=".5" />
+      <g stroke={ink} strokeWidth="1.3" strokeLinecap="round" fill="none">
+        {brow === 0 && <path d="M23.5 21.6 h4.5 M32 21.6 h4.5" />}
+        {brow === 1 && <path d="M23.5 22 q2.2 -1.6 4.5 -0.4 M32 21.6 q2.3 -1.2 4.5 0.4" />}
+        {brow === 2 && <path d="M23.5 21 l4.5 1.2 M36.5 21 l-4.5 1.2" />}
+      </g>
+      {eyes === 0 ? (
+        <>
+          <circle cx="26" cy="25.4" r="1.5" fill={ink} />
+          <circle cx="34" cy="25.4" r="1.5" fill={ink} />
+        </>
+      ) : (
+        <>
+          <ellipse cx="26" cy="25.4" rx="2" ry="1.7" fill="#fff" />
+          <ellipse cx="34" cy="25.4" rx="2" ry="1.7" fill="#fff" />
+          <circle cx="26.4" cy="25.6" r="1.1" fill={ink} />
+          <circle cx="34.4" cy="25.6" r="1.1" fill={ink} />
+        </>
+      )}
+      <path d="M30 26.5 l-1.3 3.4 h2" stroke="#000" strokeOpacity=".28" strokeWidth=".9" fill="none" strokeLinecap="round" />
+      {mouth === 0 && <path d="M26 32 q4 3.6 8 0 Z" fill="#7e111b" stroke={ink} strokeWidth=".6" />}
+      {mouth === 1 && <path d="M26.2 32 q3.8 2.6 7.6 0" stroke={ink} strokeWidth="1.2" fill="none" strokeLinecap="round" />}
+      {mouth === 2 && <path d="M27 32.6 h6" stroke={ink} strokeWidth="1.2" strokeLinecap="round" />}
+    </>
+  );
+}
+
+/** A number for a footballer's face, from his token id ("p42" → 42). */
+export const faceNumber = (tokenId: string | null | undefined) => (tokenId ? Number(tokenId.replace(/\D/g, "")) || 0 : 0);
+
+/** Just the head and the collar of his shirt: for the pitch, the squad and the wall. */
+export function Head({ look, n, shirt = "#2F5DA8", size = 36, title }: { look?: Look; n: number; shirt?: string; size?: number; title?: string }) {
+  const skin = SKIN[n % SKIN.length]!;
+  return (
+    <svg viewBox="12 3 36 40" width={size} height={size * (40 / 36)} className="face-head" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
+      <LookDefs />
+      <path d="M13 43 C14 37 21 35 30 35 C39 35 46 37 47 43 Z" fill={shirt} />
+      <path d="M25.5 35 L30 39.5 L34.5 35" fill="none" stroke="#F2B705" strokeWidth="1.6" />
+      <HairBack look={look} n={n} />
+      <ellipse cx="30" cy="25" rx="11" ry="13" fill={skin} />
+      <Face n={n} skin={skin} />
+      <HairFront look={look} n={n} />
+    </svg>
+  );
+}
+
 /** A footballer head to toe, wearing his look: for the wardrobe. */
 export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look; n: number; shirt?: string; size?: number }) {
   const skin = SKIN[n % SKIN.length]!;
@@ -193,9 +251,8 @@ export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look
       {/* Head */}
       <HairBack look={look} n={n} />
       <ellipse cx="30" cy="25" rx="11" ry="13" fill={skin} />
+      <Face n={n} skin={skin} />
       <HairFront look={look} n={n} />
-      <rect x="25" y="25" width="3" height="3" fill="#1B2340" />
-      <rect x="32" y="25" width="3" height="3" fill="#1B2340" />
     </svg>
   );
 }

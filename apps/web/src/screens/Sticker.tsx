@@ -1,7 +1,7 @@
 import { SKILLS, positionLabel, tier } from "../lib/format.js";
 import type { Player } from "../lib/types.js";
 import { useAgents } from "../lib/agents.js";
-import { HairBack, HairFront, LookDefs, SKIN } from "./Look.js";
+import { Face, HairBack, HairFront, LookDefs, SKIN } from "./Look.js";
 
 /**
  * A player card: rating out of 100 and position, a portrait, the name, and
@@ -23,9 +23,8 @@ export function Sticker({ p, onClick, selected, badge }: { p: Player; onClick?: 
           <rect x="26" y="34" width="8" height="10" fill={SKIN[n % SKIN.length]} />
           <HairBack look={p.look} n={n} />
           <ellipse cx="30" cy="25" rx="11" ry="13" fill={SKIN[n % SKIN.length]} />
+          <Face n={n} skin={SKIN[n % SKIN.length]!} />
           <HairFront look={p.look} n={n} />
-          <rect x="25" y="25" width="3" height="3" fill="#1B2340" />
-          <rect x="32" y="25" width="3" height="3" fill="#1B2340" />
         </svg>
         <span className="rating">{p.overall}</span>
         <span className="pos">{positionLabel[p.position]}</span>

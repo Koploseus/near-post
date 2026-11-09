@@ -8,6 +8,11 @@ import { BOT, type Club, type MatchEvent, type MatchResult, type Player } from "
 import { clubName } from "../lib/format.js";
 import { type AgentEntry, agentFeed, useAgents } from "../lib/agents.js";
 import { Highlight, type HighlightKind, type HighlightMoment } from "./Highlight.js";
+import { faceNumber, Head } from "./Look.js";
+
+/** Shirt colours on the pitch: the home side in club blue, the away side in red. */
+const HOME_SHIRT = "#2F5DA8";
+const AWAY_SHIRT = "#C8202F";
 
 const REDUCED = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -141,6 +146,7 @@ export function MatchView({
     [m.home, m.away],
   );
   const who = useMemo(() => new Map((squads ?? []).flat().map((p) => [p.token_id, p.name])), [squads]);
+  const players = useMemo(() => new Map((squads ?? []).flat().map((p) => [p.token_id, p])), [squads]);
   const c = final || !schedule ? FINAL : clock(m, kickoff, schedule, now, kickoffs[day]);
   // Until the real kick-off times are in (a few seconds), nothing replays.
   const syncing = !final && kickoffs[day] === undefined;
@@ -251,7 +257,7 @@ export function MatchView({
         <div className="match-bar" aria-hidden="true">
           <span style={{ width: `${c.progress * 100}%` }} />
         </div>
-        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} />)}
+        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} players={players} />)}
         {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
@@ -346,7 +352,7 @@ export function MatchView({
 }
 
 /** A small pitch: 22 players in their formations, and the ball going where the play is. */
-function Pitch({ m, shown, c }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock }) {
+function Pitch({ m, shown, c, players }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player> }) {
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
   const f = [m.formations[second ? 2 : 0] ?? m.formations[0]!, m.formations[second ? 3 : 1] ?? m.formations[1]!];
@@ -373,9 +379,17 @@ function Pitch({ m, shown, c }: { m: MatchResult; shown: (MatchEvent & { half: 0
       <span className="mp-goal mp-left" />
       <span className="mp-goal mp-right" />
       {teams.map((team, side) =>
-        team.map(([x, y], k) =>
-          gone(side, k) ? null : <span key={`${side}-${k}`} className={`mp-dot ${side ? "away" : "home"}`} style={{ left: `${x}%`, top: `${y}%` }} />,
-        ),
+        team.map(([x, y], k) => {
+          if (gone(side, k)) return null;
+          // Who plays this slot this half: his face, in his side's shirt.
+          const id = (second ? m.elevens[2 + side] : undefined)?.[k] || m.elevens[side]?.[k];
+          const p = id ? players.get(id) : undefined;
+          return (
+            <span key={`${side}-${k}`} className={`mp-dot mp-face ${side ? "away" : "home"}`} style={{ left: `${x}%`, top: `${y}%` }}>
+              {p && <Head look={p.look} n={faceNumber(p.token_id)} shirt={side ? AWAY_SHIRT : HOME_SHIRT} size={22} />}
+            </span>
+          );
+        }),
       )}
       <span className="mp-ball" style={{ left: `${Math.min(99.5, Math.max(0.5, at.ball[0]))}%`, top: `${at.ball[1]}%` }} />
     </div>

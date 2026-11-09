@@ -7,7 +7,9 @@ import { league } from "../lib/near.js";
 import { ROLE_NAME } from "../lib/pitch.js";
 import type { Champion, Club, Lineup, MatchResult, Stand } from "../lib/types.js";
 import { agentFeed, useAgents } from "../lib/agents.js";
-import { SkillBars, Sticker } from "./Sticker.js";
+import { SkillBars } from "./Sticker.js";
+import { Avatar, faceNumber } from "./Look.js";
+import { Wall } from "./Wall.js";
 
 function useNow(ms = 1000) {
   const [now, setNow] = useState(serverNow());
@@ -100,7 +102,8 @@ export function Dashboard() {
   );
 
   return (
-    <div className="today">
+    <div className={`today${session ? " signed" : ""}`}>
+      {session && <PlayerColumn />}
       <section className="today-main">
         {/* Logged out, what the game is comes first; logged in, the match does. */}
         {!session && nextCard}
@@ -182,14 +185,7 @@ export function Dashboard() {
       </section>
 
       <aside className="today-side">
-        {me && (
-          <div className="paper panel profile">
-            <Sticker p={me} />
-            <h3>{me.name}</h3>
-            <p className="note">{club ? club.name : "Free agent"}</p>
-            <SkillBars p={me} />
-          </div>
-        )}
+        {clubId && <Wall clubId={clubId} compact />}
         {around.length > 0 && (
           <section className="paper panel">
             <span className="k">
@@ -223,6 +219,61 @@ export function Dashboard() {
         <AiDesk day={day} />
       </aside>
     </div>
+  );
+}
+
+/**
+ * Your player, down the left: him head to toe in his look, his club, his
+ * rating, his money and what he won. The first thing you see of yourself.
+ */
+function PlayerColumn() {
+  const { me, club, clubId, balance } = useGame();
+  const { data: champs } = useData(() => league<Champion[]>("champions", { before: null, limit: 50 }).catch(() => []), [clubId]);
+  if (!me)
+    return (
+      <aside className="today-player paper panel">
+        <span className="k">YOUR PLAYER</span>
+        <div className="avatar-stage empty">
+          <Avatar n={7} size={170} shirt="#cfc6b0" />
+        </div>
+        <a className="cta small" href="#/locker">
+          CREATE HIM
+        </a>
+      </aside>
+    );
+  const won = (champs ?? []).filter((c) => c.club_id === clubId);
+  return (
+    <aside className="today-player paper panel">
+      <span className="k">YOUR PLAYER</span>
+      <div className="avatar-stage">
+        <Avatar look={me.look} n={faceNumber(me.token_id)} size={190} />
+        <span className="avatar-rating">{me.overall}</span>
+      </div>
+      <h3>{me.name}</h3>
+      <p className="note">{club ? club.name : "Free agent"}</p>
+      <dl className="player-facts">
+        <dt>Goals</dt>
+        <dd>{me.goals}</dd>
+        <dt>Wallet</dt>
+        <dd>{g(balance)}</dd>
+      </dl>
+      <span className="k">TROPHY CABINET</span>
+      {won.length ? (
+        <ul className="cabinet">
+          {won.map((c) => (
+            <li key={`${c.season}-${c.division}`} title={`Season ${c.season} champions, division ${c.division}`}>
+              🏆<span>S{c.season} · D{c.division}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="note">Empty, for now. Win the division.</p>
+      )}
+      <SkillBars p={me} />
+      <a className="link" href="#/locker">
+        Locker room and look →
+      </a>
+    </aside>
   );
 }
 

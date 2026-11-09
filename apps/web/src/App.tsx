@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { g } from "./lib/format.js";
 import { GameProvider, useGame } from "./lib/game.js";
+import { useHeartbeat } from "./lib/social.js";
 import { Toasts } from "./lib/toast.js";
 import { Agents } from "./screens/Agents.js";
 import { Album } from "./screens/Album.js";
@@ -11,7 +12,7 @@ import { Game } from "./screens/Game.js";
 import { Lineup } from "./screens/Lineup.js";
 import { Live } from "./screens/Live.js";
 import { LockerRoom } from "./screens/LockerRoom.js";
-import { HairBack, HairFront, LookDefs, SKIN } from "./screens/Look.js";
+import { faceNumber, Head } from "./screens/Look.js";
 import { Market } from "./screens/Market.js";
 import { Match } from "./screens/Match.js";
 import { Seasons } from "./screens/Seasons.js";
@@ -39,12 +40,12 @@ type Route = keyof typeof ROUTES;
 type Tab = (typeof ROUTES)[Route]["tab"];
 
 /** The five sections: today, the live match, the team sheet, the stands, the club. */
-const TABS: { tab: Tab; href: string; label: string; icon: string }[] = [
-  { tab: "home", href: "#/home", label: "Today", icon: "M4 11 12 4l8 7v9h-5v-6H9v6H4z" },
-  { tab: "live", href: "#/live", label: "Live", icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4 3.5 2.5-1.3 4h-4.4l-1.3-4Z" },
-  { tab: "team", href: "#/team", label: "Team", icon: "M3 5h18v14H3zM12 5v14M3 9h3v6H3M21 9h-3v6h3" },
-  { tab: "stands", href: "#/stands", label: "Stands", icon: "M3 20h18M5 16h14M7 12h10M9 8h6" },
-  { tab: "club", href: "#/match", label: "Club", icon: "M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z" },
+const TABS: { tab: Tab; href: string; label: string; icon: string; tone: string }[] = [
+  { tab: "home", href: "#/home", label: "Today", icon: "M4 11 12 4l8 7v9h-5v-6H9v6H4z", tone: "yellow" },
+  { tab: "live", href: "#/live", label: "Live", icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4 3.5 2.5-1.3 4h-4.4l-1.3-4Z", tone: "red" },
+  { tab: "team", href: "#/team", label: "Team", icon: "M3 5h18v14H3zM12 5v14M3 9h3v6H3M21 9h-3v6h3", tone: "green" },
+  { tab: "stands", href: "#/stands", label: "Stands", icon: "M3 20h18M5 16h14M7 12h10M9 8h6", tone: "blue" },
+  { tab: "club", href: "#/match", label: "Club", icon: "M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z", tone: "paper" },
 ];
 
 /** "#/game/3/1" → "game"; the rest of the hash is read by the screen. */
@@ -70,11 +71,13 @@ function TabLinks({ current, className }: { current: Tab; className: string }) {
   return (
     <nav className={className} aria-label="Main">
       {TABS.map((t) => (
-        <a key={t.tab} href={t.href} aria-current={t.tab === current ? "page" : undefined}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d={t.icon} />
-          </svg>
-          <span>{t.label}</span>
+        <a key={t.tab} href={t.href} aria-current={t.tab === current ? "page" : undefined} className={`tone-${t.tone}`}>
+          <span className="tile" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d={t.icon} />
+            </svg>
+          </span>
+          <span className="tab-label">{t.label}</span>
         </a>
       ))}
     </nav>
@@ -90,17 +93,9 @@ function Me({ current }: { current: Tab }) {
         Play now
       </a>
     );
-  const n = me ? Number(me.token_id.replace(/\D/g, "")) || 0 : 0;
   return (
     <a className="me-chip" href="#/locker" aria-current={current === "me" ? "page" : undefined} aria-label={me ? `${me.name}, your footballer` : "Create your footballer"}>
-      <svg viewBox="15 6 30 34" aria-hidden="true">
-        <LookDefs />
-        <HairBack look={me?.look} n={n} />
-        <ellipse cx="30" cy="25" rx="11" ry="13" fill={SKIN[n % SKIN.length]} />
-        <HairFront look={me?.look} n={n} />
-        <rect x="25" y="25" width="3" height="3" fill="#1B2340" />
-        <rect x="32" y="25" width="3" height="3" fill="#1B2340" />
-      </svg>
+      <Head look={me?.look} n={faceNumber(me?.token_id)} size={34} />
       <span className="me-text">
         <b>{me ? me.name.split(" ")[0] : "Your player"}</b>
         <em>{g(balance)}</em>
@@ -109,15 +104,37 @@ function Me({ current }: { current: Tab }) {
   );
 }
 
+/** How many players have the game open right now (and your own heartbeat, when signed in). */
+function Online() {
+  const { session } = useGame();
+  const n = useHeartbeat(session);
+  if (n === null) return null;
+  return (
+    <span className="online-pill" title="Players with the game open right now">
+      <span className="online-dot inline" aria-hidden="true" />
+      <b>{n}</b>
+      <span className="lbl">online</span>
+    </span>
+  );
+}
+
 function Header({ tab }: { tab: Tab }) {
   return (
-    <header className="wrap top">
-      <a className="brand" href="#/home">
-        <img src="/logo.svg" alt="" width="50" height="42" />
-        NEAR POST
-      </a>
-      <TabLinks current={tab} className="nav" />
-      <Me current={tab} />
+    <header className="top-band">
+      <div className="wrap top">
+        <a className="brand" href="#/home">
+          <img src="/logo.svg" alt="" width="58" height="49" />
+          <span className="brand-text">
+            NEAR POST
+            <em>The star is you!</em>
+          </span>
+        </a>
+        <TabLinks current={tab} className="nav" />
+        <div className="top-right">
+          <Online />
+          <Me current={tab} />
+        </div>
+      </div>
     </header>
   );
 }

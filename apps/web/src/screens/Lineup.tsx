@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 import { serverNow } from "../lib/time.js";
 import type { Captain, Lineup as LineupT, Player, Schedule, Strategy, Takers } from "../lib/types.js";
 import { SeasonStats } from "./SeasonStats.js";
+import { faceNumber, Head } from "./Look.js";
+import { Wall } from "./Wall.js";
+import { usePresence } from "../lib/social.js";
 
 const STRATEGIES: [Strategy, string][] = [
   ["defend", "Defend"],
@@ -36,6 +39,7 @@ export function Lineup() {
   // Before kick-off, the sheet shows only the slots people chose; a minute
   // before, the free ones go to the best of the squad for the role.
   const open = !!schedule && slotsOpen(schedule, now);
+  const online = usePresence(lineup?.players.map((p) => p?.controller) ?? []);
   const { data: captain } = useData(
     () => (clubId ? league<Captain | null>("captain", { club_id: clubId }) : Promise.resolve(null)),
     [clubId],
@@ -99,9 +103,14 @@ export function Lineup() {
             const label = `${ROLE_NAME[role]}: ${p ? `${p.name}, rated ${p.overall}` : "empty"}${lineup.chosen[k] ? ", chosen by a player" : ""}`;
             const body = (
               <>
-                <span className="spot-role">{ROLE_LABEL[role]}</span>
-                <span className="spot-rating">{p?.overall ?? "–"}</span>
-                <span className="spot-name">{you ? "YOU" : p ? p.name.split(" ").slice(-1)[0] : "free"}</span>
+                <span className="spot-disc">
+                  {p ? <Head look={p.look} n={faceNumber(p.token_id)} size={46} /> : <span className="spot-free">+</span>}
+                  <span className="spot-rating">{p?.overall ?? ROLE_LABEL[role]}</span>
+                  {p && !!p.controller && online.has(p.controller) && <span className="online-dot" title="Online now" />}
+                </span>
+                <span className="spot-name">
+                  <b>{ROLE_LABEL[role]}</b> {you ? "YOU" : p ? p.name.split(" ").slice(-1)[0] : "free"}
+                </span>
               </>
             );
             const cls = `spot${you ? " you" : ""}${p?.controller ? " person" : ""}${p ? "" : " free"}`;
@@ -142,6 +151,7 @@ export function Lineup() {
           <SetPieces clubId={clubId} leader={isCaptain} />
         </aside>
       </div>
+      <Wall clubId={clubId} />
       <SeasonStats />
     </div>
   );
