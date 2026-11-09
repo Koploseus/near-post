@@ -561,11 +561,6 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
 
 ## Limits
 
-- **G can be farmed in demo mode.** A new account earns 5M G (sign-up grant and
-  welcome bonuses), and demo mode accepts any email address; the bot API caps
-  sign-ups at 2 per IP and 10 a day. The fix is in the contracts: see the v9
-  design note, [`docs/economy/v9.md`](docs/economy/v9.md), with three-year
-  simulations of the G economy.
 - **Your key lives in your browser.** Lose it (cleared storage, new device)
   and the relay cannot add a new one, because it holds no key on your account:
   export your key, or start a new account. This is the price of no custody.
