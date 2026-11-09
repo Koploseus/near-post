@@ -13,7 +13,7 @@ import type { Agent } from "./agents/roster.js";
 import type { Kickoffs } from "./schedule.js";
 import { Stats } from "./stats.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
-import { fanzoneMessage, presenceMessage, wallMessage } from "./vault-message.js";
+import { fanzoneMessage, presenceMessage, wallMessage, wallReadMessage } from "./vault-message.js";
 import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
 
 const AccountId = z
@@ -295,11 +295,23 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       });
   };
 
-  /** A club's wall, newest first: anyone can read it. */
-  app.get("/v1/clubs/:clubId/wall", async (c) => {
-    const id = AccountId.safeParse(c.req.param("clubId"));
-    if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
-    const posts = [...walls.of(id.data), ...(await agentLines(id.data))].sort((a, b) => b.at - a.at).slice(0, 50);
+  /**
+   * A club's wall, newest first: only for that club's footballers. The
+   * request is signed with a key of the account (like a post), so another
+   * club cannot read the dressing room by asking with someone else's name.
+   */
+  const wallReads = new Limiter(30, 60_000, now);
+  app.post("/v1/clubs/:clubId/wall/read", async (c) => {
+    const club = AccountId.safeParse(c.req.param("clubId"));
+    const body = Signed.safeParse(await c.req.json().catch(() => null));
+    if (!club.success || !body.success) return c.json({ error: "invalid_request" }, 400);
+    const { account_id, public_key, ts, signature } = body.data;
+    if (!socialByIp.allow(ip(c)) || !wallReads.allow(account_id)) return c.json({ error: "too_many_requests" }, 429);
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    if (!(await signedBy(account_id, public_key, signature, wallReadMessage(account_id, club.data, ts)))) return c.json({ error: "bad_signature" }, 401);
+    const p = await footballerOf(account_id);
+    if (!p || p.owner !== club.data) return c.json({ error: "not_in_this_club" }, 403);
+    const posts = [...walls.of(club.data), ...(await agentLines(club.data))].sort((a, b) => b.at - a.at).slice(0, 50);
     return c.json({ posts });
   });
 

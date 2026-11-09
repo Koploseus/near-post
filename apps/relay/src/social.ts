@@ -3,7 +3,8 @@
  *
  * Both are off chain and signed: a player signs with a key of his account
  * (checked on chain, then cached), so nobody can be online or post in his
- * name. Posting on a wall also needs the footballer to play for that club.
+ * name. Reading or posting on a wall also needs the footballer to play for
+ * that club: a dressing room is private to its squad.
  * The wall is kept as one JSON file (a Fly volume in production); presence
  * lives in memory only, it is two minutes deep anyway.
  */

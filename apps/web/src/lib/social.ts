@@ -1,6 +1,6 @@
 import { KeyPair } from "near-api-js";
 import { useEffect, useState } from "react";
-import { presenceMessage, wallMessage } from "../../../relay/src/vault-message.js";
+import { presenceMessage, wallMessage, wallReadMessage } from "../../../relay/src/vault-message.js";
 import { RELAY } from "./config.js";
 import type { Session } from "./near.js";
 import { serverNow } from "./time.js";
@@ -49,8 +49,14 @@ export async function presenceOf(accounts: string[]): Promise<{ count: number; o
   return (await r.json()) as { count: number; online: string[] };
 }
 
-export async function wallOf(club: string): Promise<WallPost[]> {
-  const r = await fetch(`${RELAY}/v1/clubs/${club}/wall`);
+/** Your club's wall: signed, the relay only shows a dressing room to its own squad. */
+export async function wallOf(s: Session, club: string): Promise<WallPost[]> {
+  const ts = Math.round(serverNow());
+  const r = await fetch(`${RELAY}/v1/clubs/${club}/wall/read`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ account_id: s.accountId, ts, ...sign(s, wallReadMessage(s.accountId, club, ts)) }),
+  });
   if (!r.ok) return [];
   return ((await r.json()) as { posts: WallPost[] }).posts;
 }

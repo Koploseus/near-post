@@ -13,3 +13,6 @@ export const presenceMessage = (accountId: string, ts: number) => `near-post:pre
 
 /** What a player signs to post on his club's wall. */
 export const wallMessage = (accountId: string, clubId: string, ts: number, text: string) => `near-post:wall:${clubId}:${accountId}:${ts}:${text}`;
+
+/** What a player signs to read his club's wall (nobody else may). */
+export const wallReadMessage = (accountId: string, clubId: string, ts: number) => `near-post:wall-read:${clubId}:${accountId}:${ts}`;

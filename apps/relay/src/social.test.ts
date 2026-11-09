@@ -7,7 +7,7 @@ import type { Agent } from "./agents/roster.js";
 import type { Chain } from "./chain.js";
 import { loadConfig } from "./config.js";
 import { ONLINE_MS, Presence, Walls, WALL_KEEP, cleanPost } from "./social.js";
-import { presenceMessage, wallMessage } from "./vault-message.js";
+import { presenceMessage, wallMessage, wallReadMessage } from "./vault-message.js";
 
 const CLUB = "rive-nord.near-post.testnet";
 const config = loadConfig({ LEAGUE_ID: "league-v3.near-post.testnet" });
@@ -49,7 +49,10 @@ function setup(agents?: { roster: Agent[]; journal: Journal }) {
     send("/v1/presence", { account_id: p.account, public_key: p.public_key, ts: t, signature: p.sign(presenceMessage(p.account, t)) });
   const postOn = (p: ReturnType<typeof player>, club: string, text: string, signed = text) =>
     send(`/v1/clubs/${club}/wall`, { account_id: p.account, public_key: p.public_key, ts: t, text, signature: p.sign(wallMessage(p.account, club, t, signed)) });
-  return { app, chain, player, heartbeat, postOn, later: (ms: number) => (t += ms) };
+  const readWall = async (p: ReturnType<typeof player>, club = CLUB) =>
+    send(`/v1/clubs/${club}/wall/read`, { account_id: p.account, public_key: p.public_key, ts: t, signature: p.sign(wallReadMessage(p.account, club, t)) });
+  const postsOf = async (p: ReturnType<typeof player>, club = CLUB) => ((await (await readWall(p, club)).json()) as { posts: { text: string; ai?: string; name: string; token_id: string; account: string }[] }).posts;
+  return { app, chain, player, heartbeat, postOn, readWall, postsOf, later: (ms: number) => (t += ms) };
 }
 
 describe("who is online", () => {
@@ -97,14 +100,26 @@ describe("who is online", () => {
 
 describe("the team wall", () => {
   it("takes a post from a footballer of the club and shows it newest first", async () => {
-    const { app, player, postOn, later } = setup();
+    const { player, postOn, postsOf, later } = setup();
     const a = player("Ada Striker");
     expect((await postOn(a, CLUB, "Allez les gars !")).status).toBe(200);
     later(1000);
     expect((await postOn(a, CLUB, "  Full   house tonight  ")).status).toBe(200);
-    const { posts } = await (await app.request(`/v1/clubs/${CLUB}/wall`)).json();
+    const posts = await postsOf(a);
     expect(posts.map((p: { text: string }) => p.text)).toEqual(["Full house tonight", "Allez les gars !"]);
     expect(posts[0]).toMatchObject({ account: a.account, name: "Ada Striker", token_id: "p1" });
+  });
+
+  it("keeps the dressing room private: no reading for another club's player, a forged key or anyone without asking", async () => {
+    const { app, player, postOn, readWall } = setup();
+    const a = player("Ada Striker");
+    await postOn(a, CLUB, "Our plan for tonight");
+    const rival = player("Rex Rival", "port-lune.near-post.testnet");
+    expect((await readWall(rival)).status).toBe(403);
+    const other = KeyPair.fromRandom("ed25519");
+    const forged = { ...a, public_key: other.getPublicKey().toString(), sign: (m: string) => Buffer.from(other.sign(new TextEncoder().encode(m)).signature).toString("base64") };
+    expect((await readWall(forged)).status).toBe(401);
+    expect((await app.request(`/v1/clubs/${CLUB}/wall`)).status).toBe(404);
   });
 
   it("refuses a footballer of another club", async () => {
@@ -157,7 +172,7 @@ describe("the AI agents in the dressing room", () => {
   it("puts the club's coach and its AI footballers on the wall, not other clubs' and not half-time lines", async () => {
     const journal = new Journal(null);
     const roster = [{ kind: "coach", account: CLUB, name: "Gaffer Grey", style: "calm", clubName: "Rive Nord" }] as unknown as Agent[];
-    const { app, chain, player, postOn, later } = setup({ roster, journal });
+    const { chain, player, postOn, postsOf, later } = setup({ roster, journal });
     chain.squads.set(CLUB, [{ token_id: "p7", name: "Robo Nine", controller: "ai-7.near-post.testnet" }]);
     journal.add(line(CLUB, 999_000, "Press high tonight.", { kind: "tactic", half: 1 }));
     journal.add(line("ai-7.near-post.testnet", 999_500, "I'll score twice."));
@@ -166,7 +181,7 @@ describe("the AI agents in the dressing room", () => {
     const a = player("Ada Striker");
     later(1000);
     await postOn(a, CLUB, "Allez !");
-    const { posts } = await (await app.request(`/v1/clubs/${CLUB}/wall`)).json();
+    const posts = await postsOf(a);
     expect(posts.map((p: { text: string; ai?: string }) => [p.text, p.ai ?? null])).toEqual([
       ["Allez !", null],
       ["I'll score twice.", "footballer"],
