@@ -728,7 +728,6 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
   .today-player .link { grid-column: 2; justify-self: start; font-size: 14px; }
   .today-player h3, .today-player > p.note { grid-column: 2; }
 }
-}
 @media (max-width: 720px) {
   .top-band { margin-bottom: 14px; }
   .brand-text em { display: none; }
