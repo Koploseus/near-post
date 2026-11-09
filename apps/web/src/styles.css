@@ -755,3 +755,75 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
   .brand-text em { display: none; }
   .brand-text { white-space: nowrap; }
 }
+
+/* ---- v8: the league page (crests, division tabs, table with form, match-day cards) ---- */
+.crest { display: block; flex: none; filter: drop-shadow(0 1px 0 rgba(0,0,0,.25)); }
+.league { display: grid; gap: 16px; }
+.league-strip { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-radius: 6px; background: var(--ink-deep); border: 2px solid var(--seat); }
+.league-strip > div { flex: 1; min-width: 0; }
+.league-strip .season-bar { margin: 8px 0 0; }
+.strip-clock { display: grid; justify-items: end; line-height: 1.05; }
+.strip-clock em { font-style: normal; font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--muted-on-ink); }
+.strip-clock b { font-family: var(--display); font-weight: 400; font-size: 28px; color: var(--yellow); }
+.div-tabs { display: flex; gap: 8px; }
+.div-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 18px; border-radius: 999px; border: 2px solid var(--paper); background: none; color: var(--paper); font-weight: 800; cursor: pointer; }
+.div-tabs button[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
+.div-tabs .yours { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--yellow); color: var(--ink); }
+.league-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.league-grid .panel { margin: 0; }
+.standings td { padding: 8px 6px; vertical-align: middle; }
+.standings th { padding: 6px; }
+.standings .rank { width: 28px; font-family: var(--display); color: var(--muted-on-paper); }
+.standings tr.lead .rank, .standings tr.up .rank, .standings tr.down .rank { color: var(--ink); }
+.standings tr td:first-child { box-shadow: inset 4px 0 0 transparent; }
+.standings tr.lead td:first-child { box-shadow: inset 4px 0 0 var(--yellow); }
+.standings tr.up td:first-child { box-shadow: inset 4px 0 0 #2e9e5b; }
+.standings tr.down td:first-child { box-shadow: inset 4px 0 0 var(--red); }
+.table.standings tr.up td, .table.standings tr.down td { background: none; color: inherit; }
+.standings .club-cell { width: 100%; max-width: 0; font-weight: 700; text-align: left !important; }
+.standings .club-in { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.standings .club-in > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standings .form-col { white-space: nowrap; }
+.standings .pts { font-family: var(--display); font-size: 17px; }
+.standings .wdl { color: var(--muted-on-paper); }
+.legend-zones { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; }
+.legend-zones .z { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.legend-zones .z.lead { background: var(--yellow); }
+.legend-zones .z.up { background: #2e9e5b; }
+.legend-zones .z.down { background: var(--red); }
+.day-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.day-nav .chip { min-height: 36px; width: 40px; padding: 0; justify-content: center; font-size: 20px; }
+.day-nav .chip:disabled { opacity: .35; cursor: default; }
+.games { display: grid; gap: 10px; }
+.game-card { display: grid; gap: 4px; padding: 10px 12px; border-radius: 6px; background: #fffaf0; border: 2px solid rgba(27,35,64,.15); color: var(--ink); text-decoration: none; }
+.game-card:hover, .game-card:focus-visible { border-color: var(--ink); }
+.game-card.mine { border-color: var(--yellow); background: #fff4c7; }
+.game-card .side { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 15px; }
+.game-card .side-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-card .side b { font-family: var(--display); font-weight: 400; font-size: 18px; min-width: 22px; text-align: center; padding: 0 4px; border-radius: 3px; background: var(--ink); color: var(--paper); }
+.game-card .side.won { font-weight: 800; }
+.game-card .side.won b { color: var(--yellow); }
+.game-foot { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 12px; color: var(--muted-on-paper); }
+.game-foot .more { margin-left: auto; font-weight: 800; color: var(--blue); }
+@media (max-width: 1000px) {
+  .league-grid { grid-template-columns: 1fr; }
+  .games { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+}
+@media (max-width: 600px) {
+  .league-strip { padding: 12px 14px; }
+  .strip-clock b { font-size: 22px; }
+  .standings .wdl { display: none; }
+  .standings { font-size: 14px; }
+  .standings td, .standings th { padding: 7px 4px; }
+  .standings .form-strip i { width: 14px; height: 14px; font-size: 9px; }
+  .standings .form-strip { gap: 2px; }
+  .standings .form-strip i:nth-last-child(n+4) { display: none; }
+  .div-tabs button { flex: 1; justify-content: center; padding: 0 10px; }
+  .games { grid-template-columns: 1fr; }
+}
+@media (max-width: 380px) { .standings .form-col { display: none; } }
+.visit-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: 6px; background: var(--ink-deep); border: 2px solid var(--seat); }
+.visit-bar label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 800; }
+.visit-bar select { min-height: 42px; padding: 0 10px; border-radius: 6px; border: 2px solid var(--paper); background: var(--paper); color: var(--ink); font: inherit; font-weight: 700; max-width: 100%; }
+.sheet-title { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 600px) { .visit-bar { flex-direction: column; align-items: stretch; } .visit-bar label { flex-direction: column; align-items: stretch; gap: 6px; } }

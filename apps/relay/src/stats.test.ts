@@ -41,6 +41,15 @@ describe("season stats from match sheets", () => {
     expect(lines.get("h0")).toMatchObject({ apps: 1, clean_sheets: 0 });
   });
 
+  it("leaves academy stand-ins out of the leaderboards", () => {
+    const lines = new Map<string, Line>();
+    const m = sheet([{ second: 10, home: true, kind: "goal", player: 9 }]);
+    m.elevens[0]![9] = "academy";
+    count(lines, m);
+    expect(lines.has("academy")).toBe(false);
+    expect(lines.get("h8")).toMatchObject({ apps: 1 });
+  });
+
   it("counts assists, tackles, penalties and clean sheets", () => {
     const lines = new Map<string, Line>();
     count(
