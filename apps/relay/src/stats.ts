@@ -166,11 +166,14 @@ export interface Line {
   penalties_scored: number;
 }
 
+/** Stands in for a missing player in a match's elevens: not a footballer, so never in the leaderboards. */
+export const ACADEMY = "academy";
+
 /** Adds one finished match to the lines, by token. */
 export function count(lines: Map<string, Line>, m: Sheet) {
   if (!m.full_time) return;
   const line = (token: string | undefined, club: string) => {
-    if (!token) return null;
+    if (!token || token === ACADEMY) return null;
     let l = lines.get(token);
     if (!l) {
       l = { token_id: token, club, apps: 0, goals: 0, shots: 0, on_target: 0, saves: 0, fouls: 0, yellows: 0, reds: 0, own_goals: 0, motm: 0, assists: 0, tackles: 0, clean_sheets: 0, penalties: 0, penalties_scored: 0 };
@@ -182,7 +185,12 @@ export function count(lines: Map<string, Line>, m: Sheet) {
   // Who played: anyone in an eleven of either half, once per match.
   const played = new Set<string>();
   m.elevens.forEach((eleven, i) => {
-    for (const t of eleven) if (t && !played.has(t)) (played.add(t), line(t, i % 2 === 0 ? m.home : m.away)!.apps++);
+    for (const t of eleven) {
+      if (!t || played.has(t)) continue;
+      played.add(t);
+      const l = line(t, i % 2 === 0 ? m.home : m.away);
+      if (l) l.apps++;
+    }
   });
   m.events.forEach((e, i) => {
     const half = i < m.first_half_events ? 0 : 1;
@@ -259,7 +267,10 @@ export function count(lines: Map<string, Line>, m: Sheet) {
     const conceded = m.events.filter((e) => (e.kind === "goal" && e.home === (side === 1)) || (e.kind === "own_goal" && e.home === (side === 1))).length;
     if (conceded > 0) continue;
     const keepers = new Set([m.elevens[side]?.[0], m.elevens[2 + side]?.[0]].filter((t): t is string => !!t));
-    for (const k of keepers) line(k, side === 0 ? m.home : m.away)!.clean_sheets++;
+    for (const k of keepers) {
+      const l = line(k, side === 0 ? m.home : m.away);
+      if (l) l.clean_sheets++;
+    }
   }
   const star = m.stats.man_of_the_match?.player;
   if (star && lines.has(star)) lines.get(star)!.motm++;
