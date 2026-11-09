@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { KeyPair, PublicKey } from "near-api-js";
 import { z } from "zod";
 import { type Mailer, Codes, Limiter, accountIdFor, isPlayerAccount, normalizeEmail } from "./auth.js";
-import { type Chain, near } from "./chain.js";
+import { type Chain, near, transient } from "./chain.js";
 import type { Config } from "./config.js";
 import { MAX_CLICKS, drill, drillEnd, hits, implausible, points, rounds } from "./drill.js";
 import { allowedMethods, decodeSignedDelegate, refuse } from "./gasless.js";
@@ -435,7 +435,12 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!botSignupsByIp.allow(ip(c)) || !botSignups.allow("all")) return c.json({ error: "too_many_requests" }, 429);
     const kp = KeyPair.fromRandom("ed25519");
     const account_id = accountIdFor(`bot:${randomUUID()}`, config.PARENT_ACCOUNT_ID);
-    const tx = await chain.createAccount(account_id, kp.getPublicKey().toString(), funding);
+    let tx: string;
+    try {
+      tx = await chain.createAccount(account_id, kp.getPublicKey().toString(), funding);
+    } catch (e) {
+      return c.json({ error: transient(e) ? "rpc_busy" : "account_not_created", detail: e instanceof Error ? e.message : String(e) }, transient(e) ? 503 : 502);
+    }
     const bot = { accountId: account_id, privateKey: kp.toString() };
     // The new key may take a moment to be readable: a few tries.
     let made: BotResult | null = null;
@@ -519,6 +524,9 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         const r = await run(bot, body.data);
         return c.json(r.body, r.status);
       } catch (e) {
+        // A busy RPC can fail the call after the transaction went out: say so,
+        // so the AI checks /v1/bot/me before trying again.
+        if (transient(e)) return c.json({ error: "rpc_busy", detail: e instanceof Error ? e.message : String(e), note: "the action may have gone through: check GET /v1/bot/me before retrying" }, 503);
         return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
       }
     });

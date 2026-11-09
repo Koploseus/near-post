@@ -15,6 +15,7 @@ class BotChain implements Partial<Chain> {
   footballers = new Map<string, { token_id: string; name: string; owner: string; overall: number; position: string }>();
   sent: { sender: string; contract: string; method: string; args: Record<string, unknown>; deposit: bigint }[] = [];
   refuseNext: string | null = null;
+  throwNext: string | null = null;
   async view<T>(_c: string, method: string, args?: Record<string, unknown>) {
     if (method === "footballer_of") return (this.footballers.get(String(args?.account_id)) ?? null) as T;
     if (method === "schedule") return { match_day: 40, kickoff_at_ms: String(Date.now() + 10 * 60_000), next_match_at_ms: "0", first_half_played: false, season: 2, season_day: 14 } as T;
@@ -38,6 +39,11 @@ class BotChain implements Partial<Chain> {
   async relay(signed: unknown) {
     const d = (signed as { delegateAction: { senderId: string; receiverId: string; actions: { functionCall: { methodName: string; args: Record<string, unknown>; deposit: bigint } }[] } }).delegateAction;
     const fc = d.actions[0]!.functionCall;
+    if (this.throwNext) {
+      const m = this.throwNext;
+      this.throwNext = null;
+      throw new Error(m);
+    }
     this.sent.push({ sender: d.senderId, contract: d.receiverId, method: fc.methodName, args: fc.args, deposit: BigInt(fc.deposit) });
     if (this.refuseNext) {
       const error = this.refuseNext;
@@ -135,6 +141,15 @@ describe("bot API", () => {
     const r = await req("/v1/bot/slot", { token: body.token, body: { slot: 3 } });
     expect(r.status).toBe(422);
     expect(await r.json()).toMatchObject({ error: "slot already taken" });
+  });
+
+  it("tells the AI to check before retrying when the RPC was busy", async () => {
+    const { chain, req, signup } = setup();
+    const { body } = await signup();
+    chain.throwNext = "Rate limit exceeded, retry after 35 seconds";
+    const r = await req("/v1/bot/report", { token: body.token, body: {} });
+    expect(r.status).toBe(503);
+    expect(await r.json()).toMatchObject({ error: "rpc_busy" });
   });
 
   it("refuses a missing token, a malformed one, and a key that is not the account's", async () => {
