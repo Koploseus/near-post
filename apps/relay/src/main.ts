@@ -13,6 +13,7 @@ import { Agents } from "./agents/runner.js";
 import { Limiter, readsFrom, throttle } from "./agents/throttle.js";
 import { Kickoffs, startScheduler } from "./schedule.js";
 import { Vaults } from "./vault.js";
+import { Walls } from "./social.js";
 
 const config = loadConfig();
 const signer = config.PARENT_PRIVATE_KEY
@@ -37,6 +38,7 @@ const app = createApp(config, chain, {
   mailer,
   kickoffs,
   vaults,
+  walls: new Walls(config.DATA_DIR ? `${config.DATA_DIR}/walls-${config.LEAGUE_ID}.json` : null),
   drillsFile: config.DATA_DIR ? `${config.DATA_DIR}/drills-${config.LEAGUE_ID}.json` : null,
   warmStats: true,
   ...(agents ? { agents } : {}),

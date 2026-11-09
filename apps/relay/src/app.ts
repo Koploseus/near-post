@@ -13,7 +13,8 @@ import type { Agent } from "./agents/roster.js";
 import type { Kickoffs } from "./schedule.js";
 import { Stats } from "./stats.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
-import { fanzoneMessage } from "./vault-message.js";
+import { fanzoneMessage, presenceMessage, wallMessage } from "./vault-message.js";
+import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
 
 const AccountId = z
   .string()
@@ -50,6 +51,8 @@ export interface Deps {
   warmStats?: boolean;
   /** The AI agents and what they did. */
   agents?: { roster: Agent[]; journal: Journal };
+  /** The clubs' walls (who is online lives in memory). */
+  walls?: Walls;
   mailer: Mailer;
   codes?: Codes;
   now?: () => number;
@@ -208,6 +211,115 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       at: e.at,
     }));
     return c.json({ tickets, briefings });
+  });
+
+  // ---- Who is online, and the team wall ----
+  //
+  // Signed with a key of the account, like the fan zone. What the chain
+  // answers (the key is on the account, the footballer it plays) is kept a
+  // few minutes: a heartbeat a minute must not be an RPC call a minute.
+
+  const presence = new Presence(now);
+  const walls = deps.walls ?? new Walls(null);
+  const keyOk = new Memo<boolean>(10 * 60_000, now);
+  const playerOf = new Memo<{ token_id: string; name: string; owner: string } | null>(2 * 60_000, now);
+  const heartbeats = new Limiter(4, 60_000, now);
+  const postsByAccount = new Limiter(6, 60_000, now);
+  const socialByIp = new Limiter(600, 60 * 60_000, now);
+  const Signed = z.object({ account_id: AccountId, public_key: z.string().startsWith("ed25519:").max(100), ts: z.number().int(), signature: z.string().min(40).max(200) });
+
+  /** True when `message` is signed by `public_key` and that key is on `account_id`. */
+  const signedBy = async (account_id: string, public_key: string, signature: string, message: string) => {
+    try {
+      if (!PublicKey.fromString(public_key).verify(new TextEncoder().encode(message), Buffer.from(signature, "base64"))) return false;
+    } catch {
+      return false;
+    }
+    // Only a key found on the account is remembered: a new account's key may land a moment later.
+    const k = `${account_id} ${public_key}`;
+    return keyOk.get(k, () => chain.hasKey(account_id, public_key), (found) => found);
+  };
+  const footballerOf = (account_id: string) =>
+    playerOf.get(account_id, async () => {
+      const p = await chain.view<{ token_id: string; name: string; owner: string } | null>(config.LEAGUE_ID!, "footballer_of", { account_id }).catch(() => null);
+      return p ? { token_id: p.token_id, name: p.name, owner: p.owner } : null;
+    });
+
+  /** "I'm here": the browser says it every minute while the game is open. */
+  app.post("/v1/presence", async (c) => {
+    const body = Signed.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    const { account_id, public_key, ts, signature } = body.data;
+    if (!socialByIp.allow(ip(c)) || !heartbeats.allow(account_id)) return c.json({ error: "too_many_requests" }, 429);
+    if (!isPlayerAccount(account_id, config.PARENT_ACCOUNT_ID)) return c.json({ error: "not_a_player_account" }, 400);
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    if (!(await signedBy(account_id, public_key, signature, presenceMessage(account_id, ts)))) return c.json({ error: "bad_signature" }, 401);
+    presence.here(account_id);
+    return c.json({ online: presence.count() + agentsActive().size });
+  });
+
+  /** How many players are online, and which of `accounts` (comma-separated, up to 60). */
+  app.get("/v1/presence", (c) => {
+    const asked = (c.req.query("accounts") ?? "").split(",").filter(Boolean).slice(0, 60);
+    const ids = asked.filter((a) => AccountId.safeParse(a).success);
+    const agents = agentsActive();
+    const online = [...new Set([...presence.online(ids), ...ids.filter((a) => agents.has(a))])];
+    return c.json({ count: presence.count() + agents.size, online });
+  });
+
+  // The AI agents are in the dressing room too: online when they acted in the
+  // last two minutes, and what they said (their journal's quotes) on their
+  // club's wall. Never the other way round: no wall text reaches a prompt.
+  const agentsActive = () => {
+    const t = now();
+    return new Set((deps.agents?.journal.feed(300) ?? []).filter((e) => t - e.at < ONLINE_MS).map((e) => e.agent));
+  };
+  const squadOf = new Memo<{ token_id: string; name: string; controller: string | null }[]>(2 * 60_000, now);
+  const agentLines = async (club: string): Promise<WallPost[]> => {
+    if (!deps.agents) return [];
+    const squad = await squadOf.get(club, () =>
+      chain.view<{ token_id: string; name: string; controller: string | null }[]>(config.LEAGUE_ID!, "squad", { account_id: club }).catch(() => []),
+    );
+    const played = new Map(squad.filter((p) => p.controller).map((p) => [p.controller!, p]));
+    const coach = deps.agents.roster.find((a) => a.account === club);
+    return deps.agents.journal
+      .feed(300)
+      // No half-time spoilers, no set-up lines: as on the AI dressing room.
+      .filter((e) => e.quote && e.kind !== "setup" && e.half !== 2 && (e.agent === club || played.has(e.agent)))
+      .slice(0, 30)
+      .map((e, i) => {
+        const p = played.get(e.agent);
+        return p
+          ? { id: -(i + 1), account: e.agent, token_id: p.token_id, name: p.name, text: e.quote, at: e.at, ai: "footballer" as const }
+          : { id: -(i + 1), account: e.agent, token_id: "", name: coach?.name ?? "The coach", text: e.quote, at: e.at, ai: "coach" as const };
+      });
+  };
+
+  /** A club's wall, newest first: anyone can read it. */
+  app.get("/v1/clubs/:clubId/wall", async (c) => {
+    const id = AccountId.safeParse(c.req.param("clubId"));
+    if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
+    const posts = [...walls.of(id.data), ...(await agentLines(id.data))].sort((a, b) => b.at - a.at).slice(0, 50);
+    return c.json({ posts });
+  });
+
+  /** Post on your club's wall: only a footballer of that club can. */
+  app.post("/v1/clubs/:clubId/wall", async (c) => {
+    const club = AccountId.safeParse(c.req.param("clubId"));
+    const body = Signed.extend({ text: z.string().min(1).max(WALL_MAX * 4) }).safeParse(await c.req.json().catch(() => null));
+    if (!club.success || !body.success) return c.json({ error: "invalid_request" }, 400);
+    const { account_id, public_key, ts, signature, text } = body.data;
+    if (!socialByIp.allow(ip(c)) || !postsByAccount.allow(account_id)) return c.json({ error: "too_many_requests" }, 429);
+    const clean = cleanPost(text);
+    if (!clean) return c.json({ error: "bad_text", max: WALL_MAX }, 400);
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    // The signature covers the text as typed, so the relay cannot change what was said.
+    if (!(await signedBy(account_id, public_key, signature, wallMessage(account_id, club.data, ts, text)))) return c.json({ error: "bad_signature" }, 401);
+    const p = await footballerOf(account_id);
+    if (!p || p.owner !== club.data) return c.json({ error: "not_in_this_club" }, 403);
+    presence.here(account_id);
+    const posted = walls.add(club.data, { account: account_id, token_id: p.token_id, name: p.name, text: clean, at: now() });
+    return c.json({ post: posted });
   });
 
   /** Gas top-up for a player's account that is nearly empty, a few times a day. */
