@@ -65,6 +65,9 @@ const Env = z.object({
   KEEP_TOPUP_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("5"),
   /** Where the relay keeps passkey backups (a Fly volume in production). Unset: in memory only. */
   DATA_DIR: z.string().optional(),
+  /** Bot API sign-ups (each costs ACCOUNT_FUNDING_NEAR): per IP and in all, per day. */
+  BOT_SIGNUPS_PER_IP_DAY: z.coerce.number().int().min(0).default(3),
+  BOT_SIGNUPS_PER_DAY: z.coerce.number().int().min(0).default(50),
   /**
    * AI agents (coaches of the fictional clubs, footballers): on with a seed,
    * the secret their keys are derived from. Off without one.
