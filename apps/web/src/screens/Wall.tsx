@@ -17,7 +17,9 @@ const nameNumber = (name: string) => [...name].reduce((h, ch) => (h * 31 + ch.ch
 export function Wall({ clubId, compact = false }: { clubId: string; compact?: boolean }) {
   const { session, me, club } = useGame();
   const { data: squad } = useData(() => league<Player[]>("squad", { account_id: clubId }), [clubId]);
-  const { data: loaded, reload } = useData(() => wallOf(clubId), [clubId]);
+  // A dressing room is private to its squad: only its players load the wall.
+  const member = !!session && !!me && me.owner === clubId;
+  const { data: loaded, reload } = useData(() => (member && session ? wallOf(session, clubId) : Promise.resolve([])), [clubId, member]);
   const [posts, setPosts] = useState<WallPost[]>([]);
   useEffect(() => setPosts(loaded ?? []), [loaded]);
   // New posts from teammates: look again every 20 s.
@@ -28,9 +30,9 @@ export function Wall({ clubId, compact = false }: { clubId: string; compact?: bo
 
   const byToken = useMemo(() => new Map((squad ?? []).map((p) => [p.token_id, p])), [squad]);
   const people = (squad ?? []).filter((p) => p.controller);
-  const online = usePresence(people.map((p) => p.controller));
+  const online = usePresence(member ? people.map((p) => p.controller) : []);
   const here = people.filter((p) => online.has(p.controller!));
-  const mine = !!me && me.owner === clubId;
+  const mine = member;
 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -51,6 +53,7 @@ export function Wall({ clubId, compact = false }: { clubId: string; compact?: bo
   };
   const now = serverNow();
   const shown = compact ? posts.slice(0, 6) : posts;
+  if (!member) return null;
 
   return (
     <section className="paper panel wall">

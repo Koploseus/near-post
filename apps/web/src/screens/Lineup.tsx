@@ -47,7 +47,8 @@ export function Lineup() {
   // Before kick-off, the sheet shows only the slots people chose; a minute
   // before, the free ones go to the best of the squad for the role.
   const open = !!schedule && slotsOpen(schedule, now);
-  const online = usePresence(lineup?.players.map((p) => p?.controller) ?? []);
+  // Who is online is the squad's business: only on your own sheet.
+  const online = usePresence(ownSheet ? (lineup?.players.map((p) => p?.controller) ?? []) : []);
   const { data: captain } = useData(
     () => (sheetId ? league<Captain | null>("captain", { club_id: sheetId }) : Promise.resolve(null)),
     [sheetId],
@@ -96,7 +97,7 @@ export function Lineup() {
         </h2>
         <p className="note">
           {!ownSheet
-            ? "Every slot is taken by a real person or an AI footballer of this club. Sign for a club to take yours."
+            ? "Every slot is taken by a real person or an AI footballer of this club. Its dressing room is for its players: sign for a club to get yours."
             : !open
             ? "The eleven is set: free slots went to the best of the squad for the role."
             : mine >= 0
