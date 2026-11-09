@@ -16,6 +16,16 @@ export interface Chain {
   callChecked?(contractId: string, method: string, args: Record<string, unknown>, tgas: number, deposit?: bigint): Promise<string>;
   /** Sends a player's signed delegate action, the parent paying the gas. */
   relay(signed: SignedDelegate): Promise<{ hash: string; value: string | null; error: string | null }>;
+  /** Signs a delegate action as `accountId` with its key (an AI player's, for the bot API); nothing is sent. */
+  signDelegate?(
+    accountId: string,
+    privateKey: string,
+    receiverId: string,
+    method: string,
+    args: Record<string, unknown>,
+    tgas: number,
+    deposit?: bigint,
+  ): Promise<SignedDelegate>;
 }
 
 export const near = (amount: string): bigint => BigInt(nearToYocto(amount as `${number}`));
@@ -143,6 +153,15 @@ export function rpcChain(urls: string | string[], signer?: { accountId: string; 
         value: failed ? null : (status.SuccessValue ?? null),
         error: failed ? (panic ?? "the transaction failed") : null,
       };
+    },
+    async signDelegate(accountId, privateKey, receiverId, method, args, tgas, deposit = 0n) {
+      const a = new Account(accountId, provider, privateKey as `ed25519:${string}`);
+      const { signedDelegate } = await a.createSignedMetaTransaction({
+        receiverId,
+        actions: [actions.functionCall(method, args, BigInt(tgas) * 10n ** 12n, deposit)],
+        blockHeightTtl: 120,
+      });
+      return signedDelegate;
     },
     async call(contractId, methodName, args, tgas, deposit) {
       const r = await parent().callFunctionRaw({ contractId, methodName, args, gas: BigInt(tgas) * 10n ** 12n, ...(deposit ? { deposit } : {}) });

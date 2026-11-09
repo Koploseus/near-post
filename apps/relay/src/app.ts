@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Hono } from "hono";
@@ -14,6 +15,7 @@ import type { Kickoffs } from "./schedule.js";
 import { Stats } from "./stats.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
 import { fanzoneMessage, presenceMessage, wallMessage, wallReadMessage } from "./vault-message.js";
+import { botDocs, makeToken, readToken } from "./bot.js";
 import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
 
 const AccountId = z
@@ -380,6 +382,158 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const r = await chain.relay(signed);
     return c.json(r, r.error ? 422 : 200);
   });
+
+  // ---- Bot API: an AI plays over plain HTTP (see bot.ts and GET /v1/bot) ----
+  //
+  // Each sign-up costs the parent the account's funding: a few per IP a day,
+  // and a cap for everyone. The token carries the AI account's key; the relay
+  // signs each action with it and keeps no copy, and the same rules as the
+  // browser's gasless calls apply (allowed contracts and methods, limits).
+
+  const botSignupsByIp = new Limiter(config.BOT_SIGNUPS_PER_IP_DAY, 24 * 60 * 60_000, now);
+  const botSignups = new Limiter(config.BOT_SIGNUPS_PER_DAY, 24 * 60 * 60_000, now);
+  const botCalls = new Limiter(60, 60_000, now);
+  const players = config.PLAYERS_ID ?? `players-${version}.${parentOf}`;
+  const Position = z.enum(["Gk", "Df", "Mf", "Fw"]);
+
+  app.get("/v1/bot", (c) => c.text(botDocs(new URL(c.req.url).origin.replace(/^http:/, c.req.header("x-forwarded-proto") === "https" ? "https:" : "http:"))));
+
+  type BotResult = { status: 200 | 403 | 409 | 422 | 429; body: Record<string, unknown> };
+  /** Signs and sends one call as the bot; the same checks as /v1/relay. */
+  const actAs = async (bot: { accountId: string; privateKey: string }, contract: string, method: string, args: Record<string, unknown>, deposit = 0n, tgas = 100): Promise<BotResult> => {
+    if (!chain.signDelegate) throw new Error("bot_api_unavailable");
+    const signed = await chain.signDelegate(bot.accountId, bot.privateKey, contract, method, args, tgas, deposit);
+    const no = refuse(signed, allowed, (id) => isPlayerAccount(id, config.PARENT_ACCOUNT_ID));
+    if (no) return { status: 403, body: { error: no } };
+    if (!relayedByAccount.allow(bot.accountId)) return { status: 429, body: { error: "too_many_requests" } };
+    const r = await chain.relay(signed);
+    return r.error ? { status: 422, body: { error: r.error, hash: r.hash } } : { status: 200, body: { ok: true, hash: r.hash } };
+  };
+
+  /** The bot behind the bearer token, if the token is good and its key is on the account. */
+  const botOf = async (c: { req: { header(name: string): string | undefined } }) => {
+    const t = readToken(c.req.header("authorization"));
+    if (!t || !isPlayerAccount(t.accountId, config.PARENT_ACCOUNT_ID)) return null;
+    let pub: string;
+    try {
+      pub = KeyPair.fromString(t.privateKey as `ed25519:${string}`).getPublicKey().toString();
+    } catch {
+      return null;
+    }
+    const ok = await keyOk.get(`${t.accountId} ${pub}`, () => chain.hasKey(t.accountId, pub), (found) => found);
+    return ok ? t : null;
+  };
+
+  app.use("/v1/bot/*", async (c, next) => {
+    if (!config.LEAGUE_ID) return c.json({ error: "league_not_deployed" }, 503);
+    await next();
+  });
+
+  app.post("/v1/bot/signup", async (c) => {
+    const body = z.object({ name: z.string().trim().min(2).max(32), position: Position }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request", expected: { name: "2 to 32 characters", position: "Gk | Df | Mf | Fw" } }, 400);
+    if (!botSignupsByIp.allow(ip(c)) || !botSignups.allow("all")) return c.json({ error: "too_many_requests" }, 429);
+    const kp = KeyPair.fromRandom("ed25519");
+    const account_id = accountIdFor(`bot:${randomUUID()}`, config.PARENT_ACCOUNT_ID);
+    const tx = await chain.createAccount(account_id, kp.getPublicKey().toString(), funding);
+    const bot = { accountId: account_id, privateKey: kp.toString() };
+    // The new key may take a moment to be readable: a few tries.
+    let made: BotResult | null = null;
+    for (let i = 0; i < 5 && !made; i++) {
+      try {
+        made = await actAs(bot, config.LEAGUE_ID!, "create_footballer", { name: body.data.name, position: body.data.position });
+      } catch (e) {
+        if (i === 4) return c.json({ error: "footballer_not_created", detail: e instanceof Error ? e.message : String(e), token: makeToken(account_id, bot.privateKey), account_id }, 502);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    const footballer = await botFootballer(account_id);
+    return c.json({ token: makeToken(account_id, bot.privateKey), account_id, footballer, tx, docs: "GET /v1/bot" }, made && made.status === 200 ? 200 : made!.status);
+  });
+
+  app.get("/v1/bot/clubs", async (c) => {
+    const table = await chain.view<{ manager: string; name: string; division: number; points: number }[]>(config.LEAGUE_ID!, "table");
+    const clubs = await Promise.all(
+      table.map(async (t) => {
+        const squad = await squadOf.get(t.manager, () =>
+          chain.view<{ token_id: string; name: string; controller: string | null }[]>(config.LEAGUE_ID!, "squad", { account_id: t.manager }).catch(() => []),
+        );
+        return { club_id: t.manager, name: t.name, division: t.division, points: t.points, players: squad.length, places_left: Math.max(0, 12 - squad.length) };
+      }),
+    );
+    return c.json({ clubs });
+  });
+
+  app.get("/v1/bot/me", async (c) => {
+    const bot = await botOf(c);
+    if (!bot) return c.json({ error: "bad_token" }, 401);
+    if (!botCalls.allow(bot.accountId)) return c.json({ error: "too_many_requests" }, 429);
+    const [footballer, schedule] = await Promise.all([
+      chain.view<{ token_id: string; name: string; owner: string; overall: number; position: string } | null>(config.LEAGUE_ID!, "footballer_of", { account_id: bot.accountId }),
+      chain.view<{ match_day: number; kickoff_at_ms: string; next_match_at_ms: string; first_half_played: boolean; season: number; season_day: number }>(config.LEAGUE_ID!, "schedule"),
+    ]);
+    const inClub = footballer && footballer.owner !== bot.accountId ? footballer.owner : null;
+    const lineup = inClub
+      ? await chain.view<{ formation: string; strategy: string; roles: string[]; players: ({ token_id: string; name: string } | null)[]; chosen: boolean[] }>(config.LEAGUE_ID!, "lineup", { club_id: inClub })
+      : null;
+    const slotsOpen = !schedule.first_half_played && now() < Number(schedule.kickoff_at_ms) - 60_000;
+    return c.json({
+      account_id: bot.accountId,
+      footballer,
+      club: inClub,
+      match: {
+        match_day: schedule.match_day,
+        season: schedule.season,
+        season_day: schedule.season_day,
+        kickoff_at_ms: Number(schedule.kickoff_at_ms),
+        first_half_played: schedule.first_half_played,
+        slots_open: slotsOpen,
+      },
+      team_sheet: lineup && {
+        formation: lineup.formation,
+        strategy: lineup.strategy,
+        slots: lineup.roles.map((role, slot) => ({
+          slot,
+          role,
+          player: lineup.players[slot]?.name ?? null,
+          you: lineup.players[slot]?.token_id === footballer?.token_id,
+          chosen: lineup.chosen[slot] ?? false,
+        })),
+      },
+    });
+  });
+
+  /** The bot's footballer, read now (not the wall's cached copy: it just changed clubs, maybe). */
+  const botFootballer = (account_id: string) =>
+    chain.view<{ token_id: string; name: string; owner: string; overall: number; position: string } | null>(config.LEAGUE_ID!, "footballer_of", { account_id }).catch(() => null);
+
+  /** A bot action: parse the body, find the bot, act. */
+  const botAction = <S extends z.ZodTypeAny>(path: string, schema: S, run: (bot: { accountId: string; privateKey: string }, body: z.infer<S>) => Promise<BotResult>) =>
+    app.post(path, async (c) => {
+      const bot = await botOf(c);
+      if (!bot) return c.json({ error: "bad_token" }, 401);
+      if (!botCalls.allow(bot.accountId)) return c.json({ error: "too_many_requests" }, 429);
+      const body = schema.safeParse(await c.req.json().catch(() => ({})));
+      if (!body.success) return c.json({ error: "invalid_request" }, 400);
+      try {
+        const r = await run(bot, body.data);
+        return c.json(r.body, r.status);
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+
+  botAction("/v1/bot/join", z.object({ club: AccountId }), async (bot, b) => {
+    const f = await botFootballer(bot.accountId);
+    if (!f) return { status: 409, body: { error: "no_footballer" } };
+    if (f.owner !== bot.accountId) return { status: 409, body: { error: "already_in_a_club" } };
+    // Giving the registration to a club is an NFT transfer (one yoctoNEAR, from the bot's own balance).
+    return actAs(bot, players, "nft_transfer", { receiver_id: b.club, token_id: f.token_id }, 1n, 100);
+  });
+  botAction("/v1/bot/report", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "report_for_match", {}));
+  botAction("/v1/bot/slot", z.object({ slot: z.number().int().min(0).max(10) }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "take_slot", { slot: b.slot }, 0n, 30));
+  botAction("/v1/bot/strategy", z.object({ strategy: z.enum(["defend", "balanced", "attack"]) }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_strategy", { strategy: b.strategy }, 0n, 30));
+  botAction("/v1/bot/captain", z.object({ candidate: TokenId }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_captain", { candidate: b.candidate }));
 
   // ---- Training drill ----
   //
