@@ -1794,7 +1794,7 @@ fn a_goal_pays_in_proportion_to_the_scoring_clubs_stand() {
 // ---- v9: items that count, the ola, the derby flag ----
 
 #[test]
-fn boots_and_a_headband_add_to_the_skills_on_the_pitch() {
+fn what_a_player_wears_adds_to_his_skills_on_the_pitch() {
     let base = Skills {
         pace: 50,
         shooting: 50,
@@ -1807,21 +1807,35 @@ fn boots_and_a_headband_add_to_the_skills_on_the_pitch() {
         hair: Some("hair.fire".into()),
         boots: Some("boots.gold".into()),
         band: Some("band.striped".into()),
+        socks: Some("socks.red".into()),
+        pads: Some("pads.carbon".into()),
+        gloves: Some("gloves.gold".into()),
+        wrist: Some("wrist.white".into()),
+        tape: Some("tape.flame".into()),
     };
-    let on = wardrobe::dressed(base, &look);
-    // Legendary boots: +3 pace. An epic headband: +2 physical, never past 99.
-    assert_eq!((on.pace, on.physical), (53, 99));
-    // Hair is looks only; common items add nothing.
+    // Outfield: legendary boots +3 pace, an epic headband +2 physical (never
+    // past 99), rare socks +1 dribbling, a common wristband nothing, legendary
+    // tape +3 shooting, epic pads +2 defending. Gloves do nothing out there.
+    let out = wardrobe::dressed(base, &look, false);
     assert_eq!(
-        (on.shooting, on.passing, on.dribbling, on.defending),
-        (50, 50, 50, 50)
+        (
+            out.pace,
+            out.shooting,
+            out.passing,
+            out.dribbling,
+            out.defending,
+            out.physical
+        ),
+        (53, 53, 50, 51, 52, 99)
     );
-    let plain = Look {
-        hair: None,
-        boots: Some("boots.black".into()),
-        band: None,
+    // In goal the gloves count, not the pads.
+    assert_eq!(wardrobe::dressed(base, &look, true).defending, 53);
+    // Hair is looks only.
+    let hair = Look {
+        hair: Some("hair.fire".into()),
+        ..Look::default()
     };
-    assert_eq!(wardrobe::dressed(base, &plain), base);
+    assert_eq!(wardrobe::dressed(base, &hair, false), base);
 }
 
 #[test]

@@ -1,4 +1,5 @@
-//! The wardrobe (v6): haircuts, boots and headbands as NEP-245 items.
+//! The wardrobe (v6): haircuts, boots, headbands, socks, shin pads, gloves,
+//! wristbands and ankle tape as NEP-245 items.
 //!
 //! A pack costs 500k G, burned, and holds three items. Three items of the
 //! same kind and rarity fuse into one of the next rarity. The person who
@@ -11,11 +12,14 @@ use crate::{BURN_GAS, CALLBACK_GAS, League, LeagueExt, Skill, Skills, derive_see
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, Gas, NearToken, PromiseError, env, ext_contract, near, require};
 
-/// What a footballer can wear.
-pub const KINDS: [&str; 3] = ["hair", "boots", "band"];
+/// What a footballer can wear. Hair is looks only; every other kind adds
+/// to one skill on the pitch (see `dressed`).
+pub const KINDS: [&str; 8] = [
+    "hair", "boots", "band", "socks", "pads", "gloves", "wrist", "tape",
+];
 pub const RARITIES: [&str; 4] = ["common", "rare", "epic", "legendary"];
 /// Styles by kind, then rarity: three of each.
-pub const CATALOG: [[[&str; 3]; 4]; 3] = [
+pub const CATALOG: [[[&str; 3]; 4]; 8] = [
     [
         ["short", "buzz", "side-part"],
         ["curls", "ponytail", "bun"],
@@ -33,6 +37,36 @@ pub const CATALOG: [[[&str; 3]; 4]; 3] = [
         ["red", "blue", "yellow"],
         ["striped", "checked", "tifo"],
         ["gold", "laurel", "flame"],
+    ],
+    [
+        ["white", "black", "navy"],
+        ["red", "blue", "yellow"],
+        ["hooped", "grip", "two-tone"],
+        ["gold", "chrome", "flame"],
+    ],
+    [
+        ["white", "black", "navy"],
+        ["red", "blue", "yellow"],
+        ["carbon", "camo", "tifo"],
+        ["gold", "chrome", "galaxy"],
+    ],
+    [
+        ["white", "black", "grey"],
+        ["red", "blue", "yellow"],
+        ["neon", "grip", "camo"],
+        ["gold", "chrome", "flame"],
+    ],
+    [
+        ["white", "black", "navy"],
+        ["red", "blue", "yellow"],
+        ["striped", "neon", "tifo"],
+        ["gold", "laurel", "galaxy"],
+    ],
+    [
+        ["white", "black", "navy"],
+        ["red", "blue", "yellow"],
+        ["neon", "striped", "camo"],
+        ["gold", "chrome", "flame"],
     ],
 ];
 /// Out of 100: common, rare, epic, legendary.
@@ -76,6 +110,11 @@ pub struct Look {
     pub hair: Option<String>,
     pub boots: Option<String>,
     pub band: Option<String>,
+    pub socks: Option<String>,
+    pub pads: Option<String>,
+    pub gloves: Option<String>,
+    pub wrist: Option<String>,
+    pub tape: Option<String>,
 }
 
 impl Look {
@@ -83,14 +122,22 @@ impl Look {
         match kind {
             0 => &mut self.hair,
             1 => &mut self.boots,
-            _ => &mut self.band,
+            2 => &mut self.band,
+            3 => &mut self.socks,
+            4 => &mut self.pads,
+            5 => &mut self.gloves,
+            6 => &mut self.wrist,
+            _ => &mut self.tape,
         }
     }
 }
 
-/// A player's skills on the pitch with what he wears: boots add to pace, a
-/// headband to physical, by rarity (`ITEM_BONUS`). Hair is looks only.
-pub fn dressed(mut skills: Skills, look: &Look) -> Skills {
+/// A player's skills on the pitch with what he wears. Each kind adds to
+/// one skill, by rarity (`ITEM_BONUS`): boots to pace, a headband to
+/// physical, grip socks to dribbling, a wristband to passing, ankle tape to
+/// shooting, shin pads to defending for an outfield player and gloves to
+/// defending for the man in goal. Hair is looks only.
+pub fn dressed(mut skills: Skills, look: &Look, in_goal: bool) -> Skills {
     let bonus = |item: &Option<String>| {
         item.as_deref()
             .and_then(describe)
@@ -98,6 +145,13 @@ pub fn dressed(mut skills: Skills, look: &Look) -> Skills {
     };
     skills.raise(Skill::Pace, bonus(&look.boots));
     skills.raise(Skill::Physical, bonus(&look.band));
+    skills.raise(Skill::Dribbling, bonus(&look.socks));
+    skills.raise(Skill::Passing, bonus(&look.wrist));
+    skills.raise(Skill::Shooting, bonus(&look.tape));
+    skills.raise(
+        Skill::Defending,
+        bonus(if in_goal { &look.gloves } else { &look.pads }),
+    );
     skills
 }
 
@@ -263,15 +317,15 @@ impl League {
         }
     }
 
-    /// Takes off what a footballer wears in a slot (`hair`, `boots` or
-    /// `band`); the item goes back to the caller.
+    /// Takes off what a footballer wears in a slot (one of `KINDS`); the
+    /// item goes back to the caller.
     pub fn unequip(&mut self, token_id: String, kind: String) {
         let owner = env::predecessor_account_id();
         self.require_plays(&token_id, &owner);
         let k = KINDS
             .iter()
             .position(|x| *x == kind)
-            .unwrap_or_else(|| env::panic_str("kind is hair, boots or band"));
+            .unwrap_or_else(|| env::panic_str("no such kind of item"));
         let p = self
             .players
             .get_mut(&token_id)

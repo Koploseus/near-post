@@ -113,8 +113,8 @@ pub struct Rules {
     /// What each season ticket of a club earns at each of its full houses
     /// (times the derby multiplier), minted into the ticket.
     pub season_ticket_share: U128,
-    /// What a worn item adds to a skill in a match, by rarity (common to
-    /// legendary): boots to pace, a headband to physical. Hair is looks only.
+    /// What a worn item adds to its skill in a match, by rarity (common to
+    /// legendary). Hair is looks only.
     pub item_bonus: Vec<u8>,
     /// The ola: fans who take their seat in the last `ola_window_ms` before
     /// kick-off. When at least `ola_target_bps` of the full-house target did,
@@ -2587,7 +2587,7 @@ impl League {
         for (k, t) in xi.iter().enumerate() {
             match t.as_ref().and_then(|t| self.players.get(t)) {
                 Some(p) => {
-                    skills[k] = Some(wardrobe::dressed(p.skills, &p.look));
+                    skills[k] = Some(wardrobe::dressed(p.skills, &p.look, k == 0));
                     booked[k] = first.booked.contains(&p.token_id);
                     names.push(p.token_id.clone());
                 }
