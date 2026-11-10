@@ -1,5 +1,5 @@
 import type { Chain } from "./chain.js";
-import { type CrowdClub, seatedBy } from "./crowd.js";
+import { type CrowdClub, seatedBy, unit } from "./crowd.js";
 
 interface Schedule {
   match_day: number;
@@ -76,6 +76,7 @@ export async function crowdTick(
       try {
         await asFan(fan).call(leagueId, "check_in", {}, 30);
         seated.push(fan);
+        await crowdVotes(chain, asFan(fan), leagueId, c.club, fan, s.match_day).catch((e) => console.error(`crowd: ${fan} did not vote: ${e instanceof Error ? e.message : e}`));
       } catch (e) {
         // "already in the stand" after a restart is fine; anything else is logged.
         const m = e instanceof Error ? e.message : String(e);
@@ -85,6 +86,22 @@ export async function crowdTick(
   }
   for (const k of done) if (Number(k.split(":")[0]) < s.match_day) done.delete(k);
   return seated;
+}
+
+/**
+ * A seated fan votes: the tifo his stand shows (most of a club's fans agree
+ * on the day's pattern) and his star among the club's eleven.
+ */
+export async function crowdVotes(chain: Chain, asFan: Chain, leagueId: string, club: string, fan: string, day: number): Promise<void> {
+  const rules = await chain.view<{ tifo_patterns?: number }>(leagueId, "rules");
+  if (!rules.tifo_patterns) return; // a league without the fans' votes
+  const of = unit(fan, day, "own") < 0.3 ? fan : club;
+  await asFan.call(leagueId, "vote_tifo", { pattern: Math.floor(unit(of, day, "tifo") * rules.tifo_patterns) }, 30);
+  const eleven = await chain.view<{ token_id: string }[]>(leagueId, "starting_eleven", { club_id: club });
+  if (!eleven.length) return;
+  // Fans favour the front of the team sheet: forwards come last in the eleven.
+  const k = Math.floor(Math.sqrt(unit(fan, day, "star")) * eleven.length);
+  await asFan.call(leagueId, "vote_star", { token_id: eleven[Math.min(k, eleven.length - 1)]!.token_id }, 30);
 }
 
 /**

@@ -474,7 +474,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!bot) return c.json({ error: "bad_token" }, 401);
     if (!botCalls.allow(bot.accountId)) return c.json({ error: "too_many_requests" }, 429);
     const [footballer, schedule] = await Promise.all([
-      chain.view<{ token_id: string; name: string; owner: string; overall: number; position: string } | null>(config.LEAGUE_ID!, "footballer_of", { account_id: bot.accountId }),
+      chain.view<{ token_id: string; name: string; owner: string; overall: number; position: string; energy?: number; contract?: unknown } | null>(config.LEAGUE_ID!, "footballer_of", { account_id: bot.accountId }),
       chain.view<{ match_day: number; kickoff_at_ms: string; next_match_at_ms: string; first_half_played: boolean; season: number; season_day: number }>(config.LEAGUE_ID!, "schedule"),
     ]);
     const inClub = footballer && footballer.owner !== bot.accountId ? footballer.owner : null;
@@ -531,10 +531,15 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       }
     });
 
-  botAction("/v1/bot/join", z.object({ club: AccountId }), async (bot, b) => {
+  botAction("/v1/bot/join", z.object({ club: AccountId, days: z.number().int().min(1).max(200).optional() }), async (bot, b) => {
     const f = await botFootballer(bot.accountId);
     if (!f) return { status: 409, body: { error: "no_footballer" } };
     if (f.owner !== bot.accountId) return { status: 409, body: { error: "already_in_a_club" } };
+    // His word first (the length of the contract he takes), when he chose one.
+    if (b.days !== undefined) {
+      const signed = await actAs(bot, config.LEAGUE_ID!, "sign_for", { club_id: b.club, days: b.days }, 0n, 30);
+      if (signed.status !== 200) return signed;
+    }
     // Giving the registration to a club is an NFT transfer (one yoctoNEAR, from the bot's own balance).
     return actAs(bot, players, "nft_transfer", { receiver_id: b.club, token_id: f.token_id }, 1n, 100);
   });
@@ -542,6 +547,10 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   botAction("/v1/bot/slot", z.object({ slot: z.number().int().min(0).max(10) }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "take_slot", { slot: b.slot }, 0n, 30));
   botAction("/v1/bot/strategy", z.object({ strategy: z.enum(["defend", "balanced", "attack"]) }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_strategy", { strategy: b.strategy }, 0n, 30));
   botAction("/v1/bot/captain", z.object({ candidate: TokenId }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_captain", { candidate: b.candidate }));
+  botAction("/v1/bot/rest", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "rest_today", {}, 0n, 30));
+  botAction("/v1/bot/project", z.object({ project: z.enum(["stadium", "physio", "academy", "save"]) }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_project", { project: b.project }, 0n, 30));
+  botAction("/v1/bot/leave", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "leave_club", {}, 0n, 100));
+  botAction("/v1/bot/claim", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "claim", {}, 0n, 60));
 
   // ---- Training drill ----
   //

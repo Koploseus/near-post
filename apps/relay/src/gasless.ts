@@ -24,7 +24,15 @@ export function allowedMethods(contracts: { league: string; goalars: string; pla
         "equip",
         "unequip",
         "take_slot",
+        "rest_today",
         "vote_strategy",
+        "vote_project",
+        "set_wage",
+        "sign_for",
+        "leave_club",
+        "train_free",
+        "vote_star",
+        "vote_tifo",
         "follow",
         "check_in",
         "claim_stand",
@@ -38,7 +46,7 @@ export function allowedMethods(contracts: { league: string; goalars: string; pla
     ],
     [contracts.goalars, new Set(["ft_transfer_call", "ft_transfer"])],
     [contracts.players, new Set(["nft_transfer", "nft_approve", "nft_revoke"])],
-    ...(contracts.tickets ? [[contracts.tickets, new Set(["withdraw", "nft_transfer", "nft_approve", "nft_revoke"])] as [string, Set<string>]] : []),
+    ...(contracts.tickets ? [[contracts.tickets, new Set(["withdraw", "vote_project", "nft_transfer", "nft_approve", "nft_revoke"])] as [string, Set<string>]] : []),
   ]);
 }
 
