@@ -17,8 +17,11 @@ export const KIND: Record<string, string> = {
   pack: "Pack",
   training: "Training",
   relegation: "Relegation",
-  signup: "Signup grant",
+  signup: "Club founded",
   welcome: "Welcome bonus",
+  debut: "Debut bonus",
+  fans_star: "Fans' star",
+  project: "Club project",
 };
 
 /** The token page: supply, today's stands, the best streak, every mint and burn. */
@@ -218,7 +221,7 @@ function BreathChart({ rows }: { rows: DayBreath[] }) {
             </rect>
             {r.onboarding > 0n && (
               <rect x={x(i) - bar / 2} y={mid - up(r.minted) - up(r.onboarding)} width={bar} height={up(r.onboarding)} className="onboarding">
-                <title>{`+${g(r.onboarding)} signup and welcome`}</title>
+                <title>{`+${g(r.onboarding)} clubs founded and debuts`}</title>
               </rect>
             )}
             <rect x={x(i) - bar / 2} y={mid} width={bar} height={down(r.burned)} className="burned">
@@ -239,7 +242,7 @@ function BreathChart({ rows }: { rows: DayBreath[] }) {
       <figcaption className="legend">
         <span><i className="sw fill" /> fans in the stands (share of full house)</span>
         <span><i className="sw minted" /> minted by presence</span>
-        <span><i className="sw onboarding" /> signup and welcome</span>
+        <span><i className="sw onboarding" /> clubs founded and debuts</span>
         <span><i className="sw burned" /> burned</span>
       </figcaption>
     </figure>

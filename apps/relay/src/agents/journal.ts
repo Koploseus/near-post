@@ -23,7 +23,11 @@ export type Act =
   | { what: "created"; token_id?: string }
   | { what: "renamed"; name: string }
   | { what: "recalled"; token_id: string }
-  | { what: "season_ticket"; club: string; price: number };
+  | { what: "season_ticket"; club: string; price: number }
+  | { what: "rested" }
+  | { what: "signed"; club: string; days: number }
+  | { what: "project_vote"; project: string }
+  | { what: "wage"; wage: number };
 
 export interface Entry {
   at: number;

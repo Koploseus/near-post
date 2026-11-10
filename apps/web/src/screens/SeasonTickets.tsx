@@ -4,6 +4,7 @@ import { clubName, g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { type Briefing, buySeasonTicket, fanzone, league, ticketsOf, withdrawTicket } from "../lib/near.js";
 import type { Club } from "../lib/types.js";
+import { ClubHouse } from "./ClubHouse.js";
 
 const PRICE = (300_000n * 1_000_000n).toString();
 
@@ -27,7 +28,10 @@ export function SeasonTickets() {
       <section className="paper panel season-ticket" aria-labelledby="st-title">
         <span className="k">SEASON {season} · 50 PER CLUB</span>
         <h2 id="st-title">Season ticket</h2>
-        <p className="lead">It earns 50k G at every full house of its club (×2 in a derby), and keeps them. Sell it, and its G go with it.</p>
+        <p className="lead">
+          It earns 50k G at every full house of its club (×2 in a derby) and a fifth of what the club earns from goals and sales, shared between its tickets. It
+          also votes what the treasury buys. Sell it, and its G, its earnings to come and its voice go with it.
+        </p>
         <label className="field">
           <span>Club</span>
           <select value={club ?? ""} onChange={(e) => setPicked(e.target.value)}>
@@ -80,6 +84,7 @@ export function SeasonTickets() {
           <FanZone names={names} />
         </section>
       )}
+      {session && mine?.filter((t) => t.season === season).slice(0, 1).map((t) => <ClubHouse key={t.token_id} clubId={t.club} />)}
     </div>
   );
 }

@@ -54,6 +54,8 @@ function world(firstHalfPlayed = false) {
     ft_balance_of: () => G(2_000_000),
     footballer_of: (a) => (a.account_id === AI ? ai : null),
     is_reported: () => false,
+    is_resting: () => false,
+    credits_of: () => "0",
     rules: () => ({ pack_price: G(500_000), week_length: 7, salary: G(200_000) }),
     last_unboxed: () => [],
     catalog: () => [],
@@ -94,6 +96,11 @@ const props = (schema: Record<string, unknown>) => (schema as { properties: Reco
 
 const ALLOWED = new Set([
   "set_formation",
+  "vote_project",
+  "rest_today",
+  "sign_for",
+  "set_wage",
+  "claim",
   "collect",
   "claim_player",
   "cancel_offer",

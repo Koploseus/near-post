@@ -80,7 +80,9 @@ pub struct Rules {
     pub full_house_mint_per_fan: U128,
     pub empty_stand_burn_bps: u32,
     pub relegation_burn_bps: u32,
-    /// Paid once per account, on its first club or follow.
+    /// Paid once to the account that founds a club (the league holds at
+    /// most `MAX_CLUBS`). Following a club or creating a footballer pays
+    /// nothing: G come from playing.
     pub signup_grant: U128,
     /// Paid on each of an account's first `welcome_visits` stadium check-ins.
     pub welcome_bonus: U128,
@@ -96,7 +98,9 @@ pub struct Rules {
     pub past_club_bps: u32,
     pub points_win: u32,
     pub points_draw: u32,
-    /// Paid from the club treasury to each person-played player who starts.
+    /// The wage per match a new club offers the people who sign for it,
+    /// until its captain changes it (`set_wage`). Wages come from the club's
+    /// treasury, and a new club has none.
     pub salary: U128,
     /// Share of a sale for the person who plays the player (NEP-199 payout).
     pub player_sale_bps: u32,
@@ -113,6 +117,62 @@ pub struct Rules {
     /// What each season ticket of a club earns at each of its full houses
     /// (times the derby multiplier), minted into the ticket.
     pub season_ticket_share: U128,
+    /// What a worn item adds to its skill in a match, by rarity (common to
+    /// legendary). Hair is looks only.
+    pub item_bonus: Vec<u8>,
+    /// The ola: fans who take their seat in the last `ola_window_ms` before
+    /// kick-off. When at least `ola_target_bps` of the full-house target did,
+    /// and the house is full, the full-house reward grows by `ola_bonus_bps`.
+    pub ola_window_ms: U64,
+    pub ola_target_bps: u32,
+    pub ola_bonus_bps: u32,
+    /// Match days the winner of a derby flies its colours in the loser's stand.
+    pub derby_flag_days: u32,
+    /// Paid once to a person, the first time the footballer he plays starts
+    /// a match. Nothing is paid for signing up.
+    pub debut_bonus: U128,
+    /// Trainings a new footballer gets without paying.
+    pub free_trainings: u8,
+    /// Energy, 0 to 100. A match and a training cost some; every match day
+    /// gives `energy_per_day` back, and a day without match or training
+    /// `energy_rest` more. Under `tired_below`, skills drop, down to
+    /// `tired_malus_pct` percent less at zero.
+    pub energy_match: u8,
+    pub energy_training: u8,
+    pub energy_per_day: u8,
+    pub energy_rest: u8,
+    pub tired_below: u8,
+    pub tired_malus_pct: u8,
+    /// How long a person can sign for, in match days.
+    pub contract_days: Vec<u32>,
+    /// The contract of a person who moves without having chosen one.
+    pub default_contract_days: u32,
+    /// A release clause is the wage times the contract's days times this.
+    pub clause_factor: u32,
+    /// Matches in a row a club can leave a player unpaid before he is free.
+    pub unpaid_to_free: u8,
+    /// The most a club can offer per match.
+    pub max_wage: U128,
+    /// The fans in a stand vote their star of the match: he gets this in his
+    /// wallet, in proportion to the stand (doubled in a derby).
+    pub fans_star_prize: U128,
+    /// Tifo patterns the fans in a stand choose from.
+    pub tifo_patterns: u8,
+    /// What a club's treasury can buy, voted each week by its players and
+    /// its season ticket holders: the stadium, the physio, the academy.
+    /// `project_cost` is the price of the first level (level n costs n
+    /// times that, burned), `project_max` the highest level.
+    pub project_cost: Vec<U128>,
+    pub project_max: Vec<u8>,
+    /// Per stadium level: more full-house reward for the club's fans.
+    pub stadium_bonus_bps: u32,
+    /// Per physio level: more energy back per match day for its people.
+    pub physio_energy: u8,
+    /// Per academy level: more of every skill for its academy players.
+    pub academy_bonus: u8,
+    /// Share of what a club earns (goals, sales) that goes to its season
+    /// tickets of the season, when it sold any.
+    pub ticket_revenue_bps: u32,
 }
 
 pub fn the_rules() -> Rules {
@@ -128,8 +188,8 @@ pub fn the_rules() -> Rules {
         empty_stand_burn_bps: 200,
         relegation_burn_bps: 1_000,
         signup_grant: U128(1_000_000 * ONE_G),
-        welcome_bonus: U128(1_000_000 * ONE_G),
-        welcome_visits: 4,
+        welcome_bonus: U128(0),
+        welcome_visits: 0,
         training_cost: U128(400_000 * ONE_G),
         pack_price: U128(500_000 * ONE_G),
         sale_tax_bps: 300,
@@ -138,7 +198,7 @@ pub fn the_rules() -> Rules {
         past_club_bps: 200,
         points_win: 3,
         points_draw: 1,
-        salary: U128(200_000 * ONE_G),
+        salary: U128(0),
         player_sale_bps: 500,
         week_length: 7,
         formations: FORMATIONS.to_vec(),
@@ -146,6 +206,36 @@ pub fn the_rules() -> Rules {
         season_ticket_price: U128(300_000 * ONE_G),
         season_tickets_per_club: 50,
         season_ticket_share: U128(50_000 * ONE_G),
+        item_bonus: wardrobe::ITEM_BONUS.to_vec(),
+        ola_window_ms: U64(5 * 60_000),
+        ola_target_bps: 5_000,
+        ola_bonus_bps: 5_000,
+        derby_flag_days: 7,
+        debut_bonus: U128(1_000_000 * ONE_G),
+        free_trainings: 1,
+        energy_match: 12,
+        energy_training: 15,
+        energy_per_day: 8,
+        energy_rest: 17,
+        tired_below: 50,
+        tired_malus_pct: 20,
+        contract_days: vec![7, 13, 26, 52, 78],
+        default_contract_days: 26,
+        clause_factor: 2,
+        unpaid_to_free: 3,
+        max_wage: U128(1_000_000 * ONE_G),
+        fans_star_prize: U128(100_000 * ONE_G),
+        tifo_patterns: 6,
+        project_cost: vec![
+            U128(2_000_000 * ONE_G),
+            U128(1_500_000 * ONE_G),
+            U128(2_000_000 * ONE_G),
+        ],
+        project_max: vec![5, 3, 5],
+        stadium_bonus_bps: 1_000,
+        physio_energy: 5,
+        academy_bonus: 1,
+        ticket_revenue_bps: 2_000,
     }
 }
 
@@ -153,6 +243,7 @@ pub fn the_rules() -> Rules {
 pub trait Goalars {
     fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>) -> U128;
     fn burn(&mut self, amount: U128, memo: Option<String>);
+    fn register(&mut self, account_id: AccountId);
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
@@ -168,6 +259,12 @@ pub trait PlayersContract {
         memo: Option<String>,
         balance: U128,
         max_len_payout: Option<u32>,
+    ) -> Payout;
+    fn league_transfer(
+        &mut self,
+        token_id: String,
+        receiver_id: AccountId,
+        balance: U128,
     ) -> Payout;
 }
 
@@ -194,6 +291,7 @@ pub trait SelfCallbacks {
     fn on_salary_paid(&mut self, token_id: String, amount: U128);
     fn on_sale(&mut self, offer_id: u64) -> String;
     fn on_collected(&mut self, account_id: AccountId, amount: U128);
+    fn on_ticket_revenue_sent(&mut self, season: u32, shares: Vec<(AccountId, U128)>);
 }
 
 /// What the players contract needs to mint one player (NEP-171 metadata).
@@ -241,6 +339,39 @@ pub struct Player {
     pub last_trained_day: u32,
     /// What he wears (items held by the league while he does).
     pub look: Look,
+    /// Energy (0 to 100) on `energy_day`, the last day he played or trained.
+    /// Views give it as of today. Academy players do not tire.
+    pub energy: u8,
+    pub energy_day: u32,
+    /// Trainings he can still take without paying.
+    pub free_trainings: u8,
+    /// His contract with the club that fields him (people only).
+    pub contract: Option<Contract>,
+}
+
+/// A person's contract with a club. The wage is paid at each match he
+/// starts; `unpaid_to_free` matches in a row without it, or its last day
+/// played, and his registration goes back to him by itself. Before that,
+/// another club takes him by paying the clause, if he signed for it.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Contract {
+    pub club: AccountId,
+    pub wage: U128,
+    pub from_day: u32,
+    /// The last match day of the contract.
+    pub until_day: u32,
+    pub clause: U128,
+    /// Matches in a row he started without being paid.
+    pub unpaid: u8,
+}
+
+/// A person's word to a club: the contract he takes when he gets there.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Signing {
+    pub club: AccountId,
+    pub days: u32,
 }
 
 /// `msg` of a payment to the league.
@@ -253,6 +384,8 @@ pub enum Order {
     Pack(PackOrder),
     /// A season ticket of a club: `{"season_ticket":"<club id>"}`.
     SeasonTicket(AccountId),
+    /// A club pays a player's release clause: `{"clause":"<token_id>"}`.
+    Clause(String),
 }
 
 #[near(serializers = [json])]
@@ -456,6 +589,15 @@ enum StorageKey {
     Unboxed,
     SeasonTicketsSold,
     Ledger,
+    Ola,
+    Debuted,
+    Resting,
+    Signings,
+    StarVotes,
+    StarVoted,
+    TifoVotes,
+    TifoVoted,
+    ProjectVotes,
 }
 
 #[near(serializers = [json, borsh])]
@@ -471,6 +613,15 @@ pub struct Club {
     pub treasury: U128,
     /// A derby is played when two clubs name each other.
     pub rival: Option<AccountId>,
+    /// The rival that won the last derby here, and the last match day its
+    /// colours fly in this club's stand.
+    pub flag: Option<Flag>,
+    /// What the club offers a person per match he starts.
+    pub wage: U128,
+    /// Levels the club's people voted and its treasury paid for.
+    pub stadium: u8,
+    pub physio: u8,
+    pub academy: u8,
     pub played: u32,
     pub won: u32,
     pub drawn: u32,
@@ -478,6 +629,38 @@ pub struct Club {
     pub goals_for: u32,
     pub goals_against: u32,
     pub points: u32,
+}
+
+/// What a club's people vote to do with its treasury this week.
+#[near(serializers = [json, borsh])]
+#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Project {
+    Stadium,
+    Physio,
+    Academy,
+    /// Keep the money.
+    Save,
+}
+
+impl Project {
+    /// Index in `project_cost` and `project_max`.
+    fn index(self) -> Option<usize> {
+        match self {
+            Project::Stadium => Some(0),
+            Project::Physio => Some(1),
+            Project::Academy => Some(2),
+            Project::Save => None,
+        }
+    }
+}
+
+/// A derby winner's colours in the loser's stand.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Flag {
+    pub by: AccountId,
+    pub until_day: u32,
 }
 
 #[near(serializers = [json])]
@@ -489,6 +672,13 @@ pub struct Stand {
     /// Fans needed for a full house (60% of fans, rounded up).
     pub target: u32,
     pub full_house: bool,
+    /// Fans who came in the ola window, and how many make the ola.
+    pub ola: u32,
+    pub ola_target: u32,
+    /// The fans' votes so far: star of the match (player, votes) and tifo
+    /// pattern (votes by pattern).
+    pub star_votes: Vec<(String, u32)>,
+    pub tifo_votes: Vec<u32>,
 }
 
 #[near(serializers = [json, borsh])]
@@ -562,6 +752,13 @@ pub struct StandResult {
     pub full_house: bool,
     /// 2 in a derby, else 1.
     pub multiplier: u32,
+    /// The fans did the ola: the full-house reward is `ola_bonus_bps` higher.
+    pub ola: bool,
+    /// The club's stadium level that day.
+    pub stadium: u8,
+    /// The player the fans voted star of the match, and the tifo they chose.
+    pub star: Option<String>,
+    pub tifo: Option<u8>,
     /// G burned from the treasury when the tifo was not complete.
     pub burned: U128,
 }
@@ -676,6 +873,22 @@ pub struct League {
     /// Every mint and burn of G the league causes, the last `LEDGER_SIZE`.
     ledger: LookupMap<u64, LedgerEntry>,
     ledger_next: u64,
+    /// (club, match day) -> fans who took their seat in the ola window.
+    ola: LookupMap<(AccountId, u32), u32>,
+    /// Footballers whose person got the debut bonus.
+    debuted: LookupSet<String>,
+    /// (player, match day): he sits this match day out.
+    resting: LookupSet<(String, u32)>,
+    /// Player -> the club and contract his person gave his word to.
+    signings: LookupMap<String, Signing>,
+    /// (club, match day) -> (player, votes) for the fans' star of the match.
+    star_votes: LookupMap<(AccountId, u32), Vec<(String, u32)>>,
+    star_voted: LookupSet<(u32, AccountId)>,
+    /// (club, match day) -> votes by tifo pattern.
+    tifo_votes: LookupMap<(AccountId, u32), Vec<u32>>,
+    tifo_voted: LookupSet<(u32, AccountId)>,
+    /// (club, week) -> (voter: a player's token or `ticket:<id>`, project).
+    project_votes: LookupMap<(AccountId, u32), Vec<(String, Project)>>,
 }
 
 /// How many ledger entries the league keeps (the oldest are overwritten).
@@ -717,6 +930,10 @@ const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const ACADEMY_GAS: Gas = Gas::from_tgas(60);
 const SALE_GAS: Gas = Gas::from_tgas(60);
 const TICKETS_GAS: Gas = Gas::from_tgas(20);
+const RELEASE_GAS: Gas = Gas::from_tgas(25);
+const REGISTER_GAS: Gas = Gas::from_tgas(5);
+/// People freed from their contract per division and match day.
+const MAX_RELEASES: usize = 3;
 const MAX_NAME: usize = 32;
 const MS: u64 = 1_000_000;
 const MINUTE_NS: u64 = 60_000 * MS;
@@ -804,6 +1021,15 @@ impl League {
             season_tickets_sold: LookupMap::new(StorageKey::SeasonTicketsSold),
             ledger: LookupMap::new(StorageKey::Ledger),
             ledger_next: 0,
+            ola: LookupMap::new(StorageKey::Ola),
+            debuted: LookupSet::new(StorageKey::Debuted),
+            resting: LookupSet::new(StorageKey::Resting),
+            signings: LookupMap::new(StorageKey::Signings),
+            star_votes: LookupMap::new(StorageKey::StarVotes),
+            star_voted: LookupSet::new(StorageKey::StarVoted),
+            tifo_votes: LookupMap::new(StorageKey::TifoVotes),
+            tifo_voted: LookupSet::new(StorageKey::TifoVoted),
+            project_votes: LookupMap::new(StorageKey::ProjectVotes),
         }
     }
 
@@ -863,6 +1089,28 @@ impl League {
         player.skills.raise(ticket.skill, gain);
         player.refresh();
         player.clone()
+    }
+
+    /// A training that costs no G: a new footballer has `free_trainings` of
+    /// them. The same ticket, drill and energy as a paid one.
+    pub fn train_free(&mut self, token_id: String, skill: Skill) {
+        let caller = env::predecessor_account_id();
+        let left = self
+            .players
+            .get(&token_id)
+            .map(|p| p.free_trainings)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        require!(left > 0, "no free training left");
+        self.open_ticket(
+            &caller,
+            TrainOrder {
+                token_id: token_id.clone(),
+                skill,
+            },
+        );
+        if let Some(p) = self.players.get_mut(&token_id) {
+            p.free_trainings = left - 1;
+        }
     }
 
     pub fn rules(&self) -> Rules {
@@ -927,6 +1175,11 @@ impl League {
                 best_streak: 0,
                 treasury: U128(0),
                 rival: None,
+                flag: None,
+                wage: the_rules().salary,
+                stadium: 0,
+                physio: 0,
+                academy: 0,
                 played: 0,
                 won: 0,
                 drawn: 0,
@@ -938,6 +1191,7 @@ impl League {
         );
         self.club_ids.push(manager.clone());
         self.welcome(&manager);
+        self.mint(manager.clone(), the_rules().signup_grant, "signup grant");
         self.sign_academy(&manager);
     }
 
@@ -1010,6 +1264,7 @@ impl League {
         );
         let day = self.match_day;
         self.reported.insert((token.clone(), day));
+        self.resting.remove(&(token.clone(), day));
         let mut slots = self
             .slots
             .get(&(club.clone(), day))
@@ -1040,6 +1295,96 @@ impl League {
         votes.push((token, strategy));
     }
 
+    /// The caller's footballer sits this match day out: nobody picks him,
+    /// and a day without match or training gives his energy back faster.
+    /// Until a minute before kick-off; taking a slot again cancels it.
+    pub fn rest_today(&mut self) {
+        let (token, club) = self.my_player_and_club();
+        require!(
+            env::block_timestamp().saturating_add(MINUTE_NS) <= self.kickoff_ns,
+            "the team sheet closed a minute before kick-off"
+        );
+        let day = self.match_day;
+        self.resting.insert((token.clone(), day));
+        if let Some(slots) = self.slots.get_mut(&(club, day)) {
+            for s in slots.iter_mut() {
+                if s.as_ref() == Some(&token) {
+                    *s = None;
+                }
+            }
+        }
+    }
+
+    pub fn is_resting(&self, token_id: String, match_day: u32) -> bool {
+        self.resting.contains(&(token_id, match_day))
+    }
+
+    // ---- Contracts ----
+
+    /// The captain (or the manager, without one) sets what the club offers a
+    /// person per match. Contracts already signed keep their wage.
+    pub fn set_wage(&mut self, club_id: AccountId, wage: U128) {
+        require!(
+            self.leads(&club_id, &env::predecessor_account_id()),
+            "only the captain (or the manager, without one) sets the wage"
+        );
+        require!(wage.0 <= the_rules().max_wage.0, "that is above max_wage");
+        if let Some(c) = self.clubs.get_mut(&club_id) {
+            c.wage = wage;
+        }
+    }
+
+    /// The caller gives his word to a club for a contract of `days` match
+    /// days (one of `contract_days`). A free agent then hands his
+    /// registration to the club (an NFT transfer) and the contract starts;
+    /// under contract elsewhere, that club can now pay his release clause.
+    pub fn sign_for(&mut self, club_id: AccountId, days: u32) {
+        let person = env::predecessor_account_id();
+        let token = self
+            .footballer_of
+            .get(&person)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("create your footballer first"));
+        require!(self.clubs.contains_key(&club_id), "no such club");
+        require!(
+            the_rules().contract_days.contains(&days),
+            "a contract lasts one of contract_days"
+        );
+        require!(
+            self.players.get(&token).map(|p| &p.owner) != Some(&club_id),
+            "you play there already"
+        );
+        self.signings.insert(
+            token,
+            Signing {
+                club: club_id,
+                days,
+            },
+        );
+    }
+
+    /// A contract without a wage binds nobody: the caller's footballer
+    /// leaves his club and his registration comes back to him.
+    pub fn leave_club(&mut self) {
+        let (token, _) = self.my_player_and_club();
+        let person = env::predecessor_account_id();
+        let player = self.players.get_mut(&token).unwrap();
+        require!(
+            player.contract.as_ref().is_none_or(|c| c.wage.0 == 0),
+            "your contract pays a wage: it runs to its end, or a club pays your clause"
+        );
+        player.contract = None;
+        ext_players::ext(self.players_id.clone())
+            .with_static_gas(RELEASE_GAS)
+            .league_transfer(token, person, U128(0))
+            .detach();
+    }
+
+    /// The club a person gave his word to, if any.
+    pub fn signing_of(&self, token_id: String) -> Option<Signing> {
+        self.signings.get(&token_id).cloned()
+    }
+
     /// The eleven for the next half: formation, strategy and every slot.
     pub fn lineup(&self, club_id: AccountId) -> Lineup {
         let formation = self.formation_of(&club_id);
@@ -1055,7 +1400,7 @@ impl League {
             roles: formation.roles().to_vec(),
             players: xi
                 .iter()
-                .map(|t| t.as_ref().and_then(|t| self.players.get(t).cloned()))
+                .map(|t| t.as_ref().and_then(|t| self.player_now(t)))
                 .collect(),
             chosen: (0..ELEVEN)
                 .map(|k| chosen_slots[k].is_some() && chosen_slots[k] == xi[k])
@@ -1107,7 +1452,7 @@ impl League {
     pub fn footballer_of(&self, account_id: AccountId) -> Option<Player> {
         self.footballer_of
             .get(&account_id)
-            .and_then(|t| self.players.get(t).cloned())
+            .and_then(|t| self.player_now(t))
     }
 
     /// The caller reports fit for his club's current match day. Without it, an
@@ -1196,7 +1541,7 @@ impl League {
         );
         let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
             env::panic_str(
-                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}} or {\"season_ticket\":\"<club>\"}",
+                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}}, {\"season_ticket\":\"<club>\"} or {\"clause\":\"<token_id>\"}",
             )
         });
         match order {
@@ -1206,6 +1551,7 @@ impl League {
             }
             Order::Pack(_) => self.open_pack_for(sender_id, amount),
             Order::SeasonTicket(club) => self.sell_season_ticket(sender_id, amount, club),
+            Order::Clause(token) => self.pay_clause(sender_id, amount, token),
         }
         PromiseOrValue::Value(U128(0))
     }
@@ -1287,12 +1633,39 @@ impl League {
         let price = offer.price.0;
         let shares = settle_payout(&payout, price, &env::current_account_id());
         let mut burn = 0u128;
+        // A club that sold season tickets shares what it earns with them.
+        let mut to_tickets: Vec<(AccountId, U128)> = Vec::new();
         for (account, amount) in shares {
             if account == env::current_account_id() {
                 burn += amount;
-            } else {
-                *self.owed.entry(account).or_insert(0) += amount;
+                continue;
             }
+            let cut = if self.clubs.contains_key(&account) {
+                ticket_cut(amount, self.tickets_sold(&account))
+            } else {
+                0
+            };
+            if cut > 0 {
+                to_tickets.push((account.clone(), U128(cut)));
+            }
+            *self.owed.entry(account).or_insert(0) += amount - cut;
+        }
+        let total: u128 = to_tickets.iter().map(|(_, v)| v.0).sum();
+        if total > 0 {
+            ext_goalars::ext(self.goalars_id.clone())
+                .with_static_gas(MINT_GAS)
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .ft_transfer(
+                    self.season_tickets_id.clone(),
+                    U128(total),
+                    Some(format!("season tickets, offer {offer_id}")),
+                )
+                .then(
+                    ext_self::ext(env::current_account_id())
+                        .with_static_gas(TICKETS_GAS.saturating_add(CALLBACK_GAS))
+                        .on_ticket_revenue_sent(self.season, to_tickets),
+                )
+                .detach();
         }
         if burn > 0 {
             self.log("sale_tax", None, burn, false);
@@ -1302,6 +1675,27 @@ impl League {
                 .detach();
         }
         "sold".into()
+    }
+
+    /// Credits the season tickets with their share of a sale once the G
+    /// reached their contract; if they did not, the clubs keep it.
+    #[private]
+    pub fn on_ticket_revenue_sent(
+        &mut self,
+        season: u32,
+        shares: Vec<(AccountId, U128)>,
+        #[callback_result] sent: Result<(), PromiseError>,
+    ) {
+        if sent.is_ok() {
+            ext_tickets::ext(self.season_tickets_id.clone())
+                .with_static_gas(TICKETS_GAS)
+                .credit(season, shares)
+                .detach();
+        } else {
+            for (club, amount) in shares {
+                *self.owed.entry(club).or_insert(0) += amount.0;
+            }
+        }
     }
 
     /// The buyer withdraws an open offer; its G become collectable again.
@@ -1373,11 +1767,7 @@ impl League {
     pub fn squad(&self, account_id: AccountId) -> Vec<Player> {
         self.squads
             .get(&account_id)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.players.get(id).cloned())
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.player_now(id)).collect())
             .unwrap_or_default()
     }
 
@@ -1386,12 +1776,12 @@ impl League {
         self.eleven_of(&club_id)
             .iter()
             .flatten()
-            .filter_map(|id| self.players.get(id).cloned())
+            .filter_map(|id| self.player_now(id))
             .collect()
     }
 
     pub fn get_player(&self, token_id: String) -> Option<Player> {
-        self.players.get(&token_id).cloned()
+        self.player_now(&token_id)
     }
 
     /// Called by the players contract after every transfer: the player moves
@@ -1406,10 +1796,36 @@ impl League {
             env::predecessor_account_id() == self.players_id,
             "only the players contract reports transfers"
         );
+        let Some(person) = self.players.get(&token_id).map(|p| p.controller.clone()) else {
+            return;
+        };
+        // A person who lands in a club is under contract there: the one he
+        // gave his word for, or the default one. Anywhere else, none.
+        let contract = match (person, self.clubs.get(&new_owner)) {
+            (Some(_), Some(club)) => {
+                let rules = the_rules();
+                let days = self
+                    .signings
+                    .get(&token_id)
+                    .filter(|s| s.club == new_owner)
+                    .map_or(rules.default_contract_days, |s| s.days);
+                Some(Contract {
+                    club: new_owner.clone(),
+                    wage: club.wage,
+                    from_day: self.match_day,
+                    until_day: self.match_day + days - 1,
+                    clause: U128(club.wage.0 * days as u128 * rules.clause_factor as u128),
+                    unpaid: 0,
+                })
+            }
+            _ => None,
+        };
+        self.signings.remove(&token_id);
         let Some(player) = self.players.get_mut(&token_id) else {
             return;
         };
         player.owner = new_owner.clone();
+        player.contract = contract;
         if let Some(squad) = self.squads.get_mut(&old_owner) {
             squad.retain(|t| t != &token_id);
         }
@@ -1643,6 +2059,10 @@ impl League {
         );
         *self.attendance.entry((club_id.clone(), day)).or_insert(0) += 1;
         let rules = the_rules();
+        let now = env::block_timestamp();
+        if now < self.kickoff_ns && now + rules.ola_window_ms.0 * MS >= self.kickoff_ns {
+            *self.ola.entry((club_id.clone(), day)).or_insert(0) += 1;
+        }
         if let Some(paid) = self.welcome.get_mut(&fan)
             && *paid < rules.welcome_visits
         {
@@ -1669,6 +2089,22 @@ impl League {
             fans: club.fans,
             target,
             full_house: club.fans > 0 && present >= target,
+            ola: self
+                .ola
+                .get(&(club_id.clone(), self.match_day))
+                .copied()
+                .unwrap_or(0),
+            ola_target: ola_target(club.fans),
+            star_votes: self
+                .star_votes
+                .get(&(club_id.clone(), self.match_day))
+                .cloned()
+                .unwrap_or_default(),
+            tifo_votes: self
+                .tifo_votes
+                .get(&(club_id.clone(), self.match_day))
+                .cloned()
+                .unwrap_or_default(),
         }
     }
 
@@ -1678,6 +2114,86 @@ impl League {
             .iter()
             .map(|id| (id.clone(), self.stand(id.clone())))
             .collect()
+    }
+
+    // ---- The fans' votes ----
+
+    /// A fan in the stand votes his club's star of the match, once a match
+    /// day, until the final whistle. The most voted gets `fans_star_prize`.
+    pub fn vote_star(&mut self, token_id: String) {
+        let (fan, club) = self.fan_in_stand();
+        require!(
+            self.players.get(&token_id).map(|p| &p.owner) == Some(&club),
+            "vote for a player of your club"
+        );
+        let day = self.match_day;
+        require!(
+            self.star_voted.insert((day, fan)),
+            "you voted your star already"
+        );
+        let tally = self.star_votes.entry((club, day)).or_default();
+        match tally.iter_mut().find(|(t, _)| t == &token_id) {
+            Some((_, n)) => *n += 1,
+            None => tally.push((token_id, 1)),
+        }
+    }
+
+    /// A fan in the stand votes the tifo his stand shows (0 to
+    /// `tifo_patterns` - 1), once a match day.
+    pub fn vote_tifo(&mut self, pattern: u8) {
+        let n = the_rules().tifo_patterns;
+        require!(pattern < n, "no such tifo pattern");
+        let (fan, club) = self.fan_in_stand();
+        let day = self.match_day;
+        require!(
+            self.tifo_voted.insert((day, fan)),
+            "you voted the tifo already"
+        );
+        let tally = self.tifo_votes.entry((club, day)).or_default();
+        tally.resize(n as usize, 0);
+        tally[pattern as usize] += 1;
+    }
+
+    // ---- The club's projects ----
+
+    /// A person who plays for a club votes what its treasury buys this week
+    /// (or to save it). He can change his vote until the week ends.
+    pub fn vote_project(&mut self, project: Project) {
+        let (token, club) = self.my_player_and_club();
+        self.cast_project(club, token, project);
+    }
+
+    /// A season ticket's vote, sent by the season tickets contract for its
+    /// owner: one voice per ticket of this season.
+    pub fn on_ticket_vote(
+        &mut self,
+        club: AccountId,
+        season: u32,
+        ticket: String,
+        project: Project,
+    ) {
+        require!(
+            env::predecessor_account_id() == self.season_tickets_id,
+            "only the season tickets contract reports a ticket's vote"
+        );
+        require!(season == self.season, "only this season's tickets vote");
+        require!(self.clubs.contains_key(&club), "no such club");
+        self.cast_project(club, format!("ticket:{ticket}"), project);
+    }
+
+    /// This week's votes of a club (or a past week's).
+    pub fn project_votes(&self, club_id: AccountId, week: Option<u32>) -> Vec<(String, Project)> {
+        let week = week.unwrap_or(self.week_of(self.match_day));
+        self.project_votes
+            .get(&(club_id, week))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// What the next level of a project costs a club, or None at the top.
+    pub fn project_price(&self, club_id: AccountId, project: Project) -> Option<U128> {
+        let club = self.clubs.get(&club_id)?;
+        next_level_price(club, project).map(U128)
     }
 
     // ---- Season tickets ----
@@ -1831,7 +2347,7 @@ impl League {
             .unwrap_or_else(|| env::panic_str("that match day is not played yet"));
         require!(result.full_house, "the tifo was not complete that day");
         require!(self.stand_claims.insert(key), "already claimed");
-        let amount = the_rules().full_house_mint_per_fan.0 * result.multiplier as u128;
+        let amount = full_house_reward(&the_rules(), result.multiplier, result.ola, result.stadium);
         *self.credits.entry(fan).or_insert(0) += amount;
         U128(amount)
     }
@@ -1921,21 +2437,41 @@ impl League {
             amount == the_rules().training_cost,
             "training costs exactly training_cost"
         );
+        let token = order.token_id.clone();
+        self.open_ticket(&sender_id, order);
+        self.log("training", Some(sender_id), amount.0, false);
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(BURN_GAS)
+            .burn(amount, Some(format!("training {token}")))
+            .detach();
+    }
+
+    /// Opens a training ticket for a player: once per match day, by the
+    /// person who plays him, and only with the energy for it.
+    fn open_ticket(&mut self, sender_id: &AccountId, order: TrainOrder) {
         let day = self.match_day;
         let token = order.token_id;
+        let cost = the_rules().energy_training;
         let player = self
             .players
-            .get_mut(&token)
+            .get(&token)
             .unwrap_or_else(|| env::panic_str("no such player"));
         require!(
-            player.beneficiary() == &sender_id,
+            player.beneficiary() == sender_id,
             "you cannot train that player"
         );
         require!(
             player.last_trained_day < day,
             "already trained this match day"
         );
-        player.last_trained_day = day;
+        require!(
+            self.energy_now(player) >= cost,
+            "too tired to train: rest a match day"
+        );
+        self.spend_energy(&token, cost);
+        if let Some(p) = self.players.get_mut(&token) {
+            p.last_trained_day = day;
+        }
         let id = self.next_ticket;
         self.next_ticket += 1;
         let seed = derive_seed(env::random_seed_array(), &[id, day as u64]);
@@ -1944,17 +2480,12 @@ impl League {
             token.clone(),
             Ticket {
                 id,
-                token_id: token.clone(),
+                token_id: token,
                 skill: order.skill,
                 match_day: day,
                 seed: hex,
             },
         );
-        self.log("training", Some(sender_id.clone()), amount.0, false);
-        ext_goalars::ext(self.goalars_id.clone())
-            .with_static_gas(BURN_GAS)
-            .burn(amount, Some(format!("training {token}")))
-            .detach();
     }
 
     /// A season ticket of `club`, paid `amount` G by `buyer`: the price goes
@@ -2099,6 +2630,9 @@ impl League {
         let mut treasury_mints: Vec<(AccountId, u128)> = Vec::new();
         let mut burn_total: u128 = 0;
         let mut derby_clubs: Vec<AccountId> = Vec::new();
+        let mut releases = MAX_RELEASES;
+        // The season tickets' share of what their clubs earn today.
+        let mut ticket_revenue: Vec<(AccountId, u128)> = Vec::new();
         // How full each club's stand is today, in basis points of its target.
         let fill: std::collections::HashMap<AccountId, u128> = ids
             .iter()
@@ -2176,8 +2710,10 @@ impl League {
                             p.skills.raise(Skill::Shooting, 1);
                             p.refresh();
                         }
-                        treasury_mints
-                            .push((scorer.clone(), k * rules.goal_club_share.0 * f / 10_000));
+                        let club_share = k * rules.goal_club_share.0 * f / 10_000;
+                        let to_tickets = ticket_cut(club_share, self.tickets_sold(scorer));
+                        treasury_mints.push((scorer.clone(), club_share - to_tickets));
+                        ticket_revenue.push((scorer.clone(), to_tickets));
                         self.log(
                             "goals",
                             Some(scorer.clone()),
@@ -2217,10 +2753,30 @@ impl League {
                     .collect();
                 xi.sort();
                 xi.dedup();
-                self.pay_salaries(&club, &xi, rules.salary.0);
+                self.pay_salaries(&club, &xi);
+                self.free_players(&club, &mut releases);
             }
             self.record_score(&m.home, hg, ag, &rules);
             self.record_score(&m.away, ag, hg, &rules);
+            if m.derby && hg != ag {
+                let (winner, loser) = if hg > ag {
+                    (m.home.clone(), m.away.clone())
+                } else {
+                    (m.away.clone(), m.home.clone())
+                };
+                if let Some(c) = self.clubs.get_mut(&loser) {
+                    c.flag = Some(Flag {
+                        by: winner.clone(),
+                        until_day: day + rules.derby_flag_days,
+                    });
+                }
+                // Winning the derby takes the rival's colours down at home.
+                if let Some(c) = self.clubs.get_mut(&winner)
+                    && c.flag.as_ref().is_some_and(|f| f.by == loser)
+                {
+                    c.flag = None;
+                }
+            }
         }
 
         for id in &ids {
@@ -2232,8 +2788,8 @@ impl League {
             burn_total += self.settle_stand(id, day, k, &rules);
         }
 
-        // A full house pays the club's season tickets of this season.
-        let mut ticket_mints: Vec<(AccountId, U128)> = Vec::new();
+        // A full house pays the club's season tickets of this season, on top
+        // of their share of the club's goals.
         for id in &ids {
             let Some(st) = self.stands.get(&(id.clone(), day)) else {
                 continue;
@@ -2246,9 +2802,14 @@ impl League {
             if st.full_house && sold > 0 {
                 let amount = rules.season_ticket_share.0 * st.multiplier as u128 * sold as u128;
                 self.log("season_tickets", Some(id.clone()), amount, true);
-                ticket_mints.push((id.clone(), U128(amount)));
+                ticket_revenue.push((id.clone(), amount));
             }
         }
+        let ticket_mints: Vec<(AccountId, U128)> = merge(ticket_revenue)
+            .into_iter()
+            .filter(|(_, v)| *v > 0)
+            .map(|(k, v)| (k, U128(v)))
+            .collect();
         let ticket_total: u128 = ticket_mints.iter().map(|(_, v)| v.0).sum();
         if ticket_total > 0 {
             ext_goalars::ext(self.goalars_id.clone())
@@ -2317,8 +2878,18 @@ impl League {
         if (next - 1).is_multiple_of(rules.week_length) {
             let week = self.week_of(next);
             let ids: Vec<AccountId> = self.club_ids.iter().cloned().collect();
+            let mut spent: u128 = 0;
             for id in &ids {
                 self.elect_captain(id, week);
+                if let Some(last) = week.checked_sub(1) {
+                    spent += self.decide_project(id, last);
+                }
+            }
+            if spent > 0 {
+                ext_goalars::ext(self.goalars_id.clone())
+                    .with_static_gas(BURN_GAS)
+                    .burn(U128(spent), Some(format!("club projects, week {week}")))
+                    .detach();
             }
         }
         if closing.is_multiple_of(SEASON_DAYS) {
@@ -2515,19 +3086,28 @@ impl League {
                 *slot = None;
             }
         }
+        let school = self.clubs.get(club).map_or(0, |c| c.academy) * the_rules().academy_bonus;
         let mut skills = [None; ELEVEN];
         let mut booked = [false; ELEVEN];
         let mut names: Vec<String> = Vec::with_capacity(ELEVEN);
         for (k, t) in xi.iter().enumerate() {
             match t.as_ref().and_then(|t| self.players.get(t)) {
                 Some(p) => {
-                    skills[k] = Some(p.skills);
+                    let base = if p.controller.is_none() {
+                        schooled(p.skills, school)
+                    } else {
+                        p.skills
+                    };
+                    skills[k] = Some(tired(
+                        wardrobe::dressed(base, &p.look, k == 0),
+                        self.energy_now(p),
+                    ));
                     booked[k] = first.booked.contains(&p.token_id);
                     names.push(p.token_id.clone());
                 }
                 None if first.off_slots.contains(&k) => names.push(String::new()),
                 None => {
-                    skills[k] = Some(BOT_SKILLS);
+                    skills[k] = Some(schooled(BOT_SKILLS, school));
                     names.push(BOT.to_string());
                 }
             }
@@ -2539,6 +3119,111 @@ impl League {
         side.booked = booked;
         side.takers = [slot_of(&named.free_kick), slot_of(&named.penalty)];
         (side, names, formation)
+    }
+
+    /// The caller, a fan who took his seat today, and his club.
+    fn fan_in_stand(&self) -> (AccountId, AccountId) {
+        let fan = env::predecessor_account_id();
+        let club = self
+            .fan_of
+            .get(&fan)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("follow a club first"));
+        require!(
+            self.present
+                .contains(&(club.clone(), self.match_day, fan.clone())),
+            "take your seat in the stand first"
+        );
+        (fan, club)
+    }
+
+    fn cast_project(&mut self, club: AccountId, voter: String, project: Project) {
+        let week = self.week_of(self.match_day);
+        let votes = self.project_votes.entry((club, week)).or_default();
+        votes.retain(|(v, _)| v != &voter);
+        votes.push((voter, project));
+    }
+
+    /// Counts a club's votes of `week`: the project with strictly the most
+    /// votes is bought if the treasury can pay it. Returns the G to burn.
+    fn decide_project(&mut self, club_id: &AccountId, week: u32) -> u128 {
+        let Some(votes) = self.project_votes.get(&(club_id.clone(), week)) else {
+            return 0;
+        };
+        let count = |p: Project| votes.iter().filter(|(_, v)| *v == p).count();
+        let all = [
+            Project::Stadium,
+            Project::Physio,
+            Project::Academy,
+            Project::Save,
+        ];
+        let best = all.iter().map(|p| count(*p)).max().unwrap_or(0);
+        let winners: Vec<Project> = all.into_iter().filter(|p| count(*p) == best).collect();
+        let [project] = winners[..] else {
+            return 0;
+        };
+        let Some(club) = self.clubs.get_mut(club_id) else {
+            return 0;
+        };
+        let Some(price) = next_level_price(club, project) else {
+            return 0;
+        };
+        if club.treasury.0 < price {
+            return 0;
+        }
+        club.treasury = U128(club.treasury.0 - price);
+        match project {
+            Project::Stadium => club.stadium += 1,
+            Project::Physio => club.physio += 1,
+            Project::Academy => club.academy += 1,
+            Project::Save => {}
+        }
+        self.log("project", Some(club_id.clone()), price, false);
+        price
+    }
+
+    /// Season tickets a club sold this season.
+    fn tickets_sold(&self, club: &AccountId) -> u32 {
+        self.season_tickets_sold
+            .get(&(club.clone(), self.season))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// A player's energy today: what he had on `energy_day`, plus what the
+    /// days since gave back. Academy players do not tire.
+    fn energy_now(&self, p: &Player) -> u8 {
+        if p.controller.is_none() {
+            return 100;
+        }
+        let rules = the_rules();
+        let days = self.match_day.saturating_sub(p.energy_day);
+        let physio = self.clubs.get(&p.owner).map_or(0, |c| c.physio) as u32;
+        let per_day = rules.energy_per_day as u32 + physio * rules.physio_energy as u32;
+        let gain = days * per_day + days.saturating_sub(1) * rules.energy_rest as u32;
+        (p.energy as u32 + gain).min(100) as u8
+    }
+
+    /// A player as he is today (his energy brought up to date).
+    fn player_now(&self, token_id: &String) -> Option<Player> {
+        let mut p = self.players.get(token_id).cloned()?;
+        p.energy = self.energy_now(&p);
+        p.energy_day = self.match_day;
+        Some(p)
+    }
+
+    /// Takes `cost` energy from a player today (not below zero).
+    fn spend_energy(&mut self, token_id: &String, cost: u8) {
+        let day = self.match_day;
+        let Some(now) = self.players.get(token_id).map(|p| self.energy_now(p)) else {
+            return;
+        };
+        if let Some(p) = self.players.get_mut(token_id)
+            && p.controller.is_some()
+        {
+            p.energy = now.saturating_sub(cost);
+            p.energy_day = day;
+        }
     }
 
     /// The caller's footballer and the club he plays for.
@@ -2591,6 +3276,11 @@ impl League {
         controller: Option<AccountId>,
     ) -> Player {
         let skills = Skills::roll(stream, position);
+        let free_trainings = if controller.is_some() {
+            the_rules().free_trainings
+        } else {
+            0
+        };
         let token_id = format!("p{}", self.next_player);
         self.next_player += 1;
         let player = Player {
@@ -2608,6 +3298,10 @@ impl League {
             salary: U128(0),
             last_trained_day: 0,
             look: Look::default(),
+            energy: 100,
+            energy_day: self.match_day,
+            free_trainings,
+            contract: None,
         };
         self.players.insert(token_id, player.clone());
         player
@@ -2703,29 +3397,127 @@ impl League {
 
     /// Pays each person-played starter his salary from the club treasury,
     /// while the treasury lasts. The G stay with the league until he claims.
-    fn pay_salaries(&mut self, club: &AccountId, xi: &[String], salary: u128) {
+    fn pay_salaries(&mut self, club: &AccountId, xi: &[String]) {
         for token in xi {
-            let human = self
-                .players
-                .get(token)
-                .map(|p| p.controller.is_some())
-                .unwrap_or(false);
-            if !human {
+            let Some(p) = self.players.get(token).filter(|p| p.controller.is_some()) else {
                 continue;
-            }
+            };
+            let wage = p.contract.as_ref().map_or(0, |c| c.wage.0);
+            self.spend_energy(token, the_rules().energy_match);
+            self.debut(token);
             let treasury = self.clubs.get(club).map(|c| c.treasury.0).unwrap_or(0);
-            if treasury < salary {
-                break; // the treasury is empty: no more salaries today
+            let paid = treasury >= wage;
+            if paid && wage > 0 {
+                self.take_from_treasury(club, wage);
             }
-            self.take_from_treasury(club, salary);
             if let Some(p) = self.players.get_mut(token) {
-                p.salary = U128(p.salary.0 + salary);
+                if paid {
+                    p.salary = U128(p.salary.0 + wage);
+                }
+                if let Some(c) = p.contract.as_mut() {
+                    c.unpaid = if paid { 0 } else { c.unpaid.saturating_add(1) };
+                }
             }
         }
     }
 
+    /// Frees the people of a club whose contract is over (its last day is
+    /// played) or went unpaid too long: their registration goes back to
+    /// them. At most `left` per call, so a match day always fits its
+    /// transaction; the others go the next day.
+    fn free_players(&mut self, club: &AccountId, left: &mut usize) {
+        let rules = the_rules();
+        let day = self.match_day;
+        let free: Vec<(String, AccountId)> = self
+            .squads
+            .get(club)
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|t| self.players.get(t))
+            .filter(|p| {
+                p.contract
+                    .as_ref()
+                    .is_some_and(|c| c.until_day <= day || c.unpaid >= rules.unpaid_to_free)
+            })
+            .filter_map(|p| Some((p.token_id.clone(), p.controller.clone()?)))
+            .take(*left)
+            .collect();
+        *left -= free.len();
+        for (token, person) in free {
+            if let Some(p) = self.players.get_mut(&token) {
+                p.contract = None;
+            }
+            ext_players::ext(self.players_id.clone())
+                .with_static_gas(RELEASE_GAS)
+                .league_transfer(token, person, U128(0))
+                .detach();
+        }
+    }
+
+    /// A club pays a player's release clause: the player goes to it and the
+    /// price is shared like any sale. His person must have signed for that
+    /// club first (`sign_for`).
+    fn pay_clause(&mut self, buyer: AccountId, amount: U128, token: String) {
+        require!(self.clubs.contains_key(&buyer), "only a club pays a clause");
+        let player = self
+            .players
+            .get(&token)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        let contract = player
+            .contract
+            .as_ref()
+            .unwrap_or_else(|| env::panic_str("he is under no contract"));
+        require!(contract.club != buyer, "he plays for you already");
+        require!(amount == contract.clause, "pay exactly his release clause");
+        require!(
+            self.signings.get(&token).is_some_and(|s| s.club == buyer),
+            "he has not signed for your club"
+        );
+        let id = self.next_offer;
+        self.next_offer += 1;
+        self.offers.insert(
+            id,
+            Offer {
+                id,
+                token_id: token.clone(),
+                buyer: buyer.clone(),
+                price: amount,
+                state: OfferState::Accepting,
+                match_day: self.match_day,
+            },
+        );
+        self.offers_by_token
+            .entry(token.clone())
+            .or_default()
+            .push(id);
+        ext_players::ext(self.players_id.clone())
+            .with_static_gas(SALE_GAS)
+            .league_transfer(token, buyer, amount)
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .on_sale(id),
+            )
+            .detach();
+    }
+
+    /// The first match a person's footballer starts pays that person the
+    /// debut bonus, once (a credit, minted on `claim`).
+    fn debut(&mut self, token: &String) {
+        let bonus = the_rules().debut_bonus.0;
+        let Some(person) = self.players.get(token).and_then(|p| p.controller.clone()) else {
+            return;
+        };
+        if bonus == 0 || !self.debuted.insert(token.clone()) {
+            return;
+        }
+        *self.credits.entry(person.clone()).or_insert(0) += bonus;
+        self.log("debut", Some(person), bonus, true);
+    }
+
     /// Whether a player can play today: everyone in the squad does, unless
-    /// suspended after a red card.
+    /// suspended after a red card or resting.
     /// Eleven and one more: past twelve, the weakest academy player leaves
     /// the squad (his NFT stays with the club), but never the last keeper.
     /// Twelve people and no academy player left: the newcomer sits on the bench.
@@ -2753,6 +3545,7 @@ impl League {
     fn available(&self, token: &String) -> bool {
         self.players.contains_key(token)
             && !self.suspended.contains(&(token.clone(), self.match_day))
+            && !self.resting.contains(&(token.clone(), self.match_day))
     }
 
     /// The eleven of a club for the next half, by slot of its formation:
@@ -2812,12 +3605,19 @@ impl League {
             return;
         }
         self.welcome.insert(account_id.clone(), 0);
-        self.mint(account_id.clone(), the_rules().signup_grant, "signup grant");
+        // So he can be paid later: a wage, a sale, a ticket's earnings.
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(REGISTER_GAS)
+            .register(account_id.clone())
+            .detach();
     }
 
     /// Schedules a mint on the goalars contract. The amount is nominal: goalars
     /// scales it under the 10B cap.
     fn mint(&mut self, account_id: AccountId, amount: U128, memo: &str) {
+        if amount.0 == 0 {
+            return;
+        }
         let kind = if memo.starts_with("signup") {
             "signup"
         } else {
@@ -2896,12 +3696,38 @@ impl League {
             .copied()
             .unwrap_or(0);
         let full_house = present >= full_house_target(fans);
+        let ola = full_house
+            && self.ola.get(&(club_id.clone(), day)).copied().unwrap_or(0) >= ola_target(fans);
+        let stadium = self.clubs.get(club_id).map_or(0, |c| c.stadium);
+        // The fans' star: most votes, then the lower token id.
+        let star = self
+            .star_votes
+            .get(&(club_id.clone(), day))
+            .and_then(|t| t.iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))))
+            .map(|(t, _)| t.clone());
+        if let Some(token) = &star {
+            let prize =
+                rules.fans_star_prize.0 * k as u128 * self.stand_fill_bps(club_id, day) / 10_000;
+            if let Some(p) = self.players.get_mut(token) {
+                p.wallet = U128(p.wallet.0 + prize);
+            }
+            self.log("fans_star", Some(club_id.clone()), prize, true);
+        }
+        // The tifo: most votes, then the lower pattern.
+        let tifo = self
+            .tifo_votes
+            .get(&(club_id.clone(), day))
+            .and_then(|v| {
+                let best = *v.iter().max()?;
+                v.iter().position(|n| *n == best && best > 0)
+            })
+            .map(|i| i as u8);
         let mut burned = 0;
         if full_house {
             self.log(
                 "full_house",
                 Some(club_id.clone()),
-                rules.full_house_mint_per_fan.0 * k as u128 * present as u128,
+                full_house_reward(rules, k, ola, stadium) * present as u128,
                 true,
             );
             if let Some(c) = self.clubs.get_mut(club_id) {
@@ -2924,6 +3750,10 @@ impl League {
                 fans,
                 full_house,
                 multiplier: k,
+                ola,
+                stadium,
+                star,
+                tifo,
                 burned: U128(burned),
             },
         );
@@ -3132,6 +3962,81 @@ fn star(m: &MatchResult, players: &LookupMap<String, Player>) -> Option<Star> {
                 rating: r,
             })
         })
+}
+
+/// A tired player's skills: untouched from `tired_below` up, then lower in
+/// proportion, down to `tired_malus_pct` percent less at zero energy.
+pub fn tired(mut s: Skills, energy: u8) -> Skills {
+    let rules = the_rules();
+    if energy >= rules.tired_below {
+        return s;
+    }
+    let lost = rules.tired_malus_pct as u32 * (rules.tired_below - energy) as u32
+        / rules.tired_below as u32;
+    let cut = |v: &mut u8| *v = ((*v as u32 * (100 - lost) / 100).max(1)) as u8;
+    for v in [
+        &mut s.pace,
+        &mut s.shooting,
+        &mut s.passing,
+        &mut s.dribbling,
+        &mut s.defending,
+        &mut s.physical,
+    ] {
+        cut(v);
+    }
+    s
+}
+
+/// Fans in the ola window that make the ola: a share of the full-house
+/// target, rounded up, at least one.
+pub fn ola_target(fans: u32) -> u32 {
+    let bps = the_rules().ola_target_bps as u64;
+    ((full_house_target(fans) as u64 * bps).div_ceil(10_000)).max(1) as u32
+}
+
+/// The season tickets' part of what a club earns: `ticket_revenue_bps` of
+/// it when the club sold tickets this season, nothing otherwise.
+pub fn ticket_cut(earned: u128, tickets_sold: u32) -> u128 {
+    if tickets_sold == 0 {
+        return 0;
+    }
+    earned * the_rules().ticket_revenue_bps as u128 / 10_000
+}
+
+/// The price of a club's next level of a project (level n costs n times
+/// the first), or None for `Save` and at the top level.
+pub fn next_level_price(club: &Club, project: Project) -> Option<u128> {
+    let rules = the_rules();
+    let i = project.index()?;
+    let level = [club.stadium, club.physio, club.academy][i];
+    (level < rules.project_max[i]).then(|| rules.project_cost[i].0 * (level as u128 + 1))
+}
+
+/// An academy player's skills in a club whose academy adds `bonus` to each.
+pub fn schooled(mut s: Skills, bonus: u8) -> Skills {
+    for skill in [
+        Skill::Pace,
+        Skill::Shooting,
+        Skill::Passing,
+        Skill::Dribbling,
+        Skill::Defending,
+        Skill::Physical,
+    ] {
+        s.raise(skill, bonus);
+    }
+    s
+}
+
+/// What a fan present in a full house gets: doubled in a derby, more with
+/// each stadium level, and `ola_bonus_bps` more after an ola.
+pub fn full_house_reward(rules: &Rules, multiplier: u32, ola: bool, stadium: u8) -> u128 {
+    let base = rules.full_house_mint_per_fan.0 * multiplier as u128;
+    let base = base + base * stadium as u128 * rules.stadium_bonus_bps as u128 / 10_000;
+    if ola {
+        base + base * rules.ola_bonus_bps as u128 / 10_000
+    } else {
+        base
+    }
 }
 
 pub fn full_house_target(fans: u32) -> u32 {

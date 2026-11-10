@@ -13,15 +13,15 @@ export interface DayBreath {
   fill: number;
   fullHouses: number;
   stands: number;
-  /** Minted because people showed up: full houses, goals (scaled by the stand), season tickets. */
+  /** Minted because people showed up: full houses, goals (scaled by the stand), season tickets, the fans' star. */
   minted: bigint;
-  /** Signup grant and welcome bonuses (check-ins). */
+  /** A club's founding grant and people's debut bonuses. */
   onboarding: bigint;
   burned: bigint;
 }
 
-const PRESENCE = new Set(["full_house", "goals", "season_tickets"]);
-const ONBOARDING = new Set(["signup", "welcome"]);
+const PRESENCE = new Set(["full_house", "goals", "season_tickets", "fans_star"]);
+const ONBOARDING = new Set(["signup", "welcome", "debut"]);
 
 /** A stand's full-house target: `stadium_target_bps` of its fans, rounded up (league `full_house_target`). */
 export const fullHouseTarget = (fans: number, targetBps = 6_000) => Math.ceil((fans * targetBps) / 10_000);

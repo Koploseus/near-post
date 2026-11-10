@@ -250,6 +250,31 @@ impl Players {
         self.after_transfer(&token_id, previous, receiver_id);
         payout
     }
+
+    /// The league moves a player by its own rules, and only by them: back to
+    /// the person who plays him when his contract ends or goes unpaid, or to
+    /// the club that paid his release clause. The league has no owner and no
+    /// other way to call this. Returns the NEP-199 payout of `balance`.
+    pub fn league_transfer(
+        &mut self,
+        token_id: TokenId,
+        receiver_id: AccountId,
+        balance: U128,
+    ) -> Payout {
+        self.assert_league();
+        let payout = self.nft_payout(token_id.clone(), balance, None);
+        let previous = self.owner_of(&token_id);
+        require!(previous != receiver_id, "he is there already");
+        self.tokens.internal_transfer(
+            &previous,
+            &receiver_id,
+            &token_id,
+            None,
+            Some("league rules".into()),
+        );
+        self.after_transfer(&token_id, previous, receiver_id);
+        payout
+    }
 }
 
 impl Players {
@@ -536,6 +561,33 @@ mod tests {
             career.past_clubs,
             vec![acc("b.testnet"), acc("c.testnet"), acc("d.testnet")]
         );
+    }
+
+    #[test]
+    fn the_league_moves_a_player_by_its_rules_and_the_payout_follows() {
+        let mut p = setup();
+        as_caller("league.testnet");
+        let out = p
+            .league_transfer("duval".into(), acc("cite-phare.testnet"), U128(1_000))
+            .payout;
+        assert_eq!(out[&acc("league.testnet")], U128(30));
+        assert_eq!(out[&acc("rive-nord.testnet")], U128(970));
+        assert_eq!(
+            p.nft_token("duval".into()).unwrap().owner_id,
+            acc("cite-phare.testnet")
+        );
+        assert_eq!(
+            p.career("duval".into()).unwrap().past_clubs,
+            vec![acc("rive-nord.testnet")]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "only the league creates players")]
+    fn nobody_else_moves_a_player_that_way() {
+        let mut p = setup();
+        as_caller("attacker.testnet");
+        p.league_transfer("duval".into(), acc("attacker.testnet"), U128(0));
     }
 
     #[test]

@@ -37,6 +37,11 @@ pub trait Goalars {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
+#[ext_contract(ext_league)]
+pub trait League {
+    fn on_ticket_vote(&mut self, club: AccountId, season: u32, ticket: TokenId, project: String);
+}
+
 #[ext_contract(ext_self)]
 pub trait SelfCallbacks {
     fn on_withdrawn(&mut self, token_id: TokenId, amount: U128);
@@ -44,6 +49,7 @@ pub trait SelfCallbacks {
 
 const TRANSFER_GAS: Gas = Gas::from_tgas(10);
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
+const VOTE_GAS: Gas = Gas::from_tgas(15);
 
 #[near]
 #[derive(BorshStorageKey)]
@@ -217,6 +223,23 @@ impl Tickets {
         {
             i.withdrawn -= amount.0;
         }
+    }
+
+    /// The ticket's owner votes what the club's treasury buys this week
+    /// (`stadium`, `physio`, `academy` or `save`): one voice per ticket, with
+    /// the club's players. The league counts it, for tickets of the season.
+    pub fn vote_project(&mut self, token_id: TokenId, project: String) -> Promise {
+        require!(
+            env::predecessor_account_id() == self.owner_of(&token_id),
+            "only the ticket's owner votes"
+        );
+        let info = self
+            .info
+            .get(&token_id)
+            .unwrap_or_else(|| env::panic_str("Token not found"));
+        ext_league::ext(self.league_id.clone())
+            .with_static_gas(VOTE_GAS)
+            .on_ticket_vote(info.club.clone(), info.season, token_id, project)
     }
 
     pub fn ticket(&self, token_id: TokenId) -> Option<SeasonTicket> {

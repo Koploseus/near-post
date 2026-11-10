@@ -559,6 +559,29 @@ export function fallbackSpend(s: SpendSituation): { pack: boolean; season_ticket
   return { pack: left >= s.pack_price + SAVINGS[s.character], ...(s.season_ticket_price !== undefined ? { season_ticket: ticket } : {}) };
 }
 
+/** How long each character signs for, in match days (one of the league's `contract_days`). */
+export const CONTRACT_DAYS: Record<Character, number> = { loyal: 78, leader: 52, showman: 26, mercenary: 13 };
+
+/** Under this energy a footballer sits the match day out. A showman plays on tired legs. */
+export const REST_BELOW: Record<Character, number> = { leader: 40, showman: 25, loyal: 40, mercenary: 45 };
+
+export type Project = "stadium" | "physio" | "academy" | "save";
+
+/** What a footballer votes his club's treasury should buy this week. */
+export function fallbackProject(character: Character, energy: number): Project {
+  if (energy < 60) return "physio";
+  return character === "leader" ? "stadium" : character === "loyal" ? "academy" : character === "showman" ? "stadium" : "save";
+}
+
+/**
+ * The wage a club can offer per match (whole G): what its treasury pays its
+ * people for thirty matches, in steps of 10k, never above the league's cap.
+ */
+export function wageFor(treasury: number, people: number, max: number): number {
+  const w = Math.floor(treasury / (Math.max(1, people) * 30) / 10_000) * 10_000;
+  return Math.max(0, Math.min(max, w));
+}
+
 /** A free agent's choices: offers he received, and clubs he can join for free. */
 export interface ClubChoice {
   /** `offer-<id>` for an offer, `join-<alias>` to join for free. */

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   COACHES,
+  CONTRACT_DAYS,
+  REST_BELOW,
+  fallbackProject,
+  wageFor,
   FORMATIONS,
   type Market,
   ONE_G,
@@ -180,5 +184,25 @@ describe("coach rules", () => {
     expect(cleanQuote("We go <b>forward</b>\nhttps://evil.example now!")).toBe("We go b forward b now!");
     expect(cleanQuote("x".repeat(400))).toHaveLength(160);
     expect(cleanQuote(42)).toBe("");
+  });
+});
+
+describe("v9: contracts, energy, projects", () => {
+  it("offers the wage a treasury can pay for thirty matches, in steps of 10k", () => {
+    expect(wageFor(0, 3, 1_000_000)).toBe(0);
+    expect(wageFor(9_000_000, 3, 1_000_000)).toBe(100_000);
+    expect(wageFor(9_500_000, 3, 1_000_000)).toBe(100_000);
+    expect(wageFor(900_000_000, 1, 1_000_000)).toBe(1_000_000);
+    expect(wageFor(3_000_000, 0, 1_000_000)).toBe(100_000);
+  });
+  it("a tired footballer wants a physio, the others vote by character", () => {
+    expect(fallbackProject("leader", 40)).toBe("physio");
+    expect(fallbackProject("leader", 90)).toBe("stadium");
+    expect(fallbackProject("loyal", 90)).toBe("academy");
+    expect(fallbackProject("mercenary", 90)).toBe("save");
+  });
+  it("signs for a length the league allows, and rests before he is spent", () => {
+    for (const d of Object.values(CONTRACT_DAYS)) expect([7, 13, 26, 52, 78]).toContain(d);
+    expect(REST_BELOW.showman).toBeLessThan(REST_BELOW.loyal);
   });
 });

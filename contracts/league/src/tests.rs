@@ -97,10 +97,10 @@ fn due(l: &League) -> u64 {
 fn rules_match_the_design() {
     let r = league().rules();
     assert_eq!(r.goal_scorer_share.0 + r.goal_club_share.0, r.goal_mint.0);
-    assert_eq!(
-        r.signup_grant.0 + r.welcome_visits as u128 * r.welcome_bonus.0,
-        5_000_000 * ONE_G
-    );
+    // Only founding a club pays a grant; following and showing up do not.
+    assert_eq!(r.signup_grant, U128(1_000_000 * ONE_G));
+    assert_eq!(r.welcome_visits as u128 * r.welcome_bonus.0, 0);
+    assert_eq!(r.debut_bonus, U128(1_000_000 * ONE_G));
     assert_eq!(r.max_supply, U128(10_000_000_000 * ONE_G));
     assert_eq!(r.stadium_target_bps, 6_000);
 }
@@ -339,19 +339,29 @@ fn switching_club_moves_the_fan() {
 }
 
 #[test]
-fn welcome_bonus_is_paid_on_the_first_four_visits_only() {
+fn following_and_coming_to_the_stand_mint_nothing_by_themselves() {
     let mut l = league();
     as_caller("koplo.testnet");
     l.create_club("Rive Nord".into());
     as_caller("fan.testnet");
-    assert_eq!(l.welcome_status(acc("fan.testnet")), None);
     l.follow(acc("koplo.testnet"));
-    assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
     for day in 1..=6 {
         l.match_day = day;
         l.check_in();
     }
-    assert_eq!(l.welcome_status(acc("fan.testnet")), Some(4));
+    assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
+    assert_eq!(l.credits_of(acc("fan.testnet")), U128(0));
+    // The only mint is the grant of the club's founder.
+    let ledger = l.ledger(None);
+    assert_eq!(ledger.len(), 1);
+    assert_eq!(
+        (ledger[0].kind.as_str(), ledger[0].who.clone()),
+        ("signup", Some(acc("koplo.testnet")))
+    );
+    // A person who creates a footballer gets nothing either.
+    as_caller("player.testnet");
+    l.create_footballer("Kai Stone".into(), Position::Fw);
+    assert_eq!(l.ledger(None).len(), 1);
 }
 
 #[test]
@@ -894,9 +904,10 @@ fn only_the_captain_names_the_takers() {
 #[test]
 fn starters_who_are_people_get_a_salary_from_the_treasury() {
     let mut l = league_with(2, 0);
+    let salary = 200_000 * ONE_G;
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().wage = U128(salary);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
     l.players.get_mut(&token).unwrap().skills = all_99();
-    let salary = the_rules().salary.0;
     l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(salary + 5);
     as_caller("koplo.testnet");
     l.report_for_match();
@@ -1299,6 +1310,7 @@ impl Player {
     /// This player after a training opened on `day` (no points yet).
     fn with_trained(mut self, day: u32) -> Self {
         self.last_trained_day = day;
+        self.energy -= the_rules().energy_training;
         self
     }
 }
@@ -1747,7 +1759,6 @@ fn a_full_house_credits_the_season_tickets_and_the_ledger_says_so() {
             .iter()
             .any(|e| e.kind == "empty_stand" && e.who == Some(acc("c1.testnet")) && !e.mint)
     );
-    assert!(ledger.iter().any(|e| e.kind == "signup"));
     // Newest first.
     assert!(ledger.windows(2).all(|w| w[0].id > w[1].id));
 }
@@ -1789,4 +1800,670 @@ fn a_goal_pays_in_proportion_to_the_scoring_clubs_stand() {
     }
     assert_eq!(l.stand_fill_bps(&acc("c0.testnet"), l.match_day), 5_000);
     assert_eq!(r.goal_scorer_share.0 * 5_000 / 10_000, 210_000 * ONE_G);
+}
+
+// ---- v9: items that count, the ola, the derby flag ----
+
+#[test]
+fn what_a_player_wears_adds_to_his_skills_on_the_pitch() {
+    let base = Skills {
+        pace: 50,
+        shooting: 50,
+        passing: 50,
+        dribbling: 50,
+        defending: 50,
+        physical: 98,
+    };
+    let look = Look {
+        hair: Some("hair.fire".into()),
+        boots: Some("boots.gold".into()),
+        band: Some("band.striped".into()),
+        socks: Some("socks.red".into()),
+        pads: Some("pads.carbon".into()),
+        gloves: Some("gloves.gold".into()),
+        wrist: Some("wrist.white".into()),
+        tape: Some("tape.flame".into()),
+    };
+    // Outfield: legendary boots +3 pace, an epic headband +2 physical (never
+    // past 99), rare socks +1 dribbling, a common wristband nothing, legendary
+    // tape +3 shooting, epic pads +2 defending. Gloves do nothing out there.
+    let out = wardrobe::dressed(base, &look, false);
+    assert_eq!(
+        (
+            out.pace,
+            out.shooting,
+            out.passing,
+            out.dribbling,
+            out.defending,
+            out.physical
+        ),
+        (53, 53, 50, 51, 52, 99)
+    );
+    // In goal the gloves count, not the pads.
+    assert_eq!(wardrobe::dressed(base, &look, true).defending, 53);
+    // Hair is looks only.
+    let hair = Look {
+        hair: Some("hair.fire".into()),
+        ..Look::default()
+    };
+    assert_eq!(wardrobe::dressed(base, &hair, false), base);
+}
+
+#[test]
+fn the_ola_needs_half_the_target_in_the_last_five_minutes() {
+    // 10 fans: a full house is 6, the ola is 3 of them in the window.
+    assert_eq!(ola_target(10), 3);
+    let mut l = league_with(2, 10);
+    let kickoff = l.kickoff_ns;
+    // Three come early: in the stand, not in the ola.
+    for f in 0..3 {
+        at(&format!("f0-{f}.testnet"), kickoff - 6 * 60_000 * MS, 1);
+        l.check_in();
+    }
+    // Three more in the last five minutes.
+    for f in 3..6 {
+        at(&format!("f0-{f}.testnet"), kickoff - 60_000 * MS, 1);
+        l.check_in();
+    }
+    let s = l.stand(acc("c0.testnet"));
+    assert_eq!(
+        (s.present, s.ola, s.ola_target, s.full_house),
+        (6, 3, 3, true)
+    );
+    // The other club fills its stand early: full, no ola.
+    for f in 0..6 {
+        at(&format!("f1-{f}.testnet"), kickoff - 8 * 60_000 * MS, 1);
+        l.check_in();
+    }
+    kick_off(&mut l, 1);
+    assert!(l.stand_result(acc("c0.testnet"), 1).unwrap().ola);
+    assert!(!l.stand_result(acc("c1.testnet"), 1).unwrap().ola);
+    as_caller("f0-0.testnet");
+    assert_eq!(l.claim_stand(acc("c0.testnet"), 1), U128(150_000 * ONE_G));
+    as_caller("f1-0.testnet");
+    assert_eq!(l.claim_stand(acc("c1.testnet"), 1), U128(100_000 * ONE_G));
+}
+
+#[test]
+fn an_ola_without_a_full_house_pays_nothing_more() {
+    let mut l = league_with(2, 10);
+    let kickoff = l.kickoff_ns;
+    for f in 0..3 {
+        at(&format!("f0-{f}.testnet"), kickoff - 60_000 * MS, 1);
+        l.check_in();
+    }
+    kick_off(&mut l, 1);
+    let s = l.stand_result(acc("c0.testnet"), 1).unwrap();
+    assert_eq!((s.full_house, s.ola), (false, false));
+}
+
+#[test]
+fn the_winner_of_a_derby_flies_its_colours_at_the_loser_for_a_week() {
+    let mut l = league_with(2, 0);
+    as_caller("c0.testnet");
+    l.set_rival(Some(acc("c1.testnet")));
+    as_caller("c1.testnet");
+    l.set_rival(Some(acc("c0.testnet")));
+    // Play derbies until one is won.
+    let mut day = 0;
+    let (winner, loser) = loop {
+        day += 1;
+        let m = kick_off(&mut l, day as u8).remove(0);
+        assert!(m.derby);
+        if m.home_goals != m.away_goals {
+            break if m.home_goals > m.away_goals {
+                (m.home, m.away)
+            } else {
+                (m.away, m.home)
+            };
+        }
+        assert!(day < 30, "no derby was won in 30 match days");
+    };
+    let flag = l.get_club(loser.clone()).unwrap().flag.unwrap();
+    assert_eq!((flag.by, flag.until_day), (winner.clone(), day + 7));
+    assert_eq!(l.get_club(winner).unwrap().flag, None);
+}
+
+// ---- v9: G come from playing, energy ----
+
+#[test]
+fn a_persons_first_match_pays_the_debut_bonus_once() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    assert_eq!(l.credits_of(acc("koplo.testnet")), U128(0));
+    kick_off(&mut l, 1);
+    assert_eq!(l.credits_of(acc("koplo.testnet")), the_rules().debut_bonus);
+    assert!(l.ledger(None).iter().any(|e| e.kind == "debut" && e.mint));
+    kick_off(&mut l, 2);
+    assert_eq!(l.credits_of(acc("koplo.testnet")), the_rules().debut_bonus);
+    assert!(l.get_player(token).unwrap().goals < 99);
+}
+
+#[test]
+fn a_new_footballer_trains_once_for_free() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.train_free(token.clone(), Skill::Passing);
+    let t = l.training_ticket(token.clone()).unwrap();
+    assert_eq!((t.skill, t.match_day), (Skill::Passing, 1));
+    let p = l.get_player(token).unwrap();
+    assert_eq!((p.free_trainings, p.energy), (0, 85));
+}
+
+#[test]
+#[should_panic(expected = "no free training left")]
+fn the_free_training_is_used_once() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.train_free(token.clone(), Skill::Passing);
+    l.match_day = 2;
+    l.train_free(token, Skill::Passing);
+}
+
+#[test]
+#[should_panic(expected = "you cannot train that player")]
+fn nobody_takes_someone_elses_free_training() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("thief.testnet");
+    l.train_free(token, Skill::Passing);
+}
+
+#[test]
+fn playing_every_day_tires_and_a_day_off_gives_energy_back() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let energy = |l: &League| l.get_player(token.clone()).unwrap().energy;
+    assert_eq!(energy(&l), 100);
+    // Match day 1: 100 - 12. Seen on day 2, a night later: + 8.
+    kick_off(&mut l, 1);
+    assert_eq!(energy(&l), 96);
+    // He plays days 2 to 6: 4 less each day.
+    for day in 2..=6 {
+        kick_off(&mut l, day);
+    }
+    assert_eq!(energy(&l), 76);
+    // He rests day 7: seen on day 8, 68 (after day 6) + 2 * 8 + 17.
+    as_caller("koplo.testnet");
+    l.rest_today();
+    assert!(l.is_resting(token.clone(), 7));
+    let m = kick_off(&mut l, 7);
+    assert!(
+        m.iter()
+            .all(|m| m.elevens.iter().all(|xi| !xi.contains(&token)))
+    );
+    assert_eq!(energy(&l), 100);
+    // Academy players do not tire.
+    let kid = l
+        .squad(acc("c0.testnet"))
+        .into_iter()
+        .find(|p| p.controller.is_none())
+        .unwrap();
+    assert_eq!(kid.energy, 100);
+}
+
+#[test]
+fn a_tired_player_is_worse_on_the_pitch() {
+    let s = all_99();
+    assert_eq!(tired(s, 100), s);
+    assert_eq!(tired(s, 50), s);
+    // Half way down: 10% less. At zero: 20% less.
+    assert_eq!(tired(s, 25).pace, 89);
+    assert_eq!(tired(s, 0).shooting, 79);
+}
+
+#[test]
+#[should_panic(expected = "too tired to train")]
+fn a_player_without_energy_cannot_train() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().energy = 10;
+    as_caller("koplo.testnet");
+    l.train_free(token, Skill::Pace);
+}
+
+#[test]
+fn taking_a_slot_ends_the_rest() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.rest_today();
+    l.take_slot(9);
+    assert!(!l.is_resting(token.clone(), 1));
+    assert!(kick_off(&mut l, 1)[0].elevens[0].contains(&token));
+}
+
+// ---- v9: contracts ----
+
+const WAGE: u128 = 100_000 * ONE_G;
+
+/// A club that offers `WAGE` and can pay it for a long time.
+fn rich_club(l: &mut League, club: &str) {
+    let c = l.clubs.get_mut(&acc(club)).unwrap();
+    c.wage = U128(WAGE);
+    c.treasury = U128(1_000 * WAGE);
+}
+
+#[test]
+fn a_person_who_signs_gets_the_contract_he_chose() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    as_caller("koplo.testnet");
+    let token = l.create_footballer("Koplo".into(), Position::Fw).token_id;
+    l.sign_for(acc("c0.testnet"), 52);
+    assert_eq!(l.signing_of(token.clone()).unwrap().days, 52);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    let c = l.get_player(token.clone()).unwrap().contract.unwrap();
+    assert_eq!(
+        (c.club, c.wage, c.from_day, c.until_day, c.clause, c.unpaid),
+        (acc("c0.testnet"), U128(WAGE), 1, 52, U128(WAGE * 52 * 2), 0)
+    );
+    assert_eq!(l.signing_of(token), None);
+}
+
+#[test]
+fn without_a_word_the_contract_is_a_season() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let c = l.get_player(token).unwrap().contract.unwrap();
+    assert_eq!((c.until_day, c.wage), (26, U128(0)));
+    // Academy players have no contract.
+    assert!(
+        l.squad(acc("c0.testnet"))
+            .iter()
+            .filter(|p| p.controller.is_none())
+            .all(|p| p.contract.is_none())
+    );
+}
+
+#[test]
+#[should_panic(expected = "a contract lasts one of contract_days")]
+fn a_contract_has_a_listed_length() {
+    let mut l = league_with(1, 0);
+    as_caller("koplo.testnet");
+    l.create_footballer("Koplo".into(), Position::Fw);
+    l.sign_for(acc("c0.testnet"), 10);
+}
+
+#[test]
+fn the_wage_is_paid_each_match_and_three_unpaid_in_a_row_free_him() {
+    let mut l = league_with(2, 0);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().wage = U128(WAGE);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(WAGE);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    // Paid once, then the treasury is empty.
+    kick_off(&mut l, 1);
+    let p = l.get_player(token.clone()).unwrap();
+    assert_eq!((p.salary, p.contract.unwrap().unpaid), (U128(WAGE), 0));
+    kick_off(&mut l, 2);
+    kick_off(&mut l, 3);
+    assert_eq!(
+        l.get_player(token.clone())
+            .unwrap()
+            .contract
+            .unwrap()
+            .unpaid,
+        2
+    );
+    // The third unpaid match ends the contract: the league sends him home.
+    kick_off(&mut l, 4);
+    assert_eq!(l.get_player(token.clone()).unwrap().contract, None);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("c0.testnet"), acc("koplo.testnet"));
+    let p = l.get_player(token.clone()).unwrap();
+    assert_eq!((p.owner, p.contract), (acc("koplo.testnet"), None));
+    assert!(
+        !l.squad(acc("c0.testnet"))
+            .iter()
+            .any(|p| p.token_id == token)
+    );
+}
+
+#[test]
+fn a_contract_ends_on_its_last_day() {
+    let mut l = league_with(2, 0);
+    as_caller("koplo.testnet");
+    let token = l.create_footballer("Koplo".into(), Position::Fw).token_id;
+    l.sign_for(acc("c0.testnet"), 7);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    for day in 1..=6 {
+        kick_off(&mut l, day);
+        assert!(
+            l.get_player(token.clone()).unwrap().contract.is_some(),
+            "day {day}"
+        );
+    }
+    kick_off(&mut l, 7);
+    assert_eq!(l.get_player(token).unwrap().contract, None);
+}
+
+#[test]
+fn only_who_leads_the_club_sets_its_wage() {
+    let mut l = league_with(1, 0);
+    as_caller("c0.testnet");
+    l.set_wage(acc("c0.testnet"), U128(WAGE));
+    assert_eq!(l.get_club(acc("c0.testnet")).unwrap().wage, U128(WAGE));
+}
+
+#[test]
+#[should_panic(expected = "only the captain")]
+fn a_stranger_does_not_set_the_wage() {
+    let mut l = league_with(1, 0);
+    as_caller("stranger.testnet");
+    l.set_wage(acc("c0.testnet"), U128(WAGE));
+}
+
+fn pay_clause(l: &mut League, club: &str, token: &str, amount: u128) {
+    as_caller("goalars.testnet");
+    let _ = l.ft_on_transfer(
+        acc(club),
+        U128(amount),
+        format!("{{\"clause\":\"{token}\"}}"),
+    );
+}
+
+#[test]
+fn a_club_takes_a_player_by_paying_his_clause_once_he_signed_for_it() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let clause = l
+        .get_player(token.clone())
+        .unwrap()
+        .contract
+        .unwrap()
+        .clause
+        .0;
+    assert_eq!(clause, WAGE * 26 * 2);
+    as_caller("koplo.testnet");
+    l.sign_for(acc("c1.testnet"), 13);
+    pay_clause(&mut l, "c1.testnet", &token, clause);
+    let offer = l.get_offer(0).unwrap();
+    assert_eq!(
+        (offer.state, offer.price, offer.buyer),
+        (OfferState::Accepting, U128(clause), acc("c1.testnet"))
+    );
+    // The players contract moves him and reports it: his new contract is the one he chose.
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("c0.testnet"), acc("c1.testnet"));
+    let c = l.get_player(token).unwrap().contract.unwrap();
+    assert_eq!((c.club, c.until_day), (acc("c1.testnet"), 13));
+}
+
+#[test]
+#[should_panic(expected = "he has not signed for your club")]
+fn a_clause_needs_the_players_word() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    pay_clause(&mut l, "c1.testnet", &token, WAGE * 26 * 2);
+}
+
+#[test]
+#[should_panic(expected = "pay exactly his release clause")]
+fn a_clause_is_paid_in_full() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.sign_for(acc("c1.testnet"), 13);
+    pay_clause(&mut l, "c1.testnet", &token, 5);
+}
+
+#[test]
+fn a_contract_without_a_wage_can_be_left() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.leave_club();
+    assert_eq!(l.get_player(token).unwrap().contract, None);
+}
+
+#[test]
+#[should_panic(expected = "your contract pays a wage")]
+fn a_paid_contract_runs_to_its_end() {
+    let mut l = league_with(1, 0);
+    rich_club(&mut l, "c0.testnet");
+    sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.leave_club();
+}
+
+// ---- v9: the fans' votes, the club's projects, the tickets' share ----
+
+/// A league of 2 clubs with 5 fans each; c0's fans 0..n are in the stand.
+fn stand_with(n: usize) -> League {
+    let mut l = league_with(2, 5);
+    for f in 0..n {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.check_in();
+    }
+    l
+}
+
+#[test]
+fn the_fans_in_the_stand_vote_their_star_and_he_is_paid() {
+    let mut l = stand_with(3);
+    let squad = l.squad(acc("c0.testnet"));
+    let (a, b) = (squad[3].token_id.clone(), squad[7].token_id.clone());
+    for (f, pick) in [(0, &a), (1, &b), (2, &b)] {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.vote_star(pick.clone());
+    }
+    assert_eq!(
+        l.stand(acc("c0.testnet")).star_votes,
+        vec![(a.clone(), 1), (b.clone(), 2)]
+    );
+    let before = l.get_player(b.clone()).unwrap().wallet.0;
+    kick_off(&mut l, 1);
+    assert_eq!(
+        l.stand_result(acc("c0.testnet"), 1).unwrap().star,
+        Some(b.clone())
+    );
+    // A full stand (3 of a target of 3): the whole prize, on top of any goal.
+    let goals = l.results(1)[0]
+        .goals
+        .iter()
+        .filter(|g| g.player == b && g.kind != GoalKind::Own)
+        .count();
+    assert!(l.get_player(b).unwrap().wallet.0 >= before + the_rules().fans_star_prize.0);
+    let _ = goals;
+    assert!(
+        l.ledger(None)
+            .iter()
+            .any(|e| e.kind == "fans_star" && e.amount == the_rules().fans_star_prize)
+    );
+    // Nobody voted at c1: no star.
+    assert_eq!(l.stand_result(acc("c1.testnet"), 1).unwrap().star, None);
+}
+
+#[test]
+#[should_panic(expected = "take your seat in the stand first")]
+fn only_a_fan_in_the_stand_votes() {
+    let mut l = stand_with(1);
+    let token = l.squad(acc("c0.testnet"))[0].token_id.clone();
+    as_caller("f0-4.testnet");
+    l.vote_star(token);
+}
+
+#[test]
+#[should_panic(expected = "you voted your star already")]
+fn one_star_vote_per_fan_and_match_day() {
+    let mut l = stand_with(1);
+    let token = l.squad(acc("c0.testnet"))[0].token_id.clone();
+    as_caller("f0-0.testnet");
+    l.vote_star(token.clone());
+    l.vote_star(token);
+}
+
+#[test]
+#[should_panic(expected = "vote for a player of your club")]
+fn the_star_is_one_of_the_fans_club() {
+    let mut l = stand_with(1);
+    let token = l.squad(acc("c1.testnet"))[0].token_id.clone();
+    as_caller("f0-0.testnet");
+    l.vote_star(token);
+}
+
+#[test]
+fn the_stand_shows_the_tifo_its_fans_voted() {
+    let mut l = stand_with(3);
+    for (f, pattern) in [(0, 4), (1, 2), (2, 4)] {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.vote_tifo(pattern);
+    }
+    assert_eq!(
+        l.stand(acc("c0.testnet")).tifo_votes,
+        vec![0, 0, 1, 0, 2, 0]
+    );
+    kick_off(&mut l, 1);
+    assert_eq!(l.stand_result(acc("c0.testnet"), 1).unwrap().tifo, Some(4));
+    assert_eq!(l.stand_result(acc("c1.testnet"), 1).unwrap().tifo, None);
+}
+
+#[test]
+#[should_panic(expected = "no such tifo pattern")]
+fn a_tifo_pattern_exists() {
+    let mut l = stand_with(1);
+    as_caller("f0-0.testnet");
+    l.vote_tifo(6);
+}
+
+fn ticket_vote(l: &mut League, club: &str, ticket: &str, project: Project) {
+    as_caller("tickets.testnet");
+    l.on_ticket_vote(acc(club), l.season, ticket.into(), project);
+}
+
+#[test]
+fn players_and_ticket_holders_vote_what_the_treasury_buys() {
+    let mut l = league_with(2, 0);
+    let price = the_rules().project_cost[1].0;
+    let rich = 100 * price;
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(rich);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.vote_project(Project::Stadium);
+    as_caller("ben.testnet");
+    l.vote_project(Project::Physio);
+    // Ana changes her mind; a ticket holder agrees: physio 3, stadium 0.
+    as_caller("ana.testnet");
+    l.vote_project(Project::Physio);
+    ticket_vote(&mut l, "c0.testnet", "c0.testnet:1:1", Project::Physio);
+    assert_eq!(l.project_votes(acc("c0.testnet"), None).len(), 3);
+    assert_eq!(
+        l.project_price(acc("c0.testnet"), Project::Physio),
+        Some(U128(price))
+    );
+    play_days(&mut l, 7);
+    let c = l.get_club(acc("c0.testnet")).unwrap();
+    assert_eq!((c.physio, c.stadium, c.academy), (1, 0, 0));
+    assert!(c.treasury.0 <= rich - price);
+    assert!(
+        l.ledger(None)
+            .iter()
+            .any(|e| e.kind == "project" && !e.mint && e.amount.0 == price)
+    );
+    // The next level costs twice the first.
+    assert_eq!(
+        l.project_price(acc("c0.testnet"), Project::Physio),
+        Some(U128(2 * price))
+    );
+}
+
+#[test]
+fn a_tie_a_vote_to_save_or_an_empty_treasury_buy_nothing() {
+    let rich = 100_000_000 * ONE_G;
+    // A tie.
+    let mut l = league_with(2, 0);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(rich);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.vote_project(Project::Stadium);
+    as_caller("ben.testnet");
+    l.vote_project(Project::Academy);
+    // Saving wins at c1.
+    l.clubs.get_mut(&acc("c1.testnet")).unwrap().treasury = U128(rich);
+    sign_person(&mut l, "cleo.testnet", "c1.testnet");
+    as_caller("cleo.testnet");
+    l.vote_project(Project::Save);
+    play_days(&mut l, 7);
+    for c in ["c0.testnet", "c1.testnet"] {
+        let c = l.get_club(acc(c)).unwrap();
+        assert_eq!((c.stadium, c.physio, c.academy), (0, 0, 0));
+    }
+    // Not enough in the treasury.
+    let mut l = league_with(2, 0);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.vote_project(Project::Stadium);
+    play_days(&mut l, 7);
+    assert_eq!(l.get_club(acc("c0.testnet")).unwrap().stadium, 0);
+}
+
+#[test]
+#[should_panic(expected = "only the season tickets contract reports a ticket's vote")]
+fn nobody_forges_a_tickets_vote() {
+    let mut l = league_with(1, 0);
+    as_caller("attacker.testnet");
+    l.on_ticket_vote(acc("c0.testnet"), 1, "x".into(), Project::Stadium);
+}
+
+#[test]
+#[should_panic(expected = "only this season's tickets vote")]
+fn a_past_seasons_ticket_does_not_vote() {
+    let mut l = league_with(1, 0);
+    l.season = 2;
+    as_caller("tickets.testnet");
+    l.on_ticket_vote(acc("c0.testnet"), 1, "x".into(), Project::Stadium);
+}
+
+#[test]
+fn what_the_projects_change() {
+    let r = the_rules();
+    // Stadium: 10% more per level, before the ola.
+    assert_eq!(full_house_reward(&r, 1, false, 2), 120_000 * ONE_G);
+    assert_eq!(full_house_reward(&r, 2, true, 1), 330_000 * ONE_G);
+    // Academy: one more of every skill per level, for academy players.
+    assert_eq!(schooled(BOT_SKILLS, 3).pace, 38);
+    // Physio: 5 more energy a day per level, for the club's people.
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().energy = 40;
+    l.match_day = 2;
+    assert_eq!(l.get_player(token.clone()).unwrap().energy, 48);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().physio = 2;
+    assert_eq!(l.get_player(token).unwrap().energy, 58);
+    // The stand keeps the stadium level of its day.
+    let mut l = stand_with(3);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().stadium = 3;
+    kick_off(&mut l, 1);
+    as_caller("f0-0.testnet");
+    assert_eq!(l.claim_stand(acc("c0.testnet"), 1), U128(130_000 * ONE_G));
+}
+
+#[test]
+fn a_club_with_season_tickets_shares_what_it_earns_with_them() {
+    let r = the_rules();
+    // A fifth of what the club earns, only when it sold tickets.
+    assert_eq!(ticket_cut(r.goal_club_share.0, 0), 0);
+    assert_eq!(ticket_cut(r.goal_club_share.0, 1), 36_000 * ONE_G);
+    assert_eq!(ticket_cut(r.goal_club_share.0, 50), 36_000 * ONE_G);
+    // The goals' share comes out of the club's share: it is not a new mint,
+    // so the ledger still shows only the full house for the tickets.
+    let mut l = stand_with(3);
+    buy_season_ticket(&mut l, "t0.testnet", "c0.testnet", r.season_ticket_price.0);
+    kick_off(&mut l, 1);
+    let tickets: u128 = l
+        .ledger(None)
+        .iter()
+        .filter(|e| e.kind == "season_tickets")
+        .map(|e| e.amount.0)
+        .sum();
+    assert_eq!(tickets, r.season_ticket_share.0);
 }

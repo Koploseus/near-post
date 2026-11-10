@@ -5,6 +5,7 @@ import type { Act, Entry, Journal, SeenOffer } from "./journal.js";
 import { type Ask, decideFootballer, decideMarket, decideTactic } from "./minds.js";
 import type { Agent, CoachAgent, FootballerAgent } from "./roster.js";
 import {
+  CONTRACT_DAYS,
   type Candidate,
   type ClubChoice,
   type Formation,
@@ -13,9 +14,12 @@ import {
   type Offer,
   type Player,
   type Position,
+  REST_BELOW,
   type Strategy,
+  fallbackProject,
   marketSituation,
   tacticSituation,
+  wageFor,
   zones,
 } from "./rules.js";
 
@@ -42,6 +46,8 @@ interface Club {
   division: number;
   treasury: string;
   points: number;
+  /** What the club offers a person per match (v9). */
+  wage?: string;
 }
 export interface LeaguePlayer extends Player {
   name: string;
@@ -49,6 +55,9 @@ export interface LeaguePlayer extends Player {
   wallet: string;
   salary: string;
   look?: { hair: string | null; boots: string | null; band: string | null };
+  /** Energy today, 0 to 100 (v9). */
+  energy?: number;
+  contract?: { club: string; wage: string; until_day: number } | null;
 }
 interface MatchResult {
   home: string;
@@ -254,6 +263,8 @@ export class Agents {
     // academy players' earnings, withdraw stale bids.
     const owed = BigInt(await this.league<string>("owed_of", { account_id: c.account }));
     if (owed > 0n) await this.act(c, out, () => me.call(this.d.leagueId, "collect", {}, 50), { what: "collected" });
+    // Without a captain the manager sets what the club pays its people.
+    if (!(await this.league<unknown>("captain", { club_id: c.account }))) await this.setWage(c, c.account, ctx, out);
     let squad = await this.squad(ctx, c.account);
     if (!squad.some((p) => p.position === "Gk")) {
       // No keeper in the squad: bring back the best one the club still owns.
@@ -350,9 +361,24 @@ export class Agents {
     const out: Partial<Entry> = { acts: [], txs: [], errors: [] };
     await this.topUp(f);
     const club = ctx.clubs.get(fb.owner);
+    const energy = fb.energy ?? 100;
     if (club) {
-      const reported = await this.league<boolean>("is_reported", { token_id: fb.token_id, match_day: ctx.day });
-      if (!reported) await this.act(f, out, () => me.call(this.d.leagueId, "report_for_match", {}, 30), { what: "reported" });
+      // Tired legs sit the match day out (a day off gives energy back faster).
+      if (energy < REST_BELOW[f.character]) {
+        if (!(await this.league<boolean>("is_resting", { token_id: fb.token_id, match_day: ctx.day }))) {
+          await this.act(f, out, () => me.call(this.d.leagueId, "rest_today", {}, 30), { what: "rested" });
+        }
+      } else {
+        const reported = await this.league<boolean>("is_reported", { token_id: fb.token_id, match_day: ctx.day });
+        if (!reported) await this.act(f, out, () => me.call(this.d.leagueId, "report_for_match", {}, 30), { what: "reported" });
+      }
+      // The captain sets what the club pays its people.
+      const captain = await this.league<{ token_id: string } | null>("captain", { club_id: fb.owner });
+      if (captain?.token_id === fb.token_id) await this.setWage(f, fb.owner, ctx, out);
+    }
+    // The debut bonus and full-house rewards are credits: mint them.
+    if (BigInt(await this.league<string>("credits_of", { account_id: f.account })) > 0n) {
+      await this.act(f, out, () => me.call(this.d.leagueId, "claim", {}, 60), { what: "collected" });
     }
     if (BigInt(fb.wallet) + BigInt(fb.salary) >= CLAIM_FROM) {
       await this.act(f, out, () => me.call(this.d.leagueId, "claim_player", { token_id: fb.token_id }, 60), { what: "collected" });
@@ -360,6 +386,12 @@ export class Agents {
     const rules = await this.league<{ pack_price: string; week_length: number; season_ticket_price?: string; season_tickets_per_club?: number }>("rules");
     const wallet = whole(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: f.account }));
     const week = Math.floor((Math.max(1, ctx.day) - 1) / rules.week_length);
+    if (club && !this.d.journal.isDone(`project:${week}:${f.account}`)) {
+      const project = fallbackProject(f.character, energy);
+      if (await this.act(f, out, () => me.call(this.d.leagueId, "vote_project", { project }, 30), { what: "project_vote", project })) {
+        this.d.journal.markDone(`project:${week}:${f.account}`);
+      }
+    }
 
     const captain = club && !this.d.journal.isDone(`captain:${week}:${f.account}`) ? await this.candidates(ctx, fb) : undefined;
     const strategy = club ? await this.strategySituation(f, ctx, fb.owner, 1) : undefined;
@@ -406,6 +438,9 @@ export class Agents {
       const target = c && move.clubs.get(c.club);
       if (c && target) {
         const offer = c.id.startsWith("offer-") ? Number(c.id.slice(6)) : null;
+        // His word first: the contract he takes when he gets there.
+        const days = CONTRACT_DAYS[f.character];
+        await this.act(f, out, () => me.call(this.d.leagueId, "sign_for", { club_id: target, days }, 30), { what: "signed", club: target, days });
         await this.act(
           f,
           out,
@@ -463,8 +498,6 @@ export class Agents {
   /** A free agent's choices, under club aliases: the offers he has, and clubs where he would play. */
   private async choices(ctx: Ctx, fb: LeaguePlayer) {
     const offers = await this.league<Offer[]>("offers_for", { token_id: fb.token_id });
-    const rules = await this.league<{ salary: string }>("rules");
-    const salary = whole(rules.salary);
     const clubs = new Map<string, string>();
     const choices: ClubChoice[] = [];
     const alias = (account: string) => {
@@ -486,7 +519,8 @@ export class Agents {
         division: c.division,
         rank: this.rank(ctx, account),
         better_at_position: squad.filter((p) => p.position === fb.position && p.overall > fb.overall).length,
-        salary_days: Math.floor(whole(c.treasury) / Math.max(1, salary * Math.max(1, people + 1))),
+        // Matches the treasury can pay everyone at the wage the club offers (0 without a wage).
+        salary_days: whole(c.wage ?? "0") > 0 ? Math.floor(whole(c.treasury) / (whole(c.wage!) * (people + 1))) : 0,
       };
     };
     for (const o of offers.filter((o) => o.state === "Open")) {
@@ -501,6 +535,19 @@ export class Agents {
       if (ch && ch.better_at_position === 0) joinable.push({ ...ch, id: `join-${ch.club}` });
     }
     return { choices: [...choices, ...joinable], clubs };
+  }
+
+  /** Sets a club's wage to what its treasury can pay, when that moved enough to matter. */
+  private async setWage(a: Agent, clubAccount: string, ctx: Ctx, out: Partial<Entry>) {
+    const club = ctx.clubs.get(clubAccount);
+    if (!club) return;
+    const rules = await this.league<{ max_wage?: string }>("rules");
+    if (!rules.max_wage) return;
+    const people = (await this.squad(ctx, clubAccount)).filter((p) => p.controller).length;
+    const wage = wageFor(whole(club.treasury), people, whole(rules.max_wage));
+    const now = whole(club.wage ?? "0");
+    if (wage === now || (now > 0 && Math.abs(wage - now) < now / 4)) return;
+    await this.act(a, out, () => this.d.as(a).call(this.d.leagueId, "set_wage", { club_id: clubAccount, wage: (BigInt(wage) * ONE_G).toString() }, 30), { what: "wage", wage });
   }
 
   private async buyPack(f: FootballerAgent, fb: LeaguePlayer, out: Partial<Entry>, price: bigint) {

@@ -4,10 +4,9 @@ import { g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { buyPack, equip, fuse, itemsOf, league, unequip } from "../lib/near.js";
 import type { CatalogItem, Player } from "../lib/types.js";
-import { Avatar, ItemIcon, KIND_LABEL, RARITY_COLOR } from "./Look.js";
+import { Avatar, ItemIcon, KINDS, KIND_LABEL, KIND_NOTE, KIND_SKILL, RARITY_COLOR } from "./Look.js";
 
 const RARITIES: CatalogItem["rarity"][] = ["common", "rare", "epic", "legendary"];
-const KINDS: CatalogItem["kind"][] = ["hair", "boots", "band"];
 const title = (s: string) => s.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 /**
@@ -21,11 +20,11 @@ export function Wardrobe({ me }: { me: Player }) {
     if (!session) return null;
     const [catalog, rules, unboxed] = await Promise.all([
       league<CatalogItem[]>("catalog"),
-      league<{ pack_price: string }>("rules"),
+      league<{ pack_price: string; item_bonus?: number[] }>("rules"),
       league<string[]>("last_unboxed", { account_id: session.accountId }),
     ]);
     const held = await itemsOf(session.accountId, catalog.map((c) => c.id));
-    return { catalog, price: rules.pack_price, unboxed, held };
+    return { catalog, price: rules.pack_price, bonus: rules.item_bonus ?? [0, 1, 2, 3], unboxed, held };
   }, [session?.accountId]);
   const [picked, setPicked] = useState<string[]>([]);
   const [reveal, setReveal] = useState(false);
@@ -43,6 +42,13 @@ export function Wardrobe({ me }: { me: Player }) {
     const fits = !first || (first.kind === item.kind && first.rarity === item.rarity);
     if (!fits || already >= (data.held.get(id) ?? 0) || picked.length >= 3) setPicked([id]);
     else setPicked([...picked, id]);
+  };
+  /** "+2 pace", "+1 defending (in goal)", or "" for hair and common items. */
+  const effect = (it: CatalogItem | undefined) => {
+    const skill = it && KIND_SKILL[it.kind];
+    const points = it ? (data.bonus[RARITIES.indexOf(it.rarity)] ?? 0) : 0;
+    if (!skill || points === 0) return "";
+    return `+${points} ${skill}${KIND_NOTE[it!.kind] ? ` (${KIND_NOTE[it!.kind]})` : ""}`;
   };
   const one = picked.length === 1 ? byId.get(picked[0]!) : null;
   const three = picked.length === 3 ? byId.get(picked[0]!) : null;
@@ -62,7 +68,10 @@ export function Wardrobe({ me }: { me: Player }) {
                 <span className="k">{KIND_LABEL[k].toUpperCase()}</span>
                 {id ? (
                   <>
-                    <span>{title(byId.get(id)?.style ?? id)}</span>
+                    <span>
+                      {title(byId.get(id)?.style ?? id)}
+                      {effect(byId.get(id)) && <b className="effect"> {effect(byId.get(id))}</b>}
+                    </span>
                     <Action className="chip" label="TAKE OFF" run={() => unequip(session, me.token_id, k)} done={later} success="Back in your wardrobe" />
                   </>
                 ) : (
@@ -103,6 +112,7 @@ export function Wardrobe({ me }: { me: Player }) {
                     <ItemIcon item={it} n={n} />
                     <b>{title(it.style)}</b>
                     <i style={{ color: RARITY_COLOR[it.rarity] }}>{it.rarity}</i>
+                    {effect(it) && <em className="effect">{effect(it)}</em>}
                   </span>
                 ) : null;
               })}
@@ -127,11 +137,12 @@ export function Wardrobe({ me }: { me: Player }) {
                     className={`item${sel ? " on" : ""}`}
                     style={{ borderColor: RARITY_COLOR[it.rarity] }}
                     onClick={() => pick(id)}
-                    title={`${KIND_LABEL[it.kind]}: ${title(it.style)}, ${it.rarity}`}
+                    title={`${KIND_LABEL[it.kind]}: ${title(it.style)}, ${it.rarity}${effect(it) ? `, ${effect(it)}` : ""}`}
                   >
                     <ItemIcon item={it} n={n} />
                     <b>{title(it.style)}</b>
                     <i style={{ color: RARITY_COLOR[it.rarity] }}>{it.rarity}</i>
+                    {effect(it) && <em className="effect">{effect(it)}</em>}
                     {count > 1 && <span className="count">×{count}</span>}
                     {sel > 0 && <span className="sel">{sel}</span>}
                   </button>
@@ -175,7 +186,11 @@ export function Wardrobe({ me }: { me: Player }) {
                     : ""}
             </span>
           </div>
-          <p className="note">While he wears an item, the league holds it; it comes back when you take it off.</p>
+          <p className="note">
+            Items count on the pitch: boots add pace, a headband physical, grip socks dribbling, a wristband passing, ankle tape shooting, shin pads defending
+            (outfield) and gloves defending (in goal). Rare +1, epic +2, legendary +3. Haircuts are for show. While he wears an item, the league holds it; it
+            comes back when you take it off.
+          </p>
         </div>
       </div>
     </div>
