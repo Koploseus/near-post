@@ -56,15 +56,14 @@ export interface MatchStats {
   man_of_the_match: Star | null;
 }
 
-export interface Look {
-  hair: string | null;
-  boots: string | null;
-  band: string | null;
-}
+/** What a footballer can wear. Hair is looks only; every other kind adds to one skill on the pitch. */
+export type ItemKind = "hair" | "boots" | "band" | "socks" | "pads" | "gloves" | "wrist" | "tape";
+
+export type Look = Record<ItemKind, string | null>;
 
 export interface CatalogItem {
   id: string;
-  kind: "hair" | "boots" | "band";
+  kind: ItemKind;
   style: string;
   rarity: "common" | "rare" | "epic" | "legendary";
 }
@@ -84,6 +83,65 @@ export interface Player {
   controller: string | null;
   salary: string;
   last_trained_day: number;
+  /** Energy today, 0 to 100. Under 50, skills drop. */
+  energy: number;
+  /** Trainings he can still take without paying. */
+  free_trainings: number;
+  contract: Contract | null;
+}
+
+/** A person's contract with a club. */
+export interface Contract {
+  club: string;
+  /** Paid at each match he starts. */
+  wage: string;
+  from_day: number;
+  /** The last match day of the contract. */
+  until_day: number;
+  /** What another club pays to take him before the end. */
+  clause: string;
+  /** Matches in a row he started without being paid. */
+  unpaid: number;
+}
+
+export type Project = "stadium" | "physio" | "academy" | "save";
+
+/** The league's rules (`rules` view): the ones the app shows. */
+export interface Rules {
+  full_house_mint_per_fan: string;
+  stadium_target_bps: number;
+  empty_stand_burn_bps: number;
+  goal_mint: string;
+  training_cost: string;
+  pack_price: string;
+  season_ticket_price: string;
+  season_ticket_share: string;
+  week_length: number;
+  item_bonus: number[];
+  ola_window_ms: string;
+  ola_target_bps: number;
+  ola_bonus_bps: number;
+  derby_flag_days: number;
+  debut_bonus: string;
+  energy_match: number;
+  energy_training: number;
+  energy_per_day: number;
+  energy_rest: number;
+  tired_below: number;
+  tired_malus_pct: number;
+  contract_days: number[];
+  default_contract_days: number;
+  clause_factor: number;
+  unpaid_to_free: number;
+  max_wage: string;
+  fans_star_prize: string;
+  tifo_patterns: number;
+  project_cost: string[];
+  project_max: number[];
+  stadium_bonus_bps: number;
+  physio_energy: number;
+  academy_bonus: number;
+  ticket_revenue_bps: number;
 }
 
 export interface Club {
@@ -95,6 +153,13 @@ export interface Club {
   best_streak: number;
   treasury: string;
   rival: string | null;
+  /** The rival that won the last derby, and until which match day its colours fly here. */
+  flag: { by: string; until_day: number } | null;
+  /** What the club offers a person per match he starts. */
+  wage: string;
+  stadium: number;
+  physio: number;
+  academy: number;
   played: number;
   won: number;
   drawn: number;
@@ -138,6 +203,12 @@ export interface StandResult {
   fans: number;
   full_house: boolean;
   multiplier: number;
+  /** The fans did the ola: the full-house reward is higher. */
+  ola: boolean;
+  stadium: number;
+  /** The player the stand voted star of the match, and the tifo it chose. */
+  star: string | null;
+  tifo: number | null;
   burned: string;
 }
 
@@ -147,6 +218,12 @@ export interface Stand {
   fans: number;
   target: number;
   full_house: boolean;
+  /** Fans who came in the ola window, and how many make the ola. */
+  ola: number;
+  ola_target: number;
+  /** The fans' votes so far: [player, votes] and votes by tifo pattern. */
+  star_votes: [string, number][];
+  tifo_votes: number[];
 }
 
 export interface Schedule {

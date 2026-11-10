@@ -193,6 +193,15 @@ export const leagueCall = <T = unknown>(s: Session, method: string, args: Record
 export const transferRegistration = (s: Session, tokenId: string, club: string) =>
   call(s, PLAYERS, "nft_transfer", { receiver_id: club, token_id: tokenId }, { deposit: 1n });
 
+/** A free agent signs: his word for a contract of `days`, then his registration to the club. */
+export async function signForClub(s: Session, tokenId: string, club: string, days: number) {
+  await leagueCall(s, "sign_for", { club_id: club, days }, 30);
+  return transferRegistration(s, tokenId, club);
+}
+
+/** A season ticket's vote on what its club's treasury buys this week. */
+export const voteWithTicket = (s: Session, tokenId: string, project: string) => call(s, TICKETS, "vote_project", { token_id: tokenId, project }, { tgas: 60 });
+
 /** Pays for a training session on one skill: the league opens a ticket. */
 export const train = (s: Session, tokenId: string, skill: string, amount: string) =>
   call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount, msg: JSON.stringify({ train: { token_id: tokenId, skill } }) }, { deposit: 1n, tgas: 150 });

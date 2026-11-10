@@ -84,7 +84,10 @@ console.log(`  full house: ${G(rules.full_house_mint_per_fan)} per fan present, 
 console.log(`  stand not full: ${rules.empty_stand_burn_bps / 100}% of the club treasury burned`);
 console.log(`  goal: ${G(rules.goal_mint)} x stand fill (x${rules.late_goal_multiplier} after the 90th minute, x${rules.derby_multiplier} in a derby); own goal burns up to ${G(rules.own_goal_burn)}`);
 console.log(`  burned on use: training ${G(rules.training_cost)}, pack ${G(rules.pack_price)}, ${rules.sale_tax_bps / 100}% of each sale, ${rules.relegation_burn_bps / 100}% of a relegated treasury`);
-console.log(`  onboarding: ${G(rules.signup_grant)} once, then ${G(rules.welcome_bonus)} on each of the first ${rules.welcome_visits} stadium check-ins`);
+console.log(`  no G for signing up or following: ${G(rules.signup_grant)} once to the founder of a club, ${G(rules.debut_bonus ?? 0)} to a person after the first match his footballer starts`);
+if (rules.ola_bonus_bps) console.log(`  ola: +${rules.ola_bonus_bps / 100}% full-house reward when ${rules.ola_target_bps / 100}% of the target came in the last ${Number(rules.ola_window_ms) / 60_000} minutes; stadium: +${rules.stadium_bonus_bps / 100}% per level`);
+if (rules.fans_star_prize) console.log(`  fans' star of the match: ${G(rules.fans_star_prize)} x stand fill to the player the stand voted`);
+if (rules.project_cost) console.log(`  club projects (voted each week by players and season tickets, burned): stadium ${G(rules.project_cost[0])}, physio ${G(rules.project_cost[1])}, academy ${G(rules.project_cost[2])} for the first level`);
 
 // ---------------------------------------------------------------- 3. replaying the match days
 
@@ -98,8 +101,16 @@ const days = [];
 for (let d = current - 1; d > oldest && days.length < DAYS; d -= 1) days.push(d);
 console.log(`\n3. Replaying match days ${days.at(-1)}–${days[0]} (${withFans.length} clubs with fans, ${table.length} clubs)`);
 
-const PRESENCE = new Set(["full_house", "goals", "season_tickets"]);
-const ONBOARDING = new Set(["signup", "welcome"]);
+const PRESENCE = new Set(["full_house", "goals", "season_tickets", "fans_star"]);
+const ONBOARDING = new Set(["signup", "welcome", "debut"]);
+// What a fan present in a full house gets: doubled in a derby, more with each
+// stadium level, more again after an ola (as the league computes it).
+const reward = (s) => {
+  let r = N(rules.full_house_mint_per_fan) * BigInt(s.multiplier);
+  r += (r * BigInt(s.stadium ?? 0) * BigInt(rules.stadium_bonus_bps ?? 0)) / 10_000n;
+  if (s.ola) r += (r * BigInt(rules.ola_bonus_bps ?? 0)) / 10_000n;
+  return r;
+};
 const rows = [];
 for (const day of days) {
   const entries = ledger.filter((e) => e.match_day === day);
@@ -125,12 +136,17 @@ for (const day of days) {
     wanted += target(s.fans);
     check(s.full_house === (s.present >= target(s.fans)), `D${day} ${club}: full_house=${s.full_house} with ${s.present}/${target(s.fans)} present`);
     const mint = of("full_house", club);
-    const expectMint = s.full_house && s.present > 0 ? [(N(rules.full_house_mint_per_fan) * BigInt(s.multiplier) * BigInt(s.present)).toString()] : [];
+    const expectMint = s.full_house && s.present > 0 ? [(reward(s) * BigInt(s.present)).toString()] : [];
     check(sameAmounts(mint, expectMint), `D${day} ${club}: full-house mint ${mint} != ${expectMint}`);
     const burn = of("empty_stand", club);
     const expectBurn = BigInt(s.burned) > 0n ? [s.burned] : [];
     check(sameAmounts(burn, expectBurn), `D${day} ${club}: empty-stand burn ${burn} != ${expectBurn}`);
     check(!(s.full_house && BigInt(s.burned) > 0n), `D${day} ${club}: a full stand burned its treasury`);
+    check(!(s.ola && !s.full_house), `D${day} ${club}: an ola without a full house`);
+    // The fans' star: paid in proportion to the stand, only when the stand voted one.
+    const star = of("fans_star", club);
+    const prize = s.star ? (N(rules.fans_star_prize) * BigInt(s.multiplier) * fill(club)) / 10_000n : 0n;
+    check(sameAmounts(star, prize > 0n ? [prize.toString()] : []), `D${day} ${club}: fans' star ${star} != ${prize}`);
   }
   // No stand settled for a club without fans, and no stand mint for anyone else.
   for (const e of entries.filter((x) => x.kind === "full_house" || x.kind === "empty_stand")) check(stands.has(e.who), `D${day}: ${e.kind} for ${e.who}, a club without fans`);
@@ -190,7 +206,7 @@ if (fuller.length && emptier.length) console.log(`  net G per match day: ${G(net
 // people sign in as u<hash>. Same contract methods, same rights.
 const who = (account) => (!account ? "transfers" : /^ai-\d+\./.test(account) ? "AI footballers" : /^u[0-9a-f]{8,}\./.test(account) ? "people" : "clubs (AI coaches and managers)");
 const spent = new Map();
-for (const e of ledger.filter((x) => !x.mint && ["pack", "training", "sale_tax"].includes(x.kind))) {
+for (const e of ledger.filter((x) => !x.mint && ["pack", "training", "sale_tax", "project"].includes(x.kind))) {
   const k = `${who(e.who)}|${e.kind}`;
   const [n, total] = spent.get(k) ?? [0, 0n];
   spent.set(k, [n + 1, total + BigInt(e.amount)]);

@@ -5,7 +5,7 @@ import { DribbleGame, PassesGame, SprintGame, TacklesGame } from "./Games.js";
 import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
-import { attestDrill, finishTraining, league, startDrill, train } from "../lib/near.js";
+import { attestDrill, finishTraining, league, leagueCall, startDrill, train } from "../lib/near.js";
 import { serverNow } from "../lib/time.js";
 import type { Player, Schedule, Skill, Ticket } from "../lib/types.js";
 
@@ -144,7 +144,10 @@ export function Training({ me }: { me: Player }) {
       ) : (
         <>
           {lapsed && <p className="note">Your last session ended with match day {lapsed.match_day} before you finished it.</p>}
-          <p className="note">400k G, burned. Pick a skill, then play the drill.</p>
+          <p className="note">
+            {me.free_trainings > 0 ? "Your first session is free. " : "400k G, burned. "}Pick a skill, then play the drill. A session costs 15 energy (you have{" "}
+            {me.energy}).
+          </p>
           <div className="skill-pick" role="radiogroup" aria-label="Skill to train">
             {SKILLS.map(([k, label, name]) => (
               <button key={k} type="button" role="radio" aria-checked={skill === k} onClick={() => setSkill(k)} title={name}>
@@ -153,14 +156,30 @@ export function Training({ me }: { me: Player }) {
               </button>
             ))}
           </div>
-          <Action
-            label={`TRAIN ${skillName(skill).toUpperCase()} · 400k G`}
-            disabled={BigInt(balance) < BigInt(TRAINING) || late}
-            run={() => train(session, me.token_id, skill, TRAINING)}
-            success="Session booked: play the drill"
-            done={() => soon(reload)}
-          />
-          {BigInt(balance) < BigInt(TRAINING) && <p className="note">You have {g(balance)}.</p>}
+          {me.free_trainings > 0 ? (
+            <Action
+              label={`TRAIN ${skillName(skill).toUpperCase()} · FREE`}
+              disabled={late || me.energy < 15}
+              run={() => leagueCall(session, "train_free", { token_id: me.token_id, skill }, 60)}
+              success="Session booked: play the drill"
+              done={() => {
+                soon(reload);
+                soon(refresh);
+              }}
+            />
+          ) : (
+            <Action
+              label={`TRAIN ${skillName(skill).toUpperCase()} · 400k G`}
+              disabled={BigInt(balance) < BigInt(TRAINING) || late || me.energy < 15}
+              run={() => train(session, me.token_id, skill, TRAINING)}
+              success="Session booked: play the drill"
+              done={() => soon(reload)}
+            />
+          )}
+          {me.energy < 15 && <p className="note">Too tired to train: rest a match day.</p>}
+          {me.free_trainings === 0 && BigInt(balance) < BigInt(TRAINING) && (
+            <p className="note">You have {g(balance)}. Your first match pays a debut bonus; goals and wages follow.</p>
+          )}
           {late ? (
             <p className="note">This match day ends in {minutes(left)}, too soon to play a session: training opens again with the next one.</p>
           ) : (

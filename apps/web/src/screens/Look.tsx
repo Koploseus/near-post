@@ -1,4 +1,5 @@
-import type { CatalogItem, Look } from "../lib/types.js";
+import type { ReactNode } from "react";
+import type { CatalogItem, ItemKind, Look, Skill } from "../lib/types.js";
 
 export const SKIN = ["#C68B5E", "#E9B98F", "#B37650", "#F0C6A0", "#8A5A3B", "#DDA77C"];
 export const HAIR = ["#2A1A10", "#7A4B23", "#111111", "#C9A15A", "#1A1210", "#3B2416"];
@@ -10,7 +11,56 @@ export const RARITY_COLOR: Record<CatalogItem["rarity"], string> = {
   legendary: "#F2B705",
 };
 
-export const KIND_LABEL: Record<CatalogItem["kind"], string> = { hair: "Haircut", boots: "Boots", band: "Headband" };
+export const KINDS: ItemKind[] = ["hair", "boots", "band", "socks", "pads", "gloves", "wrist", "tape"];
+export const KIND_LABEL: Record<ItemKind, string> = {
+  hair: "Haircut",
+  boots: "Boots",
+  band: "Headband",
+  socks: "Grip socks",
+  pads: "Shin pads",
+  gloves: "Gloves",
+  wrist: "Wristband",
+  tape: "Ankle tape",
+};
+/** The skill each kind adds to on the pitch (league `dressed`). Hair is looks only. */
+export const KIND_SKILL: Record<ItemKind, Skill | null> = {
+  hair: null,
+  boots: "pace",
+  band: "physical",
+  socks: "dribbling",
+  pads: "defending",
+  gloves: "defending",
+  wrist: "passing",
+  tape: "shooting",
+};
+/** Where it counts: pads on an outfield player, gloves in goal. */
+export const KIND_NOTE: Partial<Record<ItemKind, string>> = { pads: "outfield", gloves: "in goal" };
+export const noLook = (): Look => ({ hair: null, boots: null, band: null, socks: null, pads: null, gloves: null, wrist: null, tape: null });
+
+/** One colour per style name, for the kit items (socks, pads, gloves, wristband, tape). */
+const KIT_COLOR: Record<string, string> = {
+  white: "#f7f4ec",
+  black: "#151515",
+  navy: "#1B2340",
+  grey: "#8b8f9c",
+  red: "#C8202F",
+  blue: "#2F5DA8",
+  yellow: "#F2B705",
+  neon: "#b8ff2e",
+  grip: "#3f8a3a",
+  camo: "#5b6b3a",
+  carbon: "#2b2f3a",
+  hooped: "url(#np-stripes)",
+  striped: "url(#np-stripes)",
+  "two-tone": "#ff7a1a",
+  tifo: "url(#np-tifo)",
+  gold: "#F2B705",
+  chrome: "#d9dde4",
+  laurel: "#3f8a3a",
+  flame: "url(#np-flame)",
+  galaxy: "#2b1055",
+};
+const kit = (id: string | null | undefined, fallback: string | null = null) => (id ? (KIT_COLOR[id.split(".")[1]!] ?? "#8b8f9c") : fallback);
 
 const style = (id: string | null | undefined) => (id ? id.split(".")[1]! : null);
 
@@ -233,8 +283,10 @@ export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look
       {/* Legs, socks, boots */}
       <rect x="21" y="78" width="7" height="30" rx="3" fill={skin} />
       <rect x="32" y="78" width="7" height="30" rx="3" fill={skin} />
-      <rect x="20.5" y="96" width="8" height="18" rx="2" fill="#f7f4ec" />
-      <rect x="31.5" y="96" width="8" height="18" rx="2" fill="#f7f4ec" />
+      <rect x="20.5" y="96" width="8" height="18" rx="2" fill={kit(look?.socks, "#f7f4ec")!} stroke="#1B2340" strokeWidth=".3" />
+      <rect x="31.5" y="96" width="8" height="18" rx="2" fill={kit(look?.socks, "#f7f4ec")!} stroke="#1B2340" strokeWidth=".3" />
+      {look?.pads && [22, 33].map((x) => <rect key={x} x={x} y="98" width="5" height="10" rx="2" fill={kit(look.pads)!} stroke="#1B2340" strokeWidth=".5" />)}
+      {look?.tape && [20.5, 31.5].map((x) => <rect key={x} x={x} y="109" width="8" height="3.5" fill={kit(look.tape)!} stroke="#1B2340" strokeWidth=".4" />)}
       {[18, 30].map((x) => (
         <g key={x}>
           <path d={`M${x} 113 h11 c2 0 3 2 3 4 v3 h-14 Z`} fill={boot} stroke="#1B2340" strokeWidth=".6" />
@@ -247,6 +299,12 @@ export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look
       <path d="M24 39 L30 46 L36 39" fill="none" stroke="#F2B705" strokeWidth="2" />
       <rect x="9" y="46" width="6" height="22" rx="3" fill={skin} transform="rotate(8 12 46)" />
       <rect x="45" y="46" width="6" height="22" rx="3" fill={skin} transform="rotate(-8 48 46)" />
+      {look?.wrist && <rect x="8.4" y="59" width="7.2" height="3.4" rx="1" fill={kit(look.wrist)!} stroke="#1B2340" strokeWidth=".4" transform="rotate(8 12 46)" />}
+      {look?.gloves &&
+        [
+          [8.2, 8],
+          [44.2, -8],
+        ].map(([x, r]) => <rect key={x} x={x} y="62" width="7.6" height="8" rx="3" fill={kit(look.gloves)!} stroke="#1B2340" strokeWidth=".5" transform={`rotate(${r} ${x! + 3.8} 46)`} />)}
       <rect x="26" y="34" width="8" height="7" fill={skin} />
       {/* Head */}
       <HairBack look={look} n={n} />
@@ -269,7 +327,28 @@ export function ItemIcon({ item, n }: { item: CatalogItem; n: number }) {
       </svg>
     );
   }
-  const look: Look = { hair: item.kind === "hair" ? item.id : null, band: item.kind === "band" ? item.id : null, boots: null };
+  if (item.kind !== "hair" && item.kind !== "band") {
+    const fill = kit(item.id)!;
+    const shape: Record<string, ReactNode> = {
+      socks: <path d="M14 3 h10 v12 l8 4 c2 1 2 4 -1 4 H14 Z" fill={fill} stroke="#1B2340" strokeWidth="1" />,
+      pads: <path d="M13 3 h14 c2 6 2 12 0 18 h-14 c-2 -6 -2 -12 0 -18 Z" fill={fill} stroke="#1B2340" strokeWidth="1" />,
+      gloves: <path d="M10 22 V10 h3 V4 h3 v6 h2 V3 h3 v7 h2 V4 h3 v8 l3 -3 l2 2 l-5 7 v4 Z" fill={fill} stroke="#1B2340" strokeWidth="1" />,
+      wrist: <rect x="8" y="7" width="24" height="10" rx="4" fill={fill} stroke="#1B2340" strokeWidth="1" />,
+      tape: (
+        <>
+          <circle cx="20" cy="12" r="9" fill={fill} stroke="#1B2340" strokeWidth="1" />
+          <circle cx="20" cy="12" r="3.5" fill="#F3EAD7" stroke="#1B2340" strokeWidth="1" />
+        </>
+      ),
+    };
+    return (
+      <svg viewBox="0 0 40 24" width="56" height="34" aria-hidden="true">
+        <LookDefs />
+        {shape[item.kind]}
+      </svg>
+    );
+  }
+  const look: Look = { ...noLook(), hair: item.kind === "hair" ? item.id : null, band: item.kind === "band" ? item.id : null };
   return (
     <svg viewBox="8 2 44 38" width="52" height="45" aria-hidden="true">
       <LookDefs />
