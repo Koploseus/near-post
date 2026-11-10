@@ -96,6 +96,21 @@ The same numbers, as a chart, on the Goalars page (Stands → Goalars, "No fans,
 no money"): the share of fans in the stands as a line, G minted above the axis,
 G burned below.
 
+## What each NFT carries
+
+Nothing below is metadata for show: each line is state a contract reads to
+pay, to vote or to open a door, and it changes hands with the token.
+
+| NFT | Owns money | Earns | Holds | Carries | Opens |
+|---|---|---|---|---|---|
+| **Footballer** (NEP-171) | His own G balances (`wallet` and `salary` on the player): goal shares, the fans' star prize, his wage. Collected by whoever plays him (`claim_player`). | 5% of each of his own transfers goes to the person who plays him. | The items he wears (NEP-245), held for him while worn. | His career (`career`): the club that trained him and his last three clubs. The contract pays them from it at every sale, 10% and 2% each (NEP-199 `nft_payout`). His contract: days, wage, release clause. | A place in a squad, and a voice in its club house. |
+| **Season ticket** (NEP-171) | Its own G balance, kept in the ticket until withdrawn. | 50k G per full house of its club, and a fifth of what the club earns from goals and sales, shared between its tickets. | | Its number and season. | The fan zone, and one voice on what the treasury builds (`vote_project`). |
+| **Item** (NEP-245) | | | | Its kind and rarity, which the match engine reads: +1 to +3 on one skill. | |
+
+These balances are kept by the contracts, per token; a token is not a NEAR
+account of its own. Sell the token and the balance, the earnings to come and
+the voice go with it.
+
 ## An economy of 76 agents
 
 The league never runs empty: 24 AI coaches run the fictional clubs and 52 AI
@@ -421,18 +436,21 @@ The web app reads the v9 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
-- **Stands**: a club's live tifo, painted by the fans who checked in. Take your
-  seat, follow a club, claim a full house, collect.
-- **Match day**: countdown, the button that plays a due match day (anyone can),
-  last results with scorers, shots, shots on target and man of the match, the
-  table.
-- **Locker room**: sign in with email, create your footballer, sign for a club,
-  report for the match, train a skill with the drill, collect goals and salary,
-  top up gas.
-- **Album**: your club's squad as stickers (XI, C), the back of a sticker with
-  its career, the captain vote.
-- **Market**: scout a squad, bid in G, cancel; a manager accepts with one
-  approval; collect sale shares.
+- **Today**: your footballer, his energy and contract, what is left to do
+  before kick-off, the table and the last result.
+- **Live**: the match as the contract played it, half by half; the
+  second-half strategy vote at half-time.
+- **Team** (your club only): slots, line-up, captain and strategy votes.
+- **Stands**: a club's tifo, lit by the fans who checked in. Take your seat,
+  join the ola, vote the tifo and the star of the match, claim a full house.
+  Goalars: the supply as it moves. Season tickets: buy one, see what it earned.
+- **Club**: results, seasons, the album of stickers with each career, the
+  market (bids, release clauses), and the club house where players and
+  ticket holders vote what the treasury builds.
+- **Locker room** (your sticker, top right): sign in with email, create your
+  footballer, sign a contract, pick a slot or rest, train with the drill,
+  open packs and dress him. The cog next to it is your account: passkey,
+  recovery key, sign out.
 
 Contracts, built and tested in the same pinned image as the CI:
 
@@ -442,7 +460,7 @@ docker run --rm --user 0 -v "$PWD":/__w/near-post/near-post -w /__w/near-post/ne
   bash -c 'rustup component add rustfmt clippy && bash build.sh && cargo test --workspace --lib'
 ```
 
-Sandbox tests deploy the four checked-in wasm together on a local nearcore
+Sandbox tests deploy the five checked-in wasm together on a local nearcore
 2.14.0 (`NEAR_SANDBOX_BIN_PATH` points at the binary): a full match day with
 fans, claims and the cap curve, and a 32-club week of live match days for gas.
 
@@ -592,6 +610,13 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   got the same treatment
   ([tx](https://testnet.nearblocks.io/txns/6kK16cXJcfsKB63wgj4CCPaWnCredveogp4NEQtVV9HW))
   to make goals pay with the stand (600k G at most, nothing with an empty one).
+
+- **A stand can be filled by accounts made for it.** Sign-in is free and a
+  full house pays every fan in it, so many emails can fill a small club's
+  stand and mint G. The relay limits accounts per address and the reward is
+  capped by the 10B supply curve, but the contract cannot tell a fan from a
+  second account. A fix belongs in the rules (a fixed pot per full house,
+  shared between the fans in it) and so in a next league, not in a patch.
 
 - Club shares go to the club treasury, which the league holds as real G so
   that penalties can burn it.
