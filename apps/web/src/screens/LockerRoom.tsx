@@ -327,28 +327,40 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
         <Training me={me} />
         <Wardrobe me={me} />
       </div>
-      <div className="locker-foot">
-        {!isGasless(session!.accountId) && (
-          <div className="paper panel">
-            <h3>Gas</h3>
-            <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
-            <Action className="cta small" label="Top up my gas" run={() => topUp(session!.accountId)} />
-          </div>
-        )}
-        <Account />
-      </div>
     </div>
   );
 }
 
 /** The account behind the game: its passkey backup, and signing out. */
+/** Your account, away from the football: backup, gas and signing out. */
+export function AccountPage() {
+  const { session } = useGame();
+  if (!session) return <SignIn />;
+  return (
+    <div className="account-page">
+      <h1>Your account</h1>
+      <Account />
+      {!isGasless(session.accountId) && (
+        <div className="paper panel">
+          <h3>Gas</h3>
+          <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
+          <Action className="cta small" label="Top up my gas" run={() => topUp(session.accountId)} />
+        </div>
+      )}
+      <a className="link" href="#/locker">
+        Back to the locker room
+      </a>
+    </div>
+  );
+}
+
 function Account() {
   const { session, setSession, me } = useGame();
   const { data: passkeys, reload } = useData(() => (session ? passkeysOf(session.accountId) : Promise.resolve(0)), [session?.accountId]);
   if (!session) return null;
   return (
     <div className="paper panel account">
-      <span className="k">ACCOUNT</span>
+      <h3>Backup</h3>
       {passkeys ? (
         <p className="ok">
           <PasskeyIcon /> Backed up: you can sign in on your other devices

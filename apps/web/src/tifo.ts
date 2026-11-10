@@ -105,6 +105,8 @@ export interface Square {
   color: string;
   lit: boolean;
   rank: number;
+  /** Its colour in the finished picture: the card waiting on the seat. */
+  picture: string;
 }
 
 /** Squares to show for `present` fans out of `fans`. */
@@ -115,7 +117,8 @@ export function paint(present: number, fans: number, pattern = 0, border: Border
   const rank = revealOrder(total);
   return Array.from({ length: total }, (_, i) => {
     const on = rank[i]! < lit;
-    return { index: i, rank: rank[i]!, lit: on, color: on ? pictureColor(i % COLS, Math.floor(i / COLS), pattern, border) : COLORS.seat };
+    const picture = pictureColor(i % COLS, Math.floor(i / COLS), pattern, border);
+    return { index: i, rank: rank[i]!, lit: on, picture, color: on ? picture : COLORS.seat };
   });
 }
 

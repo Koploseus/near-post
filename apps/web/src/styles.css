@@ -854,21 +854,7 @@ a.me-chip.cta { padding: 10px 18px; background: var(--yellow); color: var(--ink)
 
 /* ---- v9: the stand's ola board, seat stub and votes ---- */
 .flag-note { margin: 10px 0 0; display: inline-block; padding: 6px 12px; background: var(--red); color: #fff; font: 800 13px/1.3 var(--body); border-radius: 3px; transform: rotate(-.6deg); }
-.ola-board { display: flex; align-items: center; gap: 16px; margin: 0 0 14px; padding: 10px 14px; border-radius: 4px; background: #0b1024; color: var(--paper); border: 2px solid var(--seat); }
-.ola-board > b { font: 400 18px/1 var(--display); color: var(--yellow); white-space: nowrap; }
-.ola-board p { margin: 0; flex: 1; min-width: 0; font-size: 15px; }
-.ola-clock { display: flex; flex-direction: column; align-items: flex-end; font-size: 12px; color: var(--muted-on-ink); white-space: nowrap; }
-.ola-clock strong { font: 400 28px/1 var(--display); color: var(--yellow); font-variant-numeric: tabular-nums; }
-.ola-board.open { background: var(--yellow); border-color: var(--yellow); color: var(--ink); animation: ola-pulse 1.1s ease-in-out infinite; }
-.ola-board.open > b, .ola-board.open .ola-clock strong { color: var(--ink); }
-.ola-board.open .ola-clock { color: var(--ink); }
-.ola-board.made { background: #1e7a47; border-color: #1e7a47; color: #fff; animation: none; }
-.ola-board.made > b { color: #fff; }
 @keyframes ola-pulse { 50% { box-shadow: 0 0 0 7px rgba(242, 183, 5, .22); } }
-@media (prefers-reduced-motion: reduce) { .ola-board.open { animation: none; } }
-@media (max-width: 560px) { .ola-board { flex-wrap: wrap; gap: 6px 12px; } .ola-board p { flex-basis: 100%; order: 3; } .ola-clock { margin-left: auto; } }
-.seat-stub { margin: 0; padding: 12px 16px; background: var(--paper); color: var(--ink); border-radius: 4px; border-left: 2px dashed rgba(27,35,64,.45); box-shadow: inset 8px 0 0 var(--yellow); padding-left: 22px; font-size: 15px; align-self: flex-start; }
-.seat-stub b { font-family: var(--display); font-weight: 400; margin-right: 6px; }
 .fan-votes { display: flex; flex-direction: column; gap: 18px; padding: 18px; border-radius: 4px; background: var(--paper); color: var(--ink); background-image: radial-gradient(rgba(27,35,64,.07) 1px, transparent 1.5px); background-size: 7px 7px; }
 .fan-votes fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .fan-votes legend { padding: 0; margin-bottom: 10px; font-weight: 800; font-size: 16px; }
@@ -1009,3 +995,67 @@ details.rules[open] > summary { margin-bottom: 12px; }
 .squad-list li > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .squad-list b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .squad-rating { font: 400 20px/1 "Archivo Black", sans-serif; color: var(--ink); }
+
+/* The stand: a fascia board, the cards waiting on the seats, the hoardings, then your seat and the votes. */
+.stands-page .stand { padding: 0; overflow: hidden; }
+.fascia { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px 36px; padding: 16px 20px; background: #0b1024; border-bottom: 3px solid var(--seat); }
+.fascia-club { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fascia-club span { font-size: 13px; color: var(--muted-on-ink); }
+.fascia-club select { appearance: none; max-width: 100%; padding: 2px 26px 4px 0; border: 0; border-bottom: 2px dashed rgba(243, 234, 215, .35); border-radius: 0; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23F2B705' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 4px center / 12px; color: var(--paper); font: 400 22px/1.2 var(--display); cursor: pointer; text-overflow: ellipsis; }
+.fascia-club select option { color: var(--ink); font-family: var(--body); }
+.fascia-count { margin: 0; font: 400 26px/1.1 var(--display); color: var(--paper); text-transform: none; letter-spacing: 0; -webkit-text-stroke: 0; }
+.fascia-count b { font-weight: 400; font-size: 44px; color: var(--yellow); }
+.stand.done .fascia-count b { color: #6fdc9a; }
+.fascia-count small { display: block; margin-top: 4px; font: 500 14px/1.3 var(--body); color: var(--muted-on-ink); }
+.fascia-ola { display: grid; grid-template-columns: minmax(0, 220px) auto; grid-template-areas: "l c" "s c"; gap: 0 14px; align-items: center; padding: 8px 14px; border: 2px solid var(--seat); border-radius: 4px; text-align: right; }
+.fascia-ola span { grid-area: l; font: 400 15px/1.2 var(--display); color: var(--yellow); }
+.fascia-ola small { grid-area: s; font-size: 12.5px; line-height: 1.3; color: var(--muted-on-ink); }
+.fascia-ola strong { grid-area: c; font: 400 34px/1 var(--display); color: var(--yellow); font-variant-numeric: tabular-nums; }
+.fascia-ola.open { background: var(--yellow); border-color: var(--yellow); animation: ola-pulse 1.1s ease-in-out infinite; }
+.fascia-ola.open span, .fascia-ola.open strong, .fascia-ola.open small { color: var(--ink); }
+.fascia-ola.made { background: #1e7a47; border-color: #1e7a47; }
+.fascia-ola.made span, .fascia-ola.made strong, .fascia-ola.made small { color: #fff; }
+@media (prefers-reduced-motion: reduce) { .fascia-ola.open { animation: none; } }
+.stands-page .flag-note { margin: 12px 18px 0; }
+.stands-page .grid { padding: 18px 18px 0; }
+.stands-page .sq { background: color-mix(in srgb, var(--c) 20%, var(--seat)); }
+.stands-page .sq.lit { background: var(--c); }
+.hoardings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin-top: 16px; padding: 0 18px; }
+.hoardings span { padding: 7px 10px; background: var(--paper); color: var(--ink); font: 800 13px/1.25 var(--body); text-align: center; }
+.hoardings .burn { background: var(--red); color: #fff; }
+.stands-page .pitch { margin-top: 0; height: 40px; border-top: 0; }
+.stand-floor { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px; align-items: start; margin: 20px 0; }
+.my-seat { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; padding: 20px 20px 20px 34px; border-radius: 4px; background: var(--paper) linear-gradient(90deg, var(--yellow) 0 12px, transparent 12px); color: var(--ink); position: relative; }
+.my-seat::before { content: ""; position: absolute; left: 20px; top: 10px; bottom: 10px; border-left: 2px dashed rgba(27, 35, 64, .35); }
+.my-seat h2 { margin: 0; font: 400 24px/1.1 var(--display); }
+.my-seat p { margin: 0; font-size: 15px; line-height: 1.4; }
+.my-seat .action, .my-seat .cta { max-width: 100%; }
+.seat-owed { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding-top: 12px; border-top: 2px dashed rgba(27, 35, 64, .25); width: 100%; }
+.fan-votes legend small { float: right; font: 500 13px/1.6 var(--body); color: #6b6452; }
+.tifo-pick.still, .star-pick.still { cursor: default; box-shadow: none; }
+.tifo-pick.still { border-color: rgba(27, 35, 64, .25); }
+.tifo-pick.still.leading, .star-pick.leading { border-color: var(--red); }
+.stand-rules { margin: 0 0 48px; padding: 12px 16px; border: 2px solid var(--seat); border-radius: 4px; color: var(--paper); }
+.stand-rules summary { font-weight: 800; cursor: pointer; }
+.stand-rules dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr) minmax(0, 1.2fr)); gap: 8px 20px; margin: 14px 0 10px; font-size: 14px; }
+.stand-rules dt { color: var(--muted-on-ink); }
+.stand-rules dd { margin: 0; font-weight: 700; }
+.stand-rules .plus { color: #6fdc9a; }
+.stand-rules .minus { color: #ff8a8a; }
+.stand-rules p { margin: 0; font-size: 13px; color: var(--muted-on-ink); }
+@media (max-width: 900px) {
+  .fascia { grid-template-columns: 1fr; gap: 12px; padding: 14px; }
+  .fascia-ola { grid-template-columns: minmax(0, 1fr) auto; text-align: left; }
+  .stand-floor { grid-template-columns: 1fr; }
+  .stands-page .grid { padding: 12px 12px 0; gap: 2px; }
+  .hoardings { grid-template-columns: 1fr; padding: 0 12px; margin-top: 12px; }
+  .stand-rules dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+}
+/* The account page and its door in the header. */
+.me-gear { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--seat); color: var(--paper); }
+.me-gear:hover, .me-gear:focus-visible { background: var(--paper); color: var(--ink); }
+.account-page { display: grid; gap: 18px; max-width: 560px; justify-items: start; }
+.account-page h1 { margin: 0; }
+.account-page .panel { width: 100%; }
+@media (max-width: 560px) { .me-gear { width: 32px; height: 32px; } }
+.star-pick span { white-space: normal; text-align: center; overflow-wrap: anywhere; }
