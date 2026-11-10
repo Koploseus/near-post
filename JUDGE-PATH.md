@@ -50,8 +50,8 @@ minutes left, and closes training in the last 3. Gas is paid by the relay
 | Do | See | Proof |
 | --- | --- | --- |
 | **Stands → Support … · Take your seat** | You are in the stand; the tifo gets a square. Then vote the tifo and your star of the match. In the last 5 minutes before kick-off the ola window opens: enough fans in it and the full house pays half more. | `follow` + `check_in`, `vote_tifo`, `vote_star`. Taking a seat mints nothing by itself. |
-| **Locker → Club house** | What the treasury can buy (stadium, physio, academy) with this week's votes; vote one. | `vote_project`; season ticket holders vote through their ticket NFT. |
-| **Locker → Rest this match day** | You sit out; a day off gives energy back faster. | `rest_today`. |
+| **Club → Club house** | What the treasury can buy (stadium, physio, academy) with this week's votes; vote one. | `vote_project`; season ticket holders vote through their ticket NFT. |
+| **Locker → Rest today** (before kick-off) | You sit out; a day off gives energy back faster. | `rest_today`. |
 | **Stands → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
 | Read the rules card | A full house (60% of fans in) pays 100k G per fan present; a goal pays **up to 600k G, as full as the scoring club's stand is**; an incomplete tifo burns 2% of the club's treasury. | `rules` view. No admin method changes them. |
 | **Season tickets → Buy** (300k G, 50 per club) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v9` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |

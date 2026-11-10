@@ -4,6 +4,7 @@ import { GameProvider, useGame } from "./lib/game.js";
 import { useHeartbeat } from "./lib/social.js";
 import { Toasts } from "./lib/toast.js";
 import { Agents } from "./screens/Agents.js";
+import { ClubHousePage } from "./screens/ClubHouse.js";
 import { Album } from "./screens/Album.js";
 import { Goalars } from "./screens/Goalars.js";
 import { SeasonTickets } from "./screens/SeasonTickets.js";
@@ -11,7 +12,7 @@ import { Dashboard } from "./screens/Dashboard.js";
 import { Game } from "./screens/Game.js";
 import { Lineup } from "./screens/Lineup.js";
 import { Live } from "./screens/Live.js";
-import { LockerRoom } from "./screens/LockerRoom.js";
+import { AccountPage, LockerRoom } from "./screens/LockerRoom.js";
 import { faceNumber, Head } from "./screens/Look.js";
 import { Market } from "./screens/Market.js";
 import { Match } from "./screens/Match.js";
@@ -31,9 +32,11 @@ const ROUTES = {
   seasons: { tab: "club", view: Seasons },
   album: { tab: "club", view: Album },
   market: { tab: "club", view: Market },
+  house: { tab: "club", view: ClubHousePage },
   ai: { tab: "club", view: Agents },
   game: { tab: "club", view: Game },
   locker: { tab: "me", view: LockerRoom },
+  account: { tab: "me", view: AccountPage },
   try: { tab: "home", view: Try },
 } as const;
 type Route = keyof typeof ROUTES;
@@ -104,6 +107,21 @@ function Me({ current }: { current: Tab }) {
   );
 }
 
+/** The door to the account page: backup, gas, sign out. */
+function AccountLink() {
+  const { session } = useGame();
+  if (!session) return null;
+  return (
+    <a className="me-gear" href="#/account" aria-label="Your account" title="Your account">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <circle cx="12" cy="12" r="7.6" strokeWidth="3.4" strokeDasharray="2.6 3.37" strokeLinecap="butt" />
+        <circle cx="12" cy="12" r="5.6" />
+        <circle cx="12" cy="12" r="1.8" />
+      </svg>
+    </a>
+  );
+}
+
 /** How many players have the game open right now (and your own heartbeat, when signed in). */
 function Online() {
   const { session } = useGame();
@@ -133,6 +151,7 @@ function Header({ tab }: { tab: Tab }) {
         <div className="top-right">
           <Online />
           <Me current={tab} />
+          <AccountLink />
         </div>
       </div>
     </header>
@@ -140,12 +159,13 @@ function Header({ tab }: { tab: Tab }) {
 }
 
 /** Results, album and market: the club's pages. (The AI agents' page, #/ai, is linked from Today.) */
-export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "ai" }) {
+export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "house" | "ai" }) {
   const tabs = [
     ["match", "Results"],
     ["seasons", "Seasons"],
     ["album", "Album"],
     ["market", "Market"],
+    ["house", "Club house"],
   ] as const;
   return (
     <nav className="sub-tabs" aria-label="Club">
@@ -184,7 +204,7 @@ export function App() {
     <GameProvider>
       <Header tab={tab} />
       <main className="wrap page">
-        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "ai") && <ClubTabs current={r} />}
+        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "house" || r === "ai") && <ClubTabs current={r} />}
         {(r === "stands" || r === "g" || r === "tickets") && <StandsTabs current={r} />}
         <View />
       </main>

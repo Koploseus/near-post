@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
 import { call, isGasless, league, leagueCall, signForClub, signOut, topUp } from "../lib/near.js";
-import { ClubHouse } from "./ClubHouse.js";
+import { Crest } from "./Crest.js";
+import { serverNow } from "../lib/time.js";
 import { LEAGUE, PLAYERS } from "../lib/config.js";
 import { Offers } from "./Market.js";
 import type { Club, Player, Position, Rules } from "../lib/types.js";
 import { PasskeyIcon, RecoveryKeySetup, SignIn } from "./SignIn.js";
 import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.js";
-import { SkillBars, Sticker } from "./Sticker.js";
+import { Sticker } from "./Sticker.js";
 import { Training } from "./Training.js";
 import { Wardrobe } from "./Wardrobe.js";
 
@@ -132,126 +133,234 @@ function PickClub({ me }: { me: Player }) {
   );
 }
 
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/** Ten studs: full legs to empty. The notch is where tired starts. */
+function EnergyGauge({ energy, tiredBelow }: { energy: number; tiredBelow: number }) {
+  const lit = Math.ceil(energy / 10);
+  const tired = energy < tiredBelow;
+  return (
+    <div className={`gauge${tired ? " tired" : ""}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={energy} aria-label="Energy">
+      <div className="gauge-studs" aria-hidden="true">
+        {Array.from({ length: 10 }, (_, i) => (
+          <i key={i} className={`${i < lit ? "on" : ""}${i === Math.floor(tiredBelow / 10) ? " notch" : ""}`} />
+        ))}
+      </div>
+      <span className="gauge-num">{energy}</span>
+    </div>
+  );
+}
+
+/** The next match, as the dressing-room board shows it: when, your legs, play or rest. */
+function MatchBoard({ me, rules }: { me: Player; rules: Rules | null }) {
+  const { session, schedule } = useGame();
+  const day = schedule?.match_day ?? 0;
+  const [now, setNow] = useState(serverNow());
+  useEffect(() => {
+    const t = setInterval(() => setNow(serverNow()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const { data: suspended } = useData(() => league<boolean>("is_suspended", { token_id: me.token_id, match_day: day }), [me.token_id, day]);
+  const { data: resting, reload } = useData(() => league<boolean>("is_resting", { token_id: me.token_id, match_day: day }).catch(() => false), [me.token_id, day]);
+  const kickoff = Number(schedule?.kickoff_at_ms ?? 0);
+  const before = !!schedule && !schedule.first_half_played && now < kickoff;
+  const sheetOpen = before && now < kickoff - 60_000;
+  const tiredBelow = rules?.tired_below ?? 50;
+  const tired = me.energy < tiredBelow;
+  // The chain plays a half in one go and the app reveals it: the last match can still be on screen.
+  const lastEnds = schedule ? Number(schedule.last_kickoff_at_ms) + 2 * Number(schedule.half_ms) + Number(schedule.half_time_ms) : 0;
+  const stillOn = before && Number(schedule?.last_kickoff_at_ms ?? 0) > 0 && now < lastEnds;
+  return (
+    <section className="matchboard" aria-label={`Match day ${day}`}>
+      <p className="board-when">
+        <span>Match day {day}</span>
+        {before ? (
+          <>
+            <b>{clock(kickoff - now)}</b>
+            <span>to kick-off</span>
+            {stillOn && <a href="#/live">Match day {day - 1} is still on: watch it live</a>}
+          </>
+        ) : (
+          <>
+            <b>On now</b>
+            <a href="#/live">Watch it live</a>
+          </>
+        )}
+      </p>
+      <div className="board-legs">
+        <EnergyGauge energy={me.energy} tiredBelow={tiredBelow} />
+        <p>
+          {tired
+            ? `Tired legs: your skills are down. A day off gives ${(rules?.energy_per_day ?? 8) + (rules?.energy_rest ?? 17)} back.`
+            : `A match takes ${rules?.energy_match ?? 12}, a night gives ${rules?.energy_per_day ?? 8} back. Under ${tiredBelow} your skills drop.`}
+        </p>
+      </div>
+      <p className={`board-status${suspended ? " bad" : resting ? " rest" : ""}`}>
+        {suspended ? "Suspended after a red card" : resting ? "You rest this match day" : "You are in the squad"}
+      </p>
+      {!suspended && sheetOpen && session && (
+        <div className="board-actions">
+          <a className="cta small" href="#/team">
+            {resting ? "Play after all" : "Pick my slot"}
+          </a>
+          {!resting && <Action className="chip" label="Rest today" run={() => leagueCall(session, "rest_today", {}, 30)} done={() => soon(reload)} success="You sit this one out" />}
+        </div>
+      )}
+      {!sheetOpen && !suspended && <p className="board-closed">The team sheet is closed until the final whistle.</p>}
+    </section>
+  );
+}
+
+/** His contract, as the paper he signed: wage, days left, clause, and the three strikes that free him. */
+function ContractSlip({ me, club, rules }: { me: Player; club: Club; rules: Rules | null }) {
+  const { session, schedule, refresh } = useGame();
+  const c = me.contract;
+  if (!c) return null;
+  const day = schedule?.match_day ?? c.from_day;
+  const total = c.until_day - c.from_day + 1;
+  const played = Math.min(total, Math.max(0, day - c.from_day));
+  const strikes = rules?.unpaid_to_free ?? 3;
+  const free = BigInt(c.wage) === 0n;
+  return (
+    <section className="slip" aria-label="Your contract">
+      <header>
+        <Crest clubId={club.manager} name={club.name} size={34} />
+        <h3>Contract with {club.name}</h3>
+      </header>
+      <dl>
+        <div>
+          <dt>Wage</dt>
+          <dd>{free ? "None" : `${g(c.wage)} a match`}</dd>
+        </div>
+        <div>
+          <dt>Release clause</dt>
+          <dd>{free ? "None" : g(c.clause)}</dd>
+        </div>
+        <div>
+          <dt>Ends</dt>
+          <dd>Match day {c.until_day}</dd>
+        </div>
+      </dl>
+      <div className="slip-days" role="img" aria-label={`${total - played} of ${total} match days left`}>
+        {Array.from({ length: Math.min(total, 78) }, (_, i) => (
+          <i key={i} className={i < played ? "done" : ""} />
+        ))}
+      </div>
+      {free ? (
+        <p>
+          No wage, no ties: leave whenever you like.{" "}
+          <Action className="link" label={`Leave ${club.name}`} run={() => leagueCall(session!, "leave_club", {}, 100)} done={() => soon(refresh)} success="You are a free agent" />
+        </p>
+      ) : (
+        <p className="strikes">
+          Unpaid matches
+          <span aria-label={`${c.unpaid} of ${strikes}`}>
+            {Array.from({ length: strikes }, (_, i) => (
+              <i key={i} className={i < c.unpaid ? "on" : ""} />
+            ))}
+          </span>
+          {strikes} in a row and you are free.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function MyPlayer({ me, club }: { me: Player; club: Club }) {
   const { session, schedule, balance, refresh } = useGame();
   const day = schedule?.match_day ?? 0;
-  const { data: suspended } = useData(() => league<boolean>("is_suspended", { token_id: me.token_id, match_day: day }), [me.token_id, day]);
   const owed = BigInt(me.wallet) + BigInt(me.salary);
-  const { data: resting, reload: reloadRest } = useData(() => league<boolean>("is_resting", { token_id: me.token_id, match_day: day }).catch(() => false), [me.token_id, day]);
   const { data: credits, reload: reloadCredits } = useData(() => league<string>("credits_of", { account_id: session!.accountId }), [session?.accountId, day]);
   const { data: rules } = useData(() => league<Rules>("rules"), []);
-  const c = me.contract;
-  const tired = me.energy < (rules?.tired_below ?? 50);
+  const bonus = BigInt(credits ?? "0");
   return (
     <div className="locker">
-      <div className="paper panel me">
-        <Sticker p={me} />
-        <div className="me-info">
-          <span className="k">{club.name.toUpperCase()} · MATCH DAY {day}</span>
-          <h2>{me.name}</h2>
-          <dl className="stats">
-            <dt>Club</dt>
-            <dd>{club.name}</dd>
-            <dt>Rating</dt>
-            <dd>
-              {me.overall} · attack {me.attack} · defence {me.defence}
-            </dd>
-            <dt>Goals</dt>
-            <dd>{me.goals}</dd>
-            <dt>His wallet</dt>
-            <dd>{g(me.wallet)} goals · {g(me.salary)} salary</dd>
-            <dt>Your G</dt>
-            <dd>{g(balance)}</dd>
-            <dt>Contract</dt>
-            <dd>
-              {c ? `${g(c.wage)} a match, until match day ${c.until_day}` : "none"}
-              {c && c.unpaid > 0 ? ` · unpaid ${c.unpaid} of ${rules?.unpaid_to_free ?? 3}` : ""}
-            </dd>
-          </dl>
-          <div className={`energy${tired ? " tired" : ""}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={me.energy} aria-label="Energy">
-            <span className="k">ENERGY {me.energy}</span>
-            <div className="bar">
-              <div style={{ width: `${me.energy}%` }} />
-              <i aria-hidden="true" />
-            </div>
-          </div>
-          <SkillBars p={me} />
-        </div>
-      </div>
-      <div className="actions">
-        <div className="paper panel">
-          <h3>Match day {day}</h3>
-          {suspended ? (
-            <p className="err">Suspended for this match day after a red card.</p>
-          ) : (
-            <p className="ok">You are in the squad: everyone plays by default, eleven and one more.</p>
-          )}
-          <p className="note">Pick your slot on the team sheet, or the best free slot for your role is yours. A red card suspends you for the next match day.</p>
-          <p className={tired ? "err" : "note"}>
-            {tired
-              ? `Tired: under ${rules?.tired_below ?? 50} energy your skills drop, up to ${rules?.tired_malus_pct ?? 20}% at zero.`
-              : `A match costs ${rules?.energy_match ?? 12} energy; each match day gives ${rules?.energy_per_day ?? 8} back.`}{" "}
-            A day off gives {rules?.energy_rest ?? 17} more.
-          </p>
-          {resting ? (
-            <p className="ok">You rest this match day. Take a slot on the team sheet to play after all.</p>
-          ) : (
-            <Action className="cta small" label="REST THIS MATCH DAY" run={() => leagueCall(session!, "rest_today", {}, 30)} done={() => soon(reloadRest)} success="You sit this one out" />
-          )}
-        </div>
-        {c && (
-          <div className="paper panel">
-            <h3>Contract</h3>
-            <p className="note">
-              With {club.name} until match day {c.until_day}: {g(c.wage)} at each match you start. Release clause: {g(c.clause)}, paid by a club you gave your
-              word to. When it ends your registration comes back to you.
+      <div className="locker-top">
+        <div className="locker-me">
+          <Sticker p={me} />
+          <div className="locker-id">
+            <h2>{me.name}</h2>
+            <p>
+              {positionLabel[me.position]} at {club.name}, {me.goals} {me.goals === 1 ? "goal" : "goals"}
             </p>
-            {BigInt(c.wage) === 0n && (
-              <Action className="cta small" label={`LEAVE ${club.name.toUpperCase()}`} run={() => leagueCall(session!, "leave_club", {}, 100)} done={() => soon(refresh)} success="You are a free agent" />
+            <dl className="purse">
+              <div>
+                <dt>Your G</dt>
+                <dd>{g(balance)}</dd>
+              </div>
+              <div>
+                <dt>To collect</dt>
+                <dd>{g(owed + bonus)}</dd>
+              </div>
+            </dl>
+            {owed > 0n && (
+              <Action className="cta small" label={`Collect ${g(owed)}`} run={() => leagueCall(session!, "claim_player", { token_id: me.token_id })} done={() => soon(refresh)} success={`${g(owed)} on its way`} />
             )}
+            {bonus > 0n && (
+              <Action
+                className="cta small"
+                label={`Collect your bonus, ${g(bonus)}`}
+                run={() => leagueCall(session!, "claim", {}, 60)}
+                done={() => {
+                  soon(reloadCredits);
+                  soon(refresh);
+                }}
+                success="In your wallet"
+              />
+            )}
+            {owed + bonus === 0n && <p className="purse-note">Goals, wages and bonuses land here.</p>}
           </div>
-        )}
-        <ClubHouse clubId={me.owner} />
+        </div>
+        <MatchBoard me={me} rules={rules} />
+        <ContractSlip me={me} club={club} rules={rules} />
+      </div>
+      <a className="house-link" href="#/house">
+        <Crest clubId={club.manager} name={club.name} size={30} />
+        <span>
+          <b>Club house</b> Vote what {club.name}'s treasury buys this week
+        </span>
+      </a>
+      <div className="locker-work">
         <Training me={me} />
         <Wardrobe me={me} />
-        <div className="paper panel">
-          <h3>Collect</h3>
-          <p className="note">Your goals are minted, your salary is paid from the club treasury.</p>
-          <Action label={`COLLECT ${g(owed)}`} disabled={owed === 0n} run={() => leagueCall(session!, "claim_player", { token_id: me.token_id })} done={() => soon(refresh)} success={`${g(owed)} on its way`} />
-          {BigInt(credits ?? "0") > 0n && (
-            <Action
-              className="cta small"
-              label={`COLLECT YOUR BONUS · ${g(credits ?? "0")}`}
-              run={() => leagueCall(session!, "claim", {}, 60)}
-              done={() => {
-                soon(reloadCredits);
-                soon(refresh);
-              }}
-              success="In your wallet"
-            />
-          )}
-        </div>
-        {!isGasless(session!.accountId) && (
-          <div className="paper panel">
-            <h3>Gas</h3>
-            <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
-            <Action className="cta small" label="TOP UP MY GAS" run={() => topUp(session!.accountId)} />
-          </div>
-        )}
-        <Account />
       </div>
     </div>
   );
 }
 
 /** The account behind the game: its passkey backup, and signing out. */
+/** Your account, away from the football: backup, gas and signing out. */
+export function AccountPage() {
+  const { session } = useGame();
+  if (!session) return <SignIn />;
+  return (
+    <div className="account-page">
+      <h1>Your account</h1>
+      <Account />
+      {!isGasless(session.accountId) && (
+        <div className="paper panel">
+          <h3>Gas</h3>
+          <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
+          <Action className="cta small" label="Top up my gas" run={() => topUp(session.accountId)} />
+        </div>
+      )}
+      <a className="link" href="#/locker">
+        Back to the locker room
+      </a>
+    </div>
+  );
+}
+
 function Account() {
   const { session, setSession, me } = useGame();
   const { data: passkeys, reload } = useData(() => (session ? passkeysOf(session.accountId) : Promise.resolve(0)), [session?.accountId]);
   if (!session) return null;
   return (
     <div className="paper panel account">
-      <span className="k">ACCOUNT</span>
+      <h3>Backup</h3>
       {passkeys ? (
         <p className="ok">
           <PasskeyIcon /> Backed up: you can sign in on your other devices
