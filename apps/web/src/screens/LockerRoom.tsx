@@ -65,37 +65,71 @@ function PickClub({ me }: { me: Player }) {
   const { data } = useData(async () => {
     const table = await league<Club[]>("table");
     const squads = await Promise.all(table.map((c) => league<Player[]>("squad", { account_id: c.manager })));
-    return table.map((c, i) => ({ c, people: squads[i]!.filter((p) => p.controller).length }));
+    // Clubs that pay come first; the league table breaks the ties.
+    return table
+      .map((c, i) => ({ c, people: squads[i]!.filter((p) => p.controller).length }))
+      .sort((a, b) => Number(BigInt(b.c.wage ?? "0") - BigInt(a.c.wage ?? "0")));
   }, []);
   const table = data?.map((d) => d.c);
   const { data: rules } = useData(() => league<Rules>("rules"), []);
   const lengths = rules?.contract_days ?? [7, 13, 26, 52, 78];
   const [days, setDays] = useState(26);
   return (
-    <section className="paper panel" aria-labelledby="pick-title">
-      <span className="k">STEP 2 OF 2</span>
+    <section className="paper panel signing" aria-labelledby="pick-title">
       <h2 id="pick-title">Sign for a club</h2>
-      <FoundClub me={me} />
-      <p className="note">
-        {me.name} is a free agent. Give a club his registration (his NFT) and he joins its squad. You keep playing him,
-        and his wallet stays yours, wherever he goes. A squad is eleven and one more: you take the place of its weakest
-        academy player, and a club with twelve people is full.
+      <p className="signing-lede">
+        {me.name} is a free agent. A club gets his registration, his NFT, for the length you choose. You keep playing him and his wallet stays yours.
       </p>
-      <fieldset className="positions contract-days">
-        <legend>Your contract, in match days</legend>
-        {lengths.map((d) => (
-          <label key={d}>
-            <input type="radio" name="contract-days" checked={days === d} onChange={() => setDays(d)} />
-            {d}
-            {d === 26 ? " (a season)" : ""}
-          </label>
-        ))}
-      </fieldset>
-      <p className="note">
-        The club pays you its wage at each match you start. When the contract ends, or after {rules?.unpaid_to_free ?? 3} matches in a row unpaid, your
-        registration comes back to you by itself. Before that, another club takes you by paying your release clause (wage × days × {rules?.clause_factor ?? 2})
-        if you agree. A contract without a wage can be left at any time.
-      </p>
+      <div className="signing-terms">
+        <div className="positions contract-days" role="group" aria-label="Your contract, in match days">
+          {lengths.map((d) => (
+            <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}>
+              {d}
+              <small>{d === 26 ? "a season" : "days"}</small>
+            </button>
+          ))}
+        </div>
+        <ul>
+          <li>The club pays its wage at each match you start.</li>
+          <li>
+            Unpaid {rules?.unpaid_to_free ?? 3} times in a row, or once the {days} days are played: he comes back to you by himself.
+          </li>
+          <li>Another club can take him earlier by paying the release clause, if you agree.</li>
+        </ul>
+      </div>
+      <div className="clubs">
+        {(data ?? []).map(({ c, people }) => {
+          const wage = BigInt(c.wage ?? "0");
+          return (
+            <div className="club-row" key={c.manager}>
+              <Crest clubId={c.manager} name={c.name} size={40} />
+              <span className="club-who">
+                <strong>{c.name}</strong>
+                <span className="note">
+                  Division {c.division}, {c.points} pts, {c.fans} fans, {people} of 12 people
+                </span>
+              </span>
+              <span className="club-pay">
+                <b>{wage > 0n ? g(wage) : "No wage"}</b>
+                <span className="note">{wage > 0n ? `a match, clause ${g(wage * BigInt(days) * BigInt(rules?.clause_factor ?? 2))}` : "leave when you like"}</span>
+              </span>
+              {people >= 12 ? (
+                <span className="chip">FULL</span>
+              ) : (
+                <Action
+                  label={`SIGN ${days} DAYS`}
+                  aria={`Sign ${days} days for ${c.name}`}
+                  className="cta small"
+                  run={() => signForClub(session!, me.token_id, c.manager, days)}
+                  done={() => soon(refresh)}
+                  success={`Welcome to ${c.name}!`}
+                />
+              )}
+            </div>
+          );
+        })}
+        {table?.length === 0 && <p className="note">No club yet.</p>}
+      </div>
       <h3>Offers for {me.name}</h3>
       <Offers
         tokenId={me.token_id}
@@ -105,30 +139,7 @@ function PickClub({ me }: { me: Player }) {
           )
         }
       />
-      <div className="clubs">
-        {(data ?? []).map(({ c, people }) => (
-          <div className="club-row" key={c.manager}>
-            <span>
-              <strong>{c.name}</strong>{" "}
-              <span className="note">
-                Division {c.division} · {c.points} pts · {c.fans} fans · {people} of 12 people · pays {g(c.wage ?? "0")} a match
-              </span>
-            </span>
-            {people >= 12 ? (
-              <span className="chip">FULL</span>
-            ) : (
-              <Action
-                label={`SIGN ${days} DAYS FOR ${c.name.toUpperCase()}`}
-                className="cta small"
-                run={() => signForClub(session!, me.token_id, c.manager, days)}
-                done={() => soon(refresh)}
-                success={`Welcome to ${c.name}!`}
-              />
-            )}
-          </div>
-        ))}
-        {table?.length === 0 && <p className="note">No club yet.</p>}
-      </div>
+      <FoundClub me={me} />
     </section>
   );
 }
