@@ -92,6 +92,9 @@ near contract call-function as-read-only league-v9.near-post.testnet ledger json
 ## Known limits
 
 - Testnet only. Demo sign-in: no email check (rate-limited).
+- A stand can be filled by accounts made for it: sign-in is free and a full
+  house pays every fan in it. The contract cannot tell them apart; the fix is
+  a rule change (a fixed pot per full house), so a next league (README, Limits).
 - One club, "Kop Test FC", was made by an end-to-end test and cannot be removed:
   no contract can delete a club.
 - If you close the tab during a drill, reopen the locker room: the relay gives
