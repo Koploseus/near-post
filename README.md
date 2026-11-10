@@ -18,9 +18,9 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > install) replays the last 10 match days from the chain and checks every mint
 > and burn against the rules (below).
 >
-> **Status, 6 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (148 Rust tests, 115 TypeScript tests), and
-> run on **testnet** (v8, below). The relay signs players in by email, pays
+> **Status, 10 November 2026.** Five contracts compile reproducibly, are
+> unit-tested and sandbox-tested (188 Rust tests, 150 TypeScript tests), and
+> run on **testnet** (v9, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
@@ -36,10 +36,27 @@ G is minted only for people who show up:
 - **A stand that is not full burns 2% of its club's treasury.**
 - **Spending burns:** training 400k G, a pack 500k G, 3% of every transfer,
   10% of a relegated club's treasury, an own goal up to 600k G.
-- Onboarding: 1M G when an account first joins a club, then 1M G on each of its
-  first 4 stadium check-ins, so four of the five million also need the
-  account to show up. It shows apart from the rest on the chart and in the
-  check below.
+- **Signing up mints nothing.** Following a club or creating a footballer
+  pays no G, so new accounts cannot be farmed. A person gets 1M G once, after
+  the first match his footballer starts (and one free training before that);
+  the founder of a club gets 1M G, and the league holds at most 200 clubs.
+  These show apart from the rest on the chart and in the check below.
+
+## What v9 adds: choices, not clicks
+
+v9 (10 November) is a fresh league where every part of the loop asks for a
+decision. All of it is in the contracts, with the numbers in `rules()`.
+
+| Mechanic | The rule | The choice |
+| --- | --- | --- |
+| **Contracts** | A person signs for 7, 13, 26, 52 or 78 match days at the wage the club offers (`sign_for`, then the NFT transfer). Three matches in a row unpaid, or the contract's last day, and the league sends his registration back to him (`league_transfer`). Another club takes him by paying his release clause (wage × days × 2), once he signed for it. A contract without a wage can be left. | A long contract at a rich club, or a short one to stay free. |
+| **Energy** | 0 to 100. A match costs 12, a training 15; each match day gives 8 back and a day off 17 more. Under 50, skills drop, down to 20% less at zero. | Play, train, or sit a match day out (`rest_today`). |
+| **Items that count** | Eight kinds of NEP-245 items: boots add pace, a headband physical, grip socks dribbling, a wristband passing, ankle tape shooting, shin pads defending (outfield), gloves defending (in goal); rare +1, epic +2, legendary +3. Haircuts are for show. | What a striker, a defender or a keeper should wear. |
+| **The ola** | Fans who take their seat in the last 5 minutes before kick-off count. When half the full-house target did and the house is full, the reward is 50% higher. | Come early and be safe, or wait for the window and risk missing it. |
+| **The fans' star** | Fans in the stand vote their star of the match (`vote_star`); he gets up to 100k G in his NFT's wallet, in proportion to the stand. They also vote the tifo the stand shows (`vote_tifo`, six patterns). | Whom to reward. |
+| **The club house** | Each week a club's players and its season ticket holders vote what the treasury buys (`vote_project`, one voice each): stadium (+10% full-house reward per level), physio (+5 energy a day), academy (+1 to every skill of its academy players), or to save. The price burns. | Spend on the fans, the players, the kids, or keep it for wages. |
+| **Revenue sharing** | A club that sold season tickets shares a fifth of what it earns (its part of goals, its sales) with them, on top of their 50k per full house. The G are held in the ticket NFT and follow it when it is sold, with its vote. | Which club's ticket to hold. |
+| **The derby flag** | The winner of a derby flies its colours in the loser's stand for 7 match days. | Honour. |
 
 So the supply follows the crowds. On testnet, match days whose stands were
 half full or more minted about **+7M G net**; days with empty stands burned
@@ -128,16 +145,15 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
   roll of honour and each club's history. `play_match_day` plays one
   division per call, so the gas of a call never grows with the league (86
   Tgas at most for a 14-club division in the sandbox).
-- **A wardrobe of NFT items.** Haircuts, boots and headbands are NEP-245
-  items in four rarities. A pack of three costs 500k G, burned
+- **A wardrobe of NFT items.** Haircuts, boots, headbands, grip socks, shin
+  pads, gloves, wristbands and ankle tape are NEP-245 items in four rarities;
+  all but haircuts add to a skill on the pitch (see the table above). A pack of three costs 500k G, burned
   (`ft_transfer_call` with `{"pack":{}}`; common 70%, rare 22%, epic 7%,
   legendary 1%). Three items of a kind and rarity fuse into one of the next
   rarity (`fuse`). The person who plays a footballer dresses him (`equip`,
   `unequip`): the league holds a worn item and sends it back when it comes
   off. Only the league mints items, and it burns or takes them only when
   their holder asks.
-- **Signing up pays.** Every new account gets 1M G, then 1M more
-  on each of its first 4 stadium visits: 5M for a fan who shows up.
 - **You are a footballer.** `create_footballer(name, position)` mints your
   player as an NFT in your name: a free agent. Give that registration to a club
   (an NFT transfer) and you are in its squad. A squad is twelve, eleven and
@@ -359,7 +375,7 @@ Season tickets); fill the stand with other fans; after the match day the
 ticket shows its share, and `tickets_of` on `tickets-v9.near-post.testnet`
 shows the same balance.
 
-## Live on testnet (v8)
+## Live on testnet (v9)
 
 | Contract | Account |
 | --- | --- |
@@ -378,9 +394,10 @@ days) ends in 13 hours; a real league would play one match day a day. The
 league has 24 fictional clubs in two divisions, 8 of them in 4 derbies, a
 demo crowd and the AI agents above.
 
-v1 to v7 (1 to 6 November) stay on `*-v1` to `*-v7.near-post.testnet`;
-they are no longer used. v8 (6 November) is a fresh league for seasons of
-26 match days and divisions of 14.
+v1 to v8 (1 to 10 November) stay on `*-v1` to `*-v8.near-post.testnet`;
+they are no longer used. The contracts cannot be changed, so new rules mean a
+new league: v9 (10 November) starts again at season 1 with the mechanics of
+"What v9 adds".
 
 Read it yourself:
 
@@ -400,7 +417,7 @@ pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
-The web app reads the v8 contracts on testnet. Email sign-in goes through the
+The web app reads the v9 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
