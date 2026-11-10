@@ -210,8 +210,8 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
   target, capped at 1). Full stand: 600k. Half of the target: 300k. Empty
   stand, or a club with no fans: nothing. A goal after the 90th minute counts
   double; an own goal burns 600k G from the club at fault.
-- **What a player earns:** his goals; a 200k salary from the club treasury for
-  every match he starts (while the treasury lasts); 5% of every sale of his
+- **What a player earns:** his goals; the wage of his contract from the club
+  treasury for every match he starts (see "What v9 adds"); 5% of every sale of his
   registration. All of it follows the person, not the club: he collects with
   `claim_player`. Academy players' wallets go to their club.
 - **Training is a drill.** Send 400k G to the league with `ft_transfer_call`
