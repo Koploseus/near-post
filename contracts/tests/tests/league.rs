@@ -355,16 +355,23 @@ async fn a_match_day_end_to_end() -> Result<()> {
     for goal in m["goals"].as_array().unwrap() {
         assert!(!goal["name"].as_str().unwrap().is_empty());
     }
-    let scorer = m["goals"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|g| g["kind"] != "Own" && g["for_home"] == true)
-        .map(|g| g["player"].as_str().unwrap().to_string());
-    if let Some(token) = scorer {
+    // A goal by an academy fill-in names no player record: only a footballer
+    // the league knows has a wallet to claim.
+    let mut scorer = None;
+    for goal in m["goals"].as_array().unwrap() {
+        if goal["kind"] == "Own" || goal["for_home"] != true {
+            continue;
+        }
+        let token = goal["player"].as_str().unwrap().to_string();
         let player = game
             .view("get_player", json!({ "token_id": token }))
             .await?;
+        if !player.is_null() {
+            scorer = Some((token, player));
+            break;
+        }
+    }
+    if let Some((token, player)) = scorer {
         let owner = player["owner"].as_str().unwrap().to_string();
         let wallet = g(&player["wallet"]);
         assert!(wallet > 0);
