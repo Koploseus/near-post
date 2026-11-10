@@ -7,7 +7,7 @@
 //! the league mints items; it burns or takes them only when their holder
 //! asks it to (fuse, equip).
 
-use crate::{BURN_GAS, CALLBACK_GAS, League, LeagueExt, derive_seed, ext_goalars};
+use crate::{BURN_GAS, CALLBACK_GAS, League, LeagueExt, Skill, Skills, derive_seed, ext_goalars};
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, Gas, NearToken, PromiseError, env, ext_contract, near, require};
 
@@ -38,6 +38,8 @@ pub const CATALOG: [[[&str; 3]; 4]; 3] = [
 /// Out of 100: common, rare, epic, legendary.
 pub const PACK_ODDS: [u32; 4] = [70, 22, 7, 1];
 pub const PACK_ITEMS: usize = 3;
+/// Skill points a worn item adds in a match, by rarity.
+pub const ITEM_BONUS: [u8; 4] = [0, 1, 2, 3];
 pub const FUSE: usize = 3;
 
 const ITEMS_GAS: Gas = Gas::from_tgas(15);
@@ -84,6 +86,19 @@ impl Look {
             _ => &mut self.band,
         }
     }
+}
+
+/// A player's skills on the pitch with what he wears: boots add to pace, a
+/// headband to physical, by rarity (`ITEM_BONUS`). Hair is looks only.
+pub fn dressed(mut skills: Skills, look: &Look) -> Skills {
+    let bonus = |item: &Option<String>| {
+        item.as_deref()
+            .and_then(describe)
+            .map_or(0, |(_, rarity)| ITEM_BONUS[rarity])
+    };
+    skills.raise(Skill::Pace, bonus(&look.boots));
+    skills.raise(Skill::Physical, bonus(&look.band));
+    skills
 }
 
 #[near(serializers = [json])]

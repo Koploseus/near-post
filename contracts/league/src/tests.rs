@@ -1790,3 +1790,111 @@ fn a_goal_pays_in_proportion_to_the_scoring_clubs_stand() {
     assert_eq!(l.stand_fill_bps(&acc("c0.testnet"), l.match_day), 5_000);
     assert_eq!(r.goal_scorer_share.0 * 5_000 / 10_000, 210_000 * ONE_G);
 }
+
+// ---- v9: items that count, the ola, the derby flag ----
+
+#[test]
+fn boots_and_a_headband_add_to_the_skills_on_the_pitch() {
+    let base = Skills {
+        pace: 50,
+        shooting: 50,
+        passing: 50,
+        dribbling: 50,
+        defending: 50,
+        physical: 98,
+    };
+    let look = Look {
+        hair: Some("hair.fire".into()),
+        boots: Some("boots.gold".into()),
+        band: Some("band.striped".into()),
+    };
+    let on = wardrobe::dressed(base, &look);
+    // Legendary boots: +3 pace. An epic headband: +2 physical, never past 99.
+    assert_eq!((on.pace, on.physical), (53, 99));
+    // Hair is looks only; common items add nothing.
+    assert_eq!(
+        (on.shooting, on.passing, on.dribbling, on.defending),
+        (50, 50, 50, 50)
+    );
+    let plain = Look {
+        hair: None,
+        boots: Some("boots.black".into()),
+        band: None,
+    };
+    assert_eq!(wardrobe::dressed(base, &plain), base);
+}
+
+#[test]
+fn the_ola_needs_half_the_target_in_the_last_five_minutes() {
+    // 10 fans: a full house is 6, the ola is 3 of them in the window.
+    assert_eq!(ola_target(10), 3);
+    let mut l = league_with(2, 10);
+    let kickoff = l.kickoff_ns;
+    // Three come early: in the stand, not in the ola.
+    for f in 0..3 {
+        at(&format!("f0-{f}.testnet"), kickoff - 6 * 60_000 * MS, 1);
+        l.check_in();
+    }
+    // Three more in the last five minutes.
+    for f in 3..6 {
+        at(&format!("f0-{f}.testnet"), kickoff - 60_000 * MS, 1);
+        l.check_in();
+    }
+    let s = l.stand(acc("c0.testnet"));
+    assert_eq!(
+        (s.present, s.ola, s.ola_target, s.full_house),
+        (6, 3, 3, true)
+    );
+    // The other club fills its stand early: full, no ola.
+    for f in 0..6 {
+        at(&format!("f1-{f}.testnet"), kickoff - 8 * 60_000 * MS, 1);
+        l.check_in();
+    }
+    kick_off(&mut l, 1);
+    assert!(l.stand_result(acc("c0.testnet"), 1).unwrap().ola);
+    assert!(!l.stand_result(acc("c1.testnet"), 1).unwrap().ola);
+    as_caller("f0-0.testnet");
+    assert_eq!(l.claim_stand(acc("c0.testnet"), 1), U128(150_000 * ONE_G));
+    as_caller("f1-0.testnet");
+    assert_eq!(l.claim_stand(acc("c1.testnet"), 1), U128(100_000 * ONE_G));
+}
+
+#[test]
+fn an_ola_without_a_full_house_pays_nothing_more() {
+    let mut l = league_with(2, 10);
+    let kickoff = l.kickoff_ns;
+    for f in 0..3 {
+        at(&format!("f0-{f}.testnet"), kickoff - 60_000 * MS, 1);
+        l.check_in();
+    }
+    kick_off(&mut l, 1);
+    let s = l.stand_result(acc("c0.testnet"), 1).unwrap();
+    assert_eq!((s.full_house, s.ola), (false, false));
+}
+
+#[test]
+fn the_winner_of_a_derby_flies_its_colours_at_the_loser_for_a_week() {
+    let mut l = league_with(2, 0);
+    as_caller("c0.testnet");
+    l.set_rival(Some(acc("c1.testnet")));
+    as_caller("c1.testnet");
+    l.set_rival(Some(acc("c0.testnet")));
+    // Play derbies until one is won.
+    let mut day = 0;
+    let (winner, loser) = loop {
+        day += 1;
+        let m = kick_off(&mut l, day as u8).remove(0);
+        assert!(m.derby);
+        if m.home_goals != m.away_goals {
+            break if m.home_goals > m.away_goals {
+                (m.home, m.away)
+            } else {
+                (m.away, m.home)
+            };
+        }
+        assert!(day < 30, "no derby was won in 30 match days");
+    };
+    let flag = l.get_club(loser.clone()).unwrap().flag.unwrap();
+    assert_eq!((flag.by, flag.until_day), (winner.clone(), day + 7));
+    assert_eq!(l.get_club(winner).unwrap().flag, None);
+}

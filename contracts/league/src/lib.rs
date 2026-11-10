@@ -113,6 +113,17 @@ pub struct Rules {
     /// What each season ticket of a club earns at each of its full houses
     /// (times the derby multiplier), minted into the ticket.
     pub season_ticket_share: U128,
+    /// What a worn item adds to a skill in a match, by rarity (common to
+    /// legendary): boots to pace, a headband to physical. Hair is looks only.
+    pub item_bonus: Vec<u8>,
+    /// The ola: fans who take their seat in the last `ola_window_ms` before
+    /// kick-off. When at least `ola_target_bps` of the full-house target did,
+    /// and the house is full, the full-house reward grows by `ola_bonus_bps`.
+    pub ola_window_ms: U64,
+    pub ola_target_bps: u32,
+    pub ola_bonus_bps: u32,
+    /// Match days the winner of a derby flies its colours in the loser's stand.
+    pub derby_flag_days: u32,
 }
 
 pub fn the_rules() -> Rules {
@@ -146,6 +157,11 @@ pub fn the_rules() -> Rules {
         season_ticket_price: U128(300_000 * ONE_G),
         season_tickets_per_club: 50,
         season_ticket_share: U128(50_000 * ONE_G),
+        item_bonus: wardrobe::ITEM_BONUS.to_vec(),
+        ola_window_ms: U64(5 * 60_000),
+        ola_target_bps: 5_000,
+        ola_bonus_bps: 5_000,
+        derby_flag_days: 7,
     }
 }
 
@@ -456,6 +472,7 @@ enum StorageKey {
     Unboxed,
     SeasonTicketsSold,
     Ledger,
+    Ola,
 }
 
 #[near(serializers = [json, borsh])]
@@ -471,6 +488,9 @@ pub struct Club {
     pub treasury: U128,
     /// A derby is played when two clubs name each other.
     pub rival: Option<AccountId>,
+    /// The rival that won the last derby here, and the last match day its
+    /// colours fly in this club's stand.
+    pub flag: Option<Flag>,
     pub played: u32,
     pub won: u32,
     pub drawn: u32,
@@ -478,6 +498,14 @@ pub struct Club {
     pub goals_for: u32,
     pub goals_against: u32,
     pub points: u32,
+}
+
+/// A derby winner's colours in the loser's stand.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Flag {
+    pub by: AccountId,
+    pub until_day: u32,
 }
 
 #[near(serializers = [json])]
@@ -489,6 +517,9 @@ pub struct Stand {
     /// Fans needed for a full house (60% of fans, rounded up).
     pub target: u32,
     pub full_house: bool,
+    /// Fans who came in the ola window, and how many make the ola.
+    pub ola: u32,
+    pub ola_target: u32,
 }
 
 #[near(serializers = [json, borsh])]
@@ -562,6 +593,8 @@ pub struct StandResult {
     pub full_house: bool,
     /// 2 in a derby, else 1.
     pub multiplier: u32,
+    /// The fans did the ola: the full-house reward is `ola_bonus_bps` higher.
+    pub ola: bool,
     /// G burned from the treasury when the tifo was not complete.
     pub burned: U128,
 }
@@ -676,6 +709,8 @@ pub struct League {
     /// Every mint and burn of G the league causes, the last `LEDGER_SIZE`.
     ledger: LookupMap<u64, LedgerEntry>,
     ledger_next: u64,
+    /// (club, match day) -> fans who took their seat in the ola window.
+    ola: LookupMap<(AccountId, u32), u32>,
 }
 
 /// How many ledger entries the league keeps (the oldest are overwritten).
@@ -804,6 +839,7 @@ impl League {
             season_tickets_sold: LookupMap::new(StorageKey::SeasonTicketsSold),
             ledger: LookupMap::new(StorageKey::Ledger),
             ledger_next: 0,
+            ola: LookupMap::new(StorageKey::Ola),
         }
     }
 
@@ -927,6 +963,7 @@ impl League {
                 best_streak: 0,
                 treasury: U128(0),
                 rival: None,
+                flag: None,
                 played: 0,
                 won: 0,
                 drawn: 0,
@@ -1643,6 +1680,10 @@ impl League {
         );
         *self.attendance.entry((club_id.clone(), day)).or_insert(0) += 1;
         let rules = the_rules();
+        let now = env::block_timestamp();
+        if now < self.kickoff_ns && now + rules.ola_window_ms.0 * MS >= self.kickoff_ns {
+            *self.ola.entry((club_id.clone(), day)).or_insert(0) += 1;
+        }
         if let Some(paid) = self.welcome.get_mut(&fan)
             && *paid < rules.welcome_visits
         {
@@ -1669,6 +1710,12 @@ impl League {
             fans: club.fans,
             target,
             full_house: club.fans > 0 && present >= target,
+            ola: self
+                .ola
+                .get(&(club_id, self.match_day))
+                .copied()
+                .unwrap_or(0),
+            ola_target: ola_target(club.fans),
         }
     }
 
@@ -1831,7 +1878,7 @@ impl League {
             .unwrap_or_else(|| env::panic_str("that match day is not played yet"));
         require!(result.full_house, "the tifo was not complete that day");
         require!(self.stand_claims.insert(key), "already claimed");
-        let amount = the_rules().full_house_mint_per_fan.0 * result.multiplier as u128;
+        let amount = full_house_reward(&the_rules(), result.multiplier, result.ola);
         *self.credits.entry(fan).or_insert(0) += amount;
         U128(amount)
     }
@@ -2221,6 +2268,25 @@ impl League {
             }
             self.record_score(&m.home, hg, ag, &rules);
             self.record_score(&m.away, ag, hg, &rules);
+            if m.derby && hg != ag {
+                let (winner, loser) = if hg > ag {
+                    (m.home.clone(), m.away.clone())
+                } else {
+                    (m.away.clone(), m.home.clone())
+                };
+                if let Some(c) = self.clubs.get_mut(&loser) {
+                    c.flag = Some(Flag {
+                        by: winner.clone(),
+                        until_day: day + rules.derby_flag_days,
+                    });
+                }
+                // Winning the derby takes the rival's colours down at home.
+                if let Some(c) = self.clubs.get_mut(&winner)
+                    && c.flag.as_ref().is_some_and(|f| f.by == loser)
+                {
+                    c.flag = None;
+                }
+            }
         }
 
         for id in &ids {
@@ -2521,7 +2587,7 @@ impl League {
         for (k, t) in xi.iter().enumerate() {
             match t.as_ref().and_then(|t| self.players.get(t)) {
                 Some(p) => {
-                    skills[k] = Some(p.skills);
+                    skills[k] = Some(wardrobe::dressed(p.skills, &p.look));
                     booked[k] = first.booked.contains(&p.token_id);
                     names.push(p.token_id.clone());
                 }
@@ -2896,12 +2962,14 @@ impl League {
             .copied()
             .unwrap_or(0);
         let full_house = present >= full_house_target(fans);
+        let ola = full_house
+            && self.ola.get(&(club_id.clone(), day)).copied().unwrap_or(0) >= ola_target(fans);
         let mut burned = 0;
         if full_house {
             self.log(
                 "full_house",
                 Some(club_id.clone()),
-                rules.full_house_mint_per_fan.0 * k as u128 * present as u128,
+                full_house_reward(rules, k, ola) * present as u128,
                 true,
             );
             if let Some(c) = self.clubs.get_mut(club_id) {
@@ -2924,6 +2992,7 @@ impl League {
                 fans,
                 full_house,
                 multiplier: k,
+                ola,
                 burned: U128(burned),
             },
         );
@@ -3132,6 +3201,24 @@ fn star(m: &MatchResult, players: &LookupMap<String, Player>) -> Option<Star> {
                 rating: r,
             })
         })
+}
+
+/// Fans in the ola window that make the ola: a share of the full-house
+/// target, rounded up, at least one.
+pub fn ola_target(fans: u32) -> u32 {
+    let bps = the_rules().ola_target_bps as u64;
+    ((full_house_target(fans) as u64 * bps).div_ceil(10_000)).max(1) as u32
+}
+
+/// What a fan present in a full house gets: doubled in a derby, and
+/// `ola_bonus_bps` more after an ola.
+pub fn full_house_reward(rules: &Rules, multiplier: u32, ola: bool) -> u128 {
+    let base = rules.full_house_mint_per_fan.0 * multiplier as u128;
+    if ola {
+        base + base * rules.ola_bonus_bps as u128 / 10_000
+    } else {
+        base
+    }
 }
 
 pub fn full_house_target(fans: u32) -> u32 {
