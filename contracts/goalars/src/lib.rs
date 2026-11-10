@@ -92,6 +92,19 @@ impl Goalars {
         U128(minted)
     }
 
+    /// Opens an account that holds no goalars yet, so it can be paid later
+    /// (a salary, a sale, a ticket's earnings). Only the league calls this,
+    /// for every new player and fan; storage is paid by this contract.
+    pub fn register(&mut self, account_id: AccountId) {
+        require!(
+            env::predecessor_account_id() == self.league_id,
+            "only the league registers accounts"
+        );
+        if !self.token.accounts.contains_key(&account_id) {
+            self.token.internal_register_account(&account_id);
+        }
+    }
+
     /// The cap, for anyone to read.
     pub fn max_supply(&self) -> U128 {
         U128(MAX_SUPPLY)

@@ -97,11 +97,9 @@ fn due(l: &League) -> u64 {
 fn rules_match_the_design() {
     let r = league().rules();
     assert_eq!(r.goal_scorer_share.0 + r.goal_club_share.0, r.goal_mint.0);
-    // Signing up and following pay nothing: G come from playing.
-    assert_eq!(
-        r.signup_grant.0 + r.welcome_visits as u128 * r.welcome_bonus.0,
-        0
-    );
+    // Only founding a club pays a grant; following and showing up do not.
+    assert_eq!(r.signup_grant, U128(1_000_000 * ONE_G));
+    assert_eq!(r.welcome_visits as u128 * r.welcome_bonus.0, 0);
     assert_eq!(r.debut_bonus, U128(1_000_000 * ONE_G));
     assert_eq!(r.max_supply, U128(10_000_000_000 * ONE_G));
     assert_eq!(r.stadium_target_bps, 6_000);
@@ -353,7 +351,17 @@ fn following_and_coming_to_the_stand_mint_nothing_by_themselves() {
     }
     assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
     assert_eq!(l.credits_of(acc("fan.testnet")), U128(0));
-    assert!(l.ledger(None).is_empty());
+    // The only mint is the grant of the club's founder.
+    let ledger = l.ledger(None);
+    assert_eq!(ledger.len(), 1);
+    assert_eq!(
+        (ledger[0].kind.as_str(), ledger[0].who.clone()),
+        ("signup", Some(acc("koplo.testnet")))
+    );
+    // A person who creates a footballer gets nothing either.
+    as_caller("player.testnet");
+    l.create_footballer("Kai Stone".into(), Position::Fw);
+    assert_eq!(l.ledger(None).len(), 1);
 }
 
 #[test]

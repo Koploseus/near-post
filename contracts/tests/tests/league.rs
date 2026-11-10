@@ -184,6 +184,18 @@ fn g(v: &Value) -> u128 {
     v.as_str().unwrap().parse().unwrap()
 }
 
+/// G for someone who has none yet, out of a club founder's grant: signing
+/// up pays nothing, so a newcomer's first G come from playing or from others.
+async fn give(game: &Game, from: &Account, to: &Account, amount: u128) -> Result<()> {
+    from.call(game.goalars.id(), "ft_transfer")
+        .args_json(json!({ "receiver_id": to.id(), "amount": amount.to_string() }))
+        .deposit(NearToken::from_yoctonear(1))
+        .transact()
+        .await?
+        .into_result()?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_match_day_end_to_end() -> Result<()> {
     let game = deploy().await?;
@@ -227,17 +239,37 @@ async fn a_match_day_end_to_end() -> Result<()> {
     for f in &fans[..2] {
         game.call(f, "check_in", json!({})).await?.into_result()?;
     }
-    // Signup 1M + one welcome bonus 1M, already minted, each scaled by the cap
-    // curve (supply is a few million out of 10B, so a hair under nominal).
+    // Following and taking a seat mint nothing: only the two founders got
+    // their grant, scaled by the cap curve (a hair under nominal).
     let near = |got: u128, nominal: u128| got <= nominal && got > nominal / 1_000 * 999;
+    assert_eq!(game.balance(fans[0].id().as_str()).await?, 0);
+    assert_eq!(game.balance(fans[2].id().as_str()).await?, 0);
     assert!(near(
-        game.balance(fans[0].id().as_str()).await?,
-        2_000_000 * ONE_G
-    ));
-    assert!(near(
-        game.balance(fans[2].id().as_str()).await?,
+        game.balance(home.id().as_str()).await?,
         1_000_000 * ONE_G
     ));
+
+    // The two fans in the stand vote their star of the match and the tifo.
+    let star = game
+        .view("squad", json!({ "account_id": home.id() }))
+        .await?[9]["token_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    for f in &fans[..2] {
+        game.call(f, "vote_star", json!({ "token_id": star }))
+            .await?
+            .into_result()?;
+        game.call(f, "vote_tifo", json!({ "pattern": 3 }))
+            .await?
+            .into_result()?;
+    }
+    // A fan who stayed home has no vote.
+    assert!(
+        game.call(&fans[2], "vote_star", json!({ "token_id": star }))
+            .await?
+            .is_failure()
+    );
 
     // Too early: refused.
     let early = game.call(&home, "play_match_day", json!({})).await?;
@@ -273,6 +305,14 @@ async fn a_match_day_end_to_end() -> Result<()> {
         )
         .await?;
     assert_eq!(stand["full_house"], true);
+    assert_eq!(stand["star"], json!(star));
+    assert_eq!(stand["tifo"], json!(3));
+    // The star's prize is in his wallet (with his goals, if he scored).
+    let wallet = g(&game.view("get_player", json!({ "token_id": star })).await?["wallet"]);
+    assert!(
+        wallet >= 100_000 * ONE_G,
+        "the fans' star was paid: {wallet}"
+    );
 
     // A fan who came claims; one who stayed home cannot.
     game.call(
@@ -291,7 +331,14 @@ async fn a_match_day_end_to_end() -> Result<()> {
         .await?
         .is_failure()
     );
-    // The claim mints exactly the 10B curve's share of 100k at today's supply.
+    // The claim mints exactly the 10B curve's share of the reward at today's
+    // supply: 100k, or 150k when the fans made the ola (both came in the
+    // last five minutes before kick-off).
+    let reward = if stand["ola"] == true {
+        150_000
+    } else {
+        100_000
+    } * ONE_G;
     let before = game.balance(fans[0].id().as_str()).await?;
     let supply = game.supply().await?;
     game.call(&fans[0], "claim", json!({}))
@@ -300,7 +347,7 @@ async fn a_match_day_end_to_end() -> Result<()> {
     let cap = 10_000_000_000 * ONE_G;
     assert_eq!(
         game.balance(fans[0].id().as_str()).await? - before,
-        100_000 * ONE_G * (cap - supply) / cap
+        reward * (cap - supply) / cap
     );
 
     // Every goal is in a named player's wallet; his owner claims it. Only
@@ -489,7 +536,23 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
         .json()?;
     assert_eq!(owner["owner_id"], json!(koplo.id()));
 
-    // He signs for Rive Nord by giving it his registration.
+    // Rive Nord offers a wage; he gives it his word for 13 match days, then
+    // his registration: the contract starts.
+    let wage = 50_000 * ONE_G;
+    game.call(
+        &club,
+        "set_wage",
+        json!({ "club_id": club.id(), "wage": wage.to_string() }),
+    )
+    .await?
+    .into_result()?;
+    game.call(
+        &koplo,
+        "sign_for",
+        json!({ "club_id": club.id(), "days": 13 }),
+    )
+    .await?
+    .into_result()?;
     koplo
         .call(game.players.id(), "nft_transfer")
         .args_json(json!({ "receiver_id": club.id(), "token_id": token }))
@@ -502,25 +565,25 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
         .view("squad", json!({ "account_id": club.id() }))
         .await?;
     assert_eq!(squad.as_array().unwrap().len(), 12);
-
-    // He trains his pace: 400k G sent to the league and burned, a ticket
-    // opens; the attester signs his drill score (3) and the points land.
     let before = game
         .view("get_player", json!({ "token_id": token }))
         .await?;
-    let supply = game.supply().await?;
-    koplo
-        .call(game.goalars.id(), "ft_transfer_call")
-        .args_json(json!({
-            "receiver_id": game.league.id(),
-            "amount": (400_000 * ONE_G).to_string(),
-            "msg": json!({ "train": { "token_id": token, "skill": "pace" } }).to_string(),
-        }))
-        .deposit(NearToken::from_yoctonear(1))
-        .gas(Gas::from_tgas(150))
-        .transact()
-        .await?
-        .into_result()?;
+    assert_eq!(before["contract"]["club"], json!(club.id()));
+    assert_eq!(before["contract"]["until_day"], json!(13));
+    assert_eq!(g(&before["contract"]["wage"]), wage);
+    assert_eq!(g(&before["contract"]["clause"]), wage * 13 * 2);
+    assert_eq!(before["energy"], json!(100));
+
+    // He has no G yet: his first training is free. A ticket opens; the
+    // attester signs his drill score (3) and the points land. It costs energy.
+    assert_eq!(game.balance(koplo.id().as_str()).await?, 0);
+    game.call(
+        &koplo,
+        "train_free",
+        json!({ "token_id": token, "skill": "pace" }),
+    )
+    .await?
+    .into_result()?;
     let ticket = game
         .view("training_ticket", json!({ "token_id": token }))
         .await?;
@@ -552,7 +615,18 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
         before["skills"]["pace"].as_u64().unwrap() + 3
     );
     assert!(after["overall"].as_u64().unwrap() >= before["overall"].as_u64().unwrap());
-    assert_eq!(supply - game.supply().await?, 400_000 * ONE_G);
+    assert_eq!(after["energy"], json!(85));
+    assert_eq!(after["free_trainings"], json!(0));
+    // The free one is gone.
+    assert!(
+        game.call(
+            &koplo,
+            "train_free",
+            json!({ "token_id": token, "skill": "pace" })
+        )
+        .await?
+        .is_failure()
+    );
 
     // He takes a striker's slot (which reports him) and plays there.
     game.call(&koplo, "take_slot", json!({ "slot": 9 }))
@@ -576,6 +650,49 @@ async fn a_person_signs_trains_and_plays() -> Result<()> {
     let side = if m["home"] == json!(club.id()) { 0 } else { 1 };
     assert_eq!(m["elevens"][side][9], json!(token));
     assert!(m["full_time"].as_bool().unwrap());
+
+    // His first match pays the debut bonus: his first G, minted on claim.
+    assert_eq!(
+        g(&game
+            .view("credits_of", json!({ "account_id": koplo.id() }))
+            .await?),
+        1_000_000 * ONE_G
+    );
+    game.call(&koplo, "claim", json!({})).await?.into_result()?;
+    let mine = game.balance(koplo.id().as_str()).await?;
+    assert!(mine > 999_000 * ONE_G && mine <= 1_000_000 * ONE_G);
+    // The match took energy; the night gave some back.
+    let played = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(played["energy"], json!(85 - 12 + 8));
+    // The club has no treasury yet: the wage went unpaid once.
+    assert_eq!(played["contract"]["unpaid"], json!(1));
+
+    // Now he can pay a training: 400k G sent to the league and burned.
+    let supply = game.supply().await?;
+    koplo
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": (400_000 * ONE_G).to_string(),
+            "msg": json!({ "train": { "token_id": token, "skill": "shooting" } }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?
+        .into_result()?;
+    assert_eq!(supply - game.supply().await?, 400_000 * ONE_G);
+
+    // He votes what the club's treasury should buy this week.
+    game.call(&koplo, "vote_project", json!({ "project": "physio" }))
+        .await?
+        .into_result()?;
+    let votes = game
+        .view("project_votes", json!({ "club_id": club.id() }))
+        .await?;
+    assert_eq!(votes, json!([[token, "physio"]]));
     Ok(())
 }
 
@@ -727,6 +844,7 @@ async fn a_person_opens_a_pack_and_dresses_his_footballer() -> Result<()> {
     };
 
     // A pack: 500k G burned, three items minted to him.
+    give(&game, &club, &koplo, 500_000 * ONE_G).await?;
     let supply = game.supply().await?;
     let r = koplo
         .call(game.goalars.id(), "ft_transfer_call")
@@ -824,7 +942,7 @@ async fn a_season_ticket_earns_at_full_houses_and_its_g_go_with_it() -> Result<(
     game.call(&other, "create_club", json!({ "name": "Moonhaven FC" }))
         .await?
         .into_result()?;
-    // Two fans (the signup grant gives them G); one buys a season ticket.
+    // Two fans; one buys a season ticket (with G a club founder gave her).
     let ada = game.account().await?;
     let bob = game.account().await?;
     for fan in [&ada, &bob] {
@@ -833,6 +951,7 @@ async fn a_season_ticket_earns_at_full_houses_and_its_g_go_with_it() -> Result<(
             .into_result()?;
     }
     let price = 300_000 * ONE_G;
+    give(&game, &other, &ada, price).await?;
     let r = ada
         .call(game.goalars.id(), "ft_transfer_call")
         .args_json(json!({
@@ -863,6 +982,28 @@ async fn a_season_ticket_earns_at_full_houses_and_its_g_go_with_it() -> Result<(
         price
     );
 
+    // The ticket votes what the club's treasury buys this week; only its
+    // owner can cast it.
+    ada.call(game.tickets.id(), "vote_project")
+        .args_json(json!({ "token_id": token, "project": "stadium" }))
+        .gas(Gas::from_tgas(60))
+        .transact()
+        .await?
+        .into_result()?;
+    assert!(
+        bob.call(game.tickets.id(), "vote_project")
+            .args_json(json!({ "token_id": token, "project": "save" }))
+            .gas(Gas::from_tgas(60))
+            .transact()
+            .await?
+            .is_failure()
+    );
+    assert_eq!(
+        game.view("project_votes", json!({ "club_id": club.id() }))
+            .await?,
+        json!([[format!("ticket:{token}"), "stadium"]])
+    );
+
     // Both fans in: a full house. The ticket earns its share, held in it.
     for fan in [&ada, &bob] {
         game.call(fan, "check_in", json!({})).await?.into_result()?;
@@ -879,7 +1020,8 @@ async fn a_season_ticket_earns_at_full_houses_and_its_g_go_with_it() -> Result<(
         .json()?;
     let earned = g(&ticket["balance"]);
     assert!(earned > 0, "the ticket earned at the full house: {ticket}");
-    assert!(earned <= 50_000 * ONE_G);
+    // 50k for the full house, plus a fifth of the club's share of its goals.
+    assert!(earned > 49_000 * ONE_G && earned <= 50_000 * ONE_G + 10 * 36_000 * ONE_G);
     let ledger: Vec<Value> = serde_json::from_value(game.view("ledger", json!({})).await?)?;
     assert!(ledger.iter().any(|e| e["kind"] == "season_tickets"));
 
@@ -914,5 +1056,153 @@ async fn a_season_ticket_earns_at_full_houses_and_its_g_go_with_it() -> Result<(
         .await?
         .json()?;
     assert_eq!(ticket["balance"], json!("0"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_clause_moves_a_player_and_an_unpaid_contract_is_left() -> Result<()> {
+    let game = deploy().await?;
+    let (old, new) = (game.account().await?, game.account().await?);
+    for (c, name) in [(&old, "Rive Nord"), (&new, "Port-Lune")] {
+        game.call(c, "create_club", json!({ "name": name }))
+            .await?
+            .into_result()?;
+    }
+    let koplo = game.account().await?;
+    let token = game
+        .call(
+            &koplo,
+            "create_footballer",
+            json!({ "name": "Koplo", "position": "Fw" }),
+        )
+        .await?
+        .into_result()?
+        .json::<Value>()?["token_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let owner_of = |game: &Game, token: String| {
+        let c = game.players.clone();
+        async move {
+            let t: Value = c
+                .view("nft_token")
+                .args_json(json!({ "token_id": token }))
+                .await?
+                .json()?;
+            Ok::<String, anyhow::Error>(t["owner_id"].as_str().unwrap().to_string())
+        }
+    };
+
+    // Rive Nord pays 50k a match; he signs there for 7 match days.
+    let wage = 50_000 * ONE_G;
+    game.call(
+        &old,
+        "set_wage",
+        json!({ "club_id": old.id(), "wage": wage.to_string() }),
+    )
+    .await?
+    .into_result()?;
+    game.call(
+        &koplo,
+        "sign_for",
+        json!({ "club_id": old.id(), "days": 7 }),
+    )
+    .await?
+    .into_result()?;
+    koplo
+        .call(game.players.id(), "nft_transfer")
+        .args_json(json!({ "receiver_id": old.id(), "token_id": token }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(100))
+        .transact()
+        .await?
+        .into_result()?;
+    let clause = wage * 7 * 2;
+    // A paid contract cannot be walked out of.
+    assert!(
+        game.call(&koplo, "leave_club", json!({}))
+            .await?
+            .is_failure()
+    );
+
+    // Port-Lune wants him. Without his word, its money is refused.
+    let pay = |amount: u128| {
+        let (new, goalars, league, token) = (
+            new.clone(),
+            game.goalars.id().clone(),
+            game.league.id().clone(),
+            token.clone(),
+        );
+        async move {
+            new.call(&goalars, "ft_transfer_call")
+                .args_json(json!({
+                    "receiver_id": league,
+                    "amount": amount.to_string(),
+                    "msg": json!({ "clause": token }).to_string(),
+                }))
+                .deposit(NearToken::from_yoctonear(1))
+                .gas(Gas::from_tgas(250))
+                .transact()
+                .await
+        }
+    };
+    let before = game.balance(new.id().as_str()).await?;
+    pay(clause).await?.into_result()?;
+    assert_eq!(
+        game.balance(new.id().as_str()).await?,
+        before,
+        "refused: the G came back"
+    );
+    assert_eq!(owner_of(&game, token.clone()).await?, old.id().to_string());
+
+    // He signs for Port-Lune (a season): now the clause takes him there.
+    game.call(
+        &koplo,
+        "sign_for",
+        json!({ "club_id": new.id(), "days": 26 }),
+    )
+    .await?
+    .into_result()?;
+    let r = pay(clause).await?;
+    println!("clause: {} Tgas", r.total_gas_burnt.as_tgas());
+    r.into_result()?;
+    assert_eq!(game.balance(new.id().as_str()).await?, before - clause);
+    assert_eq!(owner_of(&game, token.clone()).await?, new.id().to_string());
+    let p = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(p["owner"], json!(new.id()));
+    assert_eq!(p["contract"]["club"], json!(new.id()));
+    assert_eq!(p["contract"]["until_day"], json!(26));
+    // The price is shared like any sale: 10% to who trained him and 2% to
+    // his past club (himself, both), 5% to him, 3% burned, 80% to the old club.
+    let owed = g(&game
+        .view("owed_of", json!({ "account_id": old.id() }))
+        .await?);
+    assert_eq!(owed, clause * 80 / 100);
+
+    // Port-Lune offers no wage: that contract binds nobody. He leaves, and
+    // the league sends his registration back to him.
+    assert_eq!(g(&p["contract"]["wage"]), 0);
+    let r = game.call(&koplo, "leave_club", json!({})).await?;
+    println!("leave: {} Tgas", r.total_gas_burnt.as_tgas());
+    r.into_result()?;
+    assert_eq!(
+        owner_of(&game, token.clone()).await?,
+        koplo.id().to_string()
+    );
+    let p = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(p["owner"], json!(koplo.id()));
+    assert_eq!(p["contract"], Value::Null);
+    assert_eq!(
+        game.view("squad", json!({ "account_id": new.id() }))
+            .await?
+            .as_array()
+            .unwrap()
+            .len(),
+        11
+    );
     Ok(())
 }

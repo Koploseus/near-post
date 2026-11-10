@@ -80,7 +80,9 @@ pub struct Rules {
     pub full_house_mint_per_fan: U128,
     pub empty_stand_burn_bps: u32,
     pub relegation_burn_bps: u32,
-    /// Paid once per account, on its first club or follow.
+    /// Paid once to the account that founds a club (the league holds at
+    /// most `MAX_CLUBS`). Following a club or creating a footballer pays
+    /// nothing: G come from playing.
     pub signup_grant: U128,
     /// Paid on each of an account's first `welcome_visits` stadium check-ins.
     pub welcome_bonus: U128,
@@ -185,7 +187,7 @@ pub fn the_rules() -> Rules {
         full_house_mint_per_fan: U128(100_000 * ONE_G),
         empty_stand_burn_bps: 200,
         relegation_burn_bps: 1_000,
-        signup_grant: U128(0),
+        signup_grant: U128(1_000_000 * ONE_G),
         welcome_bonus: U128(0),
         welcome_visits: 0,
         training_cost: U128(400_000 * ONE_G),
@@ -241,6 +243,7 @@ pub fn the_rules() -> Rules {
 pub trait Goalars {
     fn mint(&mut self, account_id: AccountId, amount: U128, memo: Option<String>) -> U128;
     fn burn(&mut self, amount: U128, memo: Option<String>);
+    fn register(&mut self, account_id: AccountId);
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
@@ -928,6 +931,7 @@ const ACADEMY_GAS: Gas = Gas::from_tgas(60);
 const SALE_GAS: Gas = Gas::from_tgas(60);
 const TICKETS_GAS: Gas = Gas::from_tgas(20);
 const RELEASE_GAS: Gas = Gas::from_tgas(25);
+const REGISTER_GAS: Gas = Gas::from_tgas(5);
 /// People freed from their contract per division and match day.
 const MAX_RELEASES: usize = 3;
 const MAX_NAME: usize = 32;
@@ -1187,6 +1191,7 @@ impl League {
         );
         self.club_ids.push(manager.clone());
         self.welcome(&manager);
+        self.mint(manager.clone(), the_rules().signup_grant, "signup grant");
         self.sign_academy(&manager);
     }
 
@@ -2188,7 +2193,7 @@ impl League {
     /// What the next level of a project costs a club, or None at the top.
     pub fn project_price(&self, club_id: AccountId, project: Project) -> Option<U128> {
         let club = self.clubs.get(&club_id)?;
-        project_price(club, project).map(U128)
+        next_level_price(club, project).map(U128)
     }
 
     // ---- Season tickets ----
@@ -3160,7 +3165,7 @@ impl League {
         let Some(club) = self.clubs.get_mut(club_id) else {
             return 0;
         };
-        let Some(price) = project_price(club, project) else {
+        let Some(price) = next_level_price(club, project) else {
             return 0;
         };
         if club.treasury.0 < price {
@@ -3600,7 +3605,11 @@ impl League {
             return;
         }
         self.welcome.insert(account_id.clone(), 0);
-        self.mint(account_id.clone(), the_rules().signup_grant, "signup grant");
+        // So he can be paid later: a wage, a sale, a ticket's earnings.
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(REGISTER_GAS)
+            .register(account_id.clone())
+            .detach();
     }
 
     /// Schedules a mint on the goalars contract. The amount is nominal: goalars
@@ -3996,7 +4005,7 @@ pub fn ticket_cut(earned: u128, tickets_sold: u32) -> u128 {
 
 /// The price of a club's next level of a project (level n costs n times
 /// the first), or None for `Save` and at the top level.
-pub fn project_price(club: &Club, project: Project) -> Option<u128> {
+pub fn next_level_price(club: &Club, project: Project) -> Option<u128> {
     let rules = the_rules();
     let i = project.index()?;
     let level = [club.stadium, club.physio, club.academy][i];
