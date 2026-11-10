@@ -896,9 +896,10 @@ fn only_the_captain_names_the_takers() {
 #[test]
 fn starters_who_are_people_get_a_salary_from_the_treasury() {
     let mut l = league_with(2, 0);
+    let salary = 200_000 * ONE_G;
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().wage = U128(salary);
     let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
     l.players.get_mut(&token).unwrap().skills = all_99();
-    let salary = the_rules().salary.0;
     l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(salary + 5);
     as_caller("koplo.testnet");
     l.report_for_match();
@@ -2024,4 +2025,202 @@ fn taking_a_slot_ends_the_rest() {
     l.take_slot(9);
     assert!(!l.is_resting(token.clone(), 1));
     assert!(kick_off(&mut l, 1)[0].elevens[0].contains(&token));
+}
+
+// ---- v9: contracts ----
+
+const WAGE: u128 = 100_000 * ONE_G;
+
+/// A club that offers `WAGE` and can pay it for a long time.
+fn rich_club(l: &mut League, club: &str) {
+    let c = l.clubs.get_mut(&acc(club)).unwrap();
+    c.wage = U128(WAGE);
+    c.treasury = U128(1_000 * WAGE);
+}
+
+#[test]
+fn a_person_who_signs_gets_the_contract_he_chose() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    as_caller("koplo.testnet");
+    let token = l.create_footballer("Koplo".into(), Position::Fw).token_id;
+    l.sign_for(acc("c0.testnet"), 52);
+    assert_eq!(l.signing_of(token.clone()).unwrap().days, 52);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    let c = l.get_player(token.clone()).unwrap().contract.unwrap();
+    assert_eq!(
+        (c.club, c.wage, c.from_day, c.until_day, c.clause, c.unpaid),
+        (acc("c0.testnet"), U128(WAGE), 1, 52, U128(WAGE * 52 * 2), 0)
+    );
+    assert_eq!(l.signing_of(token), None);
+}
+
+#[test]
+fn without_a_word_the_contract_is_a_season() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let c = l.get_player(token).unwrap().contract.unwrap();
+    assert_eq!((c.until_day, c.wage), (26, U128(0)));
+    // Academy players have no contract.
+    assert!(
+        l.squad(acc("c0.testnet"))
+            .iter()
+            .filter(|p| p.controller.is_none())
+            .all(|p| p.contract.is_none())
+    );
+}
+
+#[test]
+#[should_panic(expected = "a contract lasts one of contract_days")]
+fn a_contract_has_a_listed_length() {
+    let mut l = league_with(1, 0);
+    as_caller("koplo.testnet");
+    l.create_footballer("Koplo".into(), Position::Fw);
+    l.sign_for(acc("c0.testnet"), 10);
+}
+
+#[test]
+fn the_wage_is_paid_each_match_and_three_unpaid_in_a_row_free_him() {
+    let mut l = league_with(2, 0);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().wage = U128(WAGE);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(WAGE);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    // Paid once, then the treasury is empty.
+    kick_off(&mut l, 1);
+    let p = l.get_player(token.clone()).unwrap();
+    assert_eq!((p.salary, p.contract.unwrap().unpaid), (U128(WAGE), 0));
+    kick_off(&mut l, 2);
+    kick_off(&mut l, 3);
+    assert_eq!(
+        l.get_player(token.clone())
+            .unwrap()
+            .contract
+            .unwrap()
+            .unpaid,
+        2
+    );
+    // The third unpaid match ends the contract: the league sends him home.
+    kick_off(&mut l, 4);
+    assert_eq!(l.get_player(token.clone()).unwrap().contract, None);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("c0.testnet"), acc("koplo.testnet"));
+    let p = l.get_player(token.clone()).unwrap();
+    assert_eq!((p.owner, p.contract), (acc("koplo.testnet"), None));
+    assert!(
+        !l.squad(acc("c0.testnet"))
+            .iter()
+            .any(|p| p.token_id == token)
+    );
+}
+
+#[test]
+fn a_contract_ends_on_its_last_day() {
+    let mut l = league_with(2, 0);
+    as_caller("koplo.testnet");
+    let token = l.create_footballer("Koplo".into(), Position::Fw).token_id;
+    l.sign_for(acc("c0.testnet"), 7);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    for day in 1..=6 {
+        kick_off(&mut l, day);
+        assert!(
+            l.get_player(token.clone()).unwrap().contract.is_some(),
+            "day {day}"
+        );
+    }
+    kick_off(&mut l, 7);
+    assert_eq!(l.get_player(token).unwrap().contract, None);
+}
+
+#[test]
+fn only_who_leads_the_club_sets_its_wage() {
+    let mut l = league_with(1, 0);
+    as_caller("c0.testnet");
+    l.set_wage(acc("c0.testnet"), U128(WAGE));
+    assert_eq!(l.get_club(acc("c0.testnet")).unwrap().wage, U128(WAGE));
+}
+
+#[test]
+#[should_panic(expected = "only the captain")]
+fn a_stranger_does_not_set_the_wage() {
+    let mut l = league_with(1, 0);
+    as_caller("stranger.testnet");
+    l.set_wage(acc("c0.testnet"), U128(WAGE));
+}
+
+fn pay_clause(l: &mut League, club: &str, token: &str, amount: u128) {
+    as_caller("goalars.testnet");
+    l.ft_on_transfer(
+        acc(club),
+        U128(amount),
+        format!("{{\"clause\":\"{token}\"}}"),
+    );
+}
+
+#[test]
+fn a_club_takes_a_player_by_paying_his_clause_once_he_signed_for_it() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let clause = l
+        .get_player(token.clone())
+        .unwrap()
+        .contract
+        .unwrap()
+        .clause
+        .0;
+    assert_eq!(clause, WAGE * 26 * 2);
+    as_caller("koplo.testnet");
+    l.sign_for(acc("c1.testnet"), 13);
+    pay_clause(&mut l, "c1.testnet", &token, clause);
+    let offer = l.get_offer(0).unwrap();
+    assert_eq!(
+        (offer.state, offer.price, offer.buyer),
+        (OfferState::Accepting, U128(clause), acc("c1.testnet"))
+    );
+    // The players contract moves him and reports it: his new contract is the one he chose.
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("c0.testnet"), acc("c1.testnet"));
+    let c = l.get_player(token).unwrap().contract.unwrap();
+    assert_eq!((c.club, c.until_day), (acc("c1.testnet"), 13));
+}
+
+#[test]
+#[should_panic(expected = "he has not signed for your club")]
+fn a_clause_needs_the_players_word() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    pay_clause(&mut l, "c1.testnet", &token, WAGE * 26 * 2);
+}
+
+#[test]
+#[should_panic(expected = "pay exactly his release clause")]
+fn a_clause_is_paid_in_full() {
+    let mut l = league_with(2, 0);
+    rich_club(&mut l, "c0.testnet");
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.sign_for(acc("c1.testnet"), 13);
+    pay_clause(&mut l, "c1.testnet", &token, 5);
+}
+
+#[test]
+fn a_contract_without_a_wage_can_be_left() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.leave_club();
+    assert_eq!(l.get_player(token).unwrap().contract, None);
+}
+
+#[test]
+#[should_panic(expected = "your contract pays a wage")]
+fn a_paid_contract_runs_to_its_end() {
+    let mut l = league_with(1, 0);
+    rich_club(&mut l, "c0.testnet");
+    sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.leave_club();
 }

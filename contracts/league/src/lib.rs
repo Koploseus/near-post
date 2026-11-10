@@ -96,7 +96,9 @@ pub struct Rules {
     pub past_club_bps: u32,
     pub points_win: u32,
     pub points_draw: u32,
-    /// Paid from the club treasury to each person-played player who starts.
+    /// The wage per match a new club offers the people who sign for it,
+    /// until its captain changes it (`set_wage`). Wages come from the club's
+    /// treasury, and a new club has none.
     pub salary: U128,
     /// Share of a sale for the person who plays the player (NEP-199 payout).
     pub player_sale_bps: u32,
@@ -139,6 +141,16 @@ pub struct Rules {
     pub energy_rest: u8,
     pub tired_below: u8,
     pub tired_malus_pct: u8,
+    /// How long a person can sign for, in match days.
+    pub contract_days: Vec<u32>,
+    /// The contract of a person who moves without having chosen one.
+    pub default_contract_days: u32,
+    /// A release clause is the wage times the contract's days times this.
+    pub clause_factor: u32,
+    /// Matches in a row a club can leave a player unpaid before he is free.
+    pub unpaid_to_free: u8,
+    /// The most a club can offer per match.
+    pub max_wage: U128,
 }
 
 pub fn the_rules() -> Rules {
@@ -164,7 +176,7 @@ pub fn the_rules() -> Rules {
         past_club_bps: 200,
         points_win: 3,
         points_draw: 1,
-        salary: U128(200_000 * ONE_G),
+        salary: U128(0),
         player_sale_bps: 500,
         week_length: 7,
         formations: FORMATIONS.to_vec(),
@@ -185,6 +197,11 @@ pub fn the_rules() -> Rules {
         energy_rest: 17,
         tired_below: 50,
         tired_malus_pct: 20,
+        contract_days: vec![7, 13, 26, 52, 78],
+        default_contract_days: 26,
+        clause_factor: 2,
+        unpaid_to_free: 3,
+        max_wage: U128(1_000_000 * ONE_G),
     }
 }
 
@@ -207,6 +224,12 @@ pub trait PlayersContract {
         memo: Option<String>,
         balance: U128,
         max_len_payout: Option<u32>,
+    ) -> Payout;
+    fn league_transfer(
+        &mut self,
+        token_id: String,
+        receiver_id: AccountId,
+        balance: U128,
     ) -> Payout;
 }
 
@@ -286,6 +309,33 @@ pub struct Player {
     pub energy_day: u32,
     /// Trainings he can still take without paying.
     pub free_trainings: u8,
+    /// His contract with the club that fields him (people only).
+    pub contract: Option<Contract>,
+}
+
+/// A person's contract with a club. The wage is paid at each match he
+/// starts; `unpaid_to_free` matches in a row without it, or its last day
+/// played, and his registration goes back to him by itself. Before that,
+/// another club takes him by paying the clause, if he signed for it.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Contract {
+    pub club: AccountId,
+    pub wage: U128,
+    pub from_day: u32,
+    /// The last match day of the contract.
+    pub until_day: u32,
+    pub clause: U128,
+    /// Matches in a row he started without being paid.
+    pub unpaid: u8,
+}
+
+/// A person's word to a club: the contract he takes when he gets there.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Signing {
+    pub club: AccountId,
+    pub days: u32,
 }
 
 /// `msg` of a payment to the league.
@@ -298,6 +348,8 @@ pub enum Order {
     Pack(PackOrder),
     /// A season ticket of a club: `{"season_ticket":"<club id>"}`.
     SeasonTicket(AccountId),
+    /// A club pays a player's release clause: `{"clause":"<token_id>"}`.
+    Clause(String),
 }
 
 #[near(serializers = [json])]
@@ -504,6 +556,7 @@ enum StorageKey {
     Ola,
     Debuted,
     Resting,
+    Signings,
 }
 
 #[near(serializers = [json, borsh])]
@@ -522,6 +575,8 @@ pub struct Club {
     /// The rival that won the last derby here, and the last match day its
     /// colours fly in this club's stand.
     pub flag: Option<Flag>,
+    /// What the club offers a person per match he starts.
+    pub wage: U128,
     pub played: u32,
     pub won: u32,
     pub drawn: u32,
@@ -746,6 +801,8 @@ pub struct League {
     debuted: LookupSet<String>,
     /// (player, match day): he sits this match day out.
     resting: LookupSet<(String, u32)>,
+    /// Player -> the club and contract his person gave his word to.
+    signings: LookupMap<String, Signing>,
 }
 
 /// How many ledger entries the league keeps (the oldest are overwritten).
@@ -787,6 +844,9 @@ const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const ACADEMY_GAS: Gas = Gas::from_tgas(60);
 const SALE_GAS: Gas = Gas::from_tgas(60);
 const TICKETS_GAS: Gas = Gas::from_tgas(20);
+const RELEASE_GAS: Gas = Gas::from_tgas(25);
+/// People freed from their contract per division and match day.
+const MAX_RELEASES: usize = 3;
 const MAX_NAME: usize = 32;
 const MS: u64 = 1_000_000;
 const MINUTE_NS: u64 = 60_000 * MS;
@@ -877,6 +937,7 @@ impl League {
             ola: LookupMap::new(StorageKey::Ola),
             debuted: LookupSet::new(StorageKey::Debuted),
             resting: LookupSet::new(StorageKey::Resting),
+            signings: LookupMap::new(StorageKey::Signings),
         }
     }
 
@@ -1023,6 +1084,7 @@ impl League {
                 treasury: U128(0),
                 rival: None,
                 flag: None,
+                wage: the_rules().salary,
                 played: 0,
                 won: 0,
                 drawn: 0,
@@ -1159,6 +1221,72 @@ impl League {
 
     pub fn is_resting(&self, token_id: String, match_day: u32) -> bool {
         self.resting.contains(&(token_id, match_day))
+    }
+
+    // ---- Contracts ----
+
+    /// The captain (or the manager, without one) sets what the club offers a
+    /// person per match. Contracts already signed keep their wage.
+    pub fn set_wage(&mut self, club_id: AccountId, wage: U128) {
+        require!(
+            self.leads(&club_id, &env::predecessor_account_id()),
+            "only the captain (or the manager, without one) sets the wage"
+        );
+        require!(wage.0 <= the_rules().max_wage.0, "that is above max_wage");
+        if let Some(c) = self.clubs.get_mut(&club_id) {
+            c.wage = wage;
+        }
+    }
+
+    /// The caller gives his word to a club for a contract of `days` match
+    /// days (one of `contract_days`). A free agent then hands his
+    /// registration to the club (an NFT transfer) and the contract starts;
+    /// under contract elsewhere, that club can now pay his release clause.
+    pub fn sign_for(&mut self, club_id: AccountId, days: u32) {
+        let person = env::predecessor_account_id();
+        let token = self
+            .footballer_of
+            .get(&person)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("create your footballer first"));
+        require!(self.clubs.contains_key(&club_id), "no such club");
+        require!(
+            the_rules().contract_days.contains(&days),
+            "a contract lasts one of contract_days"
+        );
+        require!(
+            self.players.get(&token).map(|p| &p.owner) != Some(&club_id),
+            "you play there already"
+        );
+        self.signings.insert(
+            token,
+            Signing {
+                club: club_id,
+                days,
+            },
+        );
+    }
+
+    /// A contract without a wage binds nobody: the caller's footballer
+    /// leaves his club and his registration comes back to him.
+    pub fn leave_club(&mut self) {
+        let (token, _) = self.my_player_and_club();
+        let person = env::predecessor_account_id();
+        let player = self.players.get_mut(&token).unwrap();
+        require!(
+            player.contract.as_ref().is_none_or(|c| c.wage.0 == 0),
+            "your contract pays a wage: it runs to its end, or a club pays your clause"
+        );
+        player.contract = None;
+        ext_players::ext(self.players_id.clone())
+            .with_static_gas(RELEASE_GAS)
+            .league_transfer(token, person, U128(0))
+            .detach();
+    }
+
+    /// The club a person gave his word to, if any.
+    pub fn signing_of(&self, token_id: String) -> Option<Signing> {
+        self.signings.get(&token_id).cloned()
     }
 
     /// The eleven for the next half: formation, strategy and every slot.
@@ -1317,7 +1445,7 @@ impl League {
         );
         let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
             env::panic_str(
-                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}} or {\"season_ticket\":\"<club>\"}",
+                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}}, {\"season_ticket\":\"<club>\"} or {\"clause\":\"<token_id>\"}",
             )
         });
         match order {
@@ -1327,6 +1455,7 @@ impl League {
             }
             Order::Pack(_) => self.open_pack_for(sender_id, amount),
             Order::SeasonTicket(club) => self.sell_season_ticket(sender_id, amount, club),
+            Order::Clause(token) => self.pay_clause(sender_id, amount, token),
         }
         PromiseOrValue::Value(U128(0))
     }
@@ -1523,10 +1652,36 @@ impl League {
             env::predecessor_account_id() == self.players_id,
             "only the players contract reports transfers"
         );
+        let Some(person) = self.players.get(&token_id).map(|p| p.controller.clone()) else {
+            return;
+        };
+        // A person who lands in a club is under contract there: the one he
+        // gave his word for, or the default one. Anywhere else, none.
+        let contract = match (person, self.clubs.get(&new_owner)) {
+            (Some(_), Some(club)) => {
+                let rules = the_rules();
+                let days = self
+                    .signings
+                    .get(&token_id)
+                    .filter(|s| s.club == new_owner)
+                    .map_or(rules.default_contract_days, |s| s.days);
+                Some(Contract {
+                    club: new_owner.clone(),
+                    wage: club.wage,
+                    from_day: self.match_day,
+                    until_day: self.match_day + days - 1,
+                    clause: U128(club.wage.0 * days as u128 * rules.clause_factor as u128),
+                    unpaid: 0,
+                })
+            }
+            _ => None,
+        };
+        self.signings.remove(&token_id);
         let Some(player) = self.players.get_mut(&token_id) else {
             return;
         };
         player.owner = new_owner.clone();
+        player.contract = contract;
         if let Some(squad) = self.squads.get_mut(&old_owner) {
             squad.retain(|t| t != &token_id);
         }
@@ -2241,6 +2396,7 @@ impl League {
         let mut treasury_mints: Vec<(AccountId, u128)> = Vec::new();
         let mut burn_total: u128 = 0;
         let mut derby_clubs: Vec<AccountId> = Vec::new();
+        let mut releases = MAX_RELEASES;
         // How full each club's stand is today, in basis points of its target.
         let fill: std::collections::HashMap<AccountId, u128> = ids
             .iter()
@@ -2359,7 +2515,8 @@ impl League {
                     .collect();
                 xi.sort();
                 xi.dedup();
-                self.pay_salaries(&club, &xi, rules.salary.0);
+                self.pay_salaries(&club, &xi);
+                self.free_players(&club, &mut releases);
             }
             self.record_score(&m.home, hg, ag, &rules);
             self.record_score(&m.away, ag, hg, &rules);
@@ -2815,6 +2972,7 @@ impl League {
             energy: 100,
             energy_day: self.match_day,
             free_trainings,
+            contract: None,
         };
         self.players.insert(token_id, player.clone());
         player
@@ -2910,27 +3068,109 @@ impl League {
 
     /// Pays each person-played starter his salary from the club treasury,
     /// while the treasury lasts. The G stay with the league until he claims.
-    fn pay_salaries(&mut self, club: &AccountId, xi: &[String], salary: u128) {
+    fn pay_salaries(&mut self, club: &AccountId, xi: &[String]) {
         for token in xi {
-            let human = self
-                .players
-                .get(token)
-                .map(|p| p.controller.is_some())
-                .unwrap_or(false);
-            if !human {
+            let Some(p) = self.players.get(token).filter(|p| p.controller.is_some()) else {
                 continue;
-            }
+            };
+            let wage = p.contract.as_ref().map_or(0, |c| c.wage.0);
             self.spend_energy(token, the_rules().energy_match);
             self.debut(token);
             let treasury = self.clubs.get(club).map(|c| c.treasury.0).unwrap_or(0);
-            if treasury < salary {
-                continue; // the treasury is empty: no salary for him today
+            let paid = treasury >= wage;
+            if paid && wage > 0 {
+                self.take_from_treasury(club, wage);
             }
-            self.take_from_treasury(club, salary);
             if let Some(p) = self.players.get_mut(token) {
-                p.salary = U128(p.salary.0 + salary);
+                if paid {
+                    p.salary = U128(p.salary.0 + wage);
+                }
+                if let Some(c) = p.contract.as_mut() {
+                    c.unpaid = if paid { 0 } else { c.unpaid.saturating_add(1) };
+                }
             }
         }
+    }
+
+    /// Frees the people of a club whose contract is over (its last day is
+    /// played) or went unpaid too long: their registration goes back to
+    /// them. At most `left` per call, so a match day always fits its
+    /// transaction; the others go the next day.
+    fn free_players(&mut self, club: &AccountId, left: &mut usize) {
+        let rules = the_rules();
+        let day = self.match_day;
+        let free: Vec<(String, AccountId)> = self
+            .squads
+            .get(club)
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|t| self.players.get(t))
+            .filter(|p| {
+                p.contract
+                    .as_ref()
+                    .is_some_and(|c| c.until_day <= day || c.unpaid >= rules.unpaid_to_free)
+            })
+            .filter_map(|p| Some((p.token_id.clone(), p.controller.clone()?)))
+            .take(*left)
+            .collect();
+        *left -= free.len();
+        for (token, person) in free {
+            if let Some(p) = self.players.get_mut(&token) {
+                p.contract = None;
+            }
+            ext_players::ext(self.players_id.clone())
+                .with_static_gas(RELEASE_GAS)
+                .league_transfer(token, person, U128(0))
+                .detach();
+        }
+    }
+
+    /// A club pays a player's release clause: the player goes to it and the
+    /// price is shared like any sale. His person must have signed for that
+    /// club first (`sign_for`).
+    fn pay_clause(&mut self, buyer: AccountId, amount: U128, token: String) {
+        require!(self.clubs.contains_key(&buyer), "only a club pays a clause");
+        let player = self
+            .players
+            .get(&token)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        let contract = player
+            .contract
+            .as_ref()
+            .unwrap_or_else(|| env::panic_str("he is under no contract"));
+        require!(contract.club != buyer, "he plays for you already");
+        require!(amount == contract.clause, "pay exactly his release clause");
+        require!(
+            self.signings.get(&token).is_some_and(|s| s.club == buyer),
+            "he has not signed for your club"
+        );
+        let id = self.next_offer;
+        self.next_offer += 1;
+        self.offers.insert(
+            id,
+            Offer {
+                id,
+                token_id: token.clone(),
+                buyer: buyer.clone(),
+                price: amount,
+                state: OfferState::Accepting,
+                match_day: self.match_day,
+            },
+        );
+        self.offers_by_token
+            .entry(token.clone())
+            .or_default()
+            .push(id);
+        ext_players::ext(self.players_id.clone())
+            .with_static_gas(SALE_GAS)
+            .league_transfer(token, buyer, amount)
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .on_sale(id),
+            )
+            .detach();
     }
 
     /// The first match a person's footballer starts pays that person the
