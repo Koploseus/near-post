@@ -1059,3 +1059,25 @@ details.rules[open] > summary { margin-bottom: 12px; }
 .account-page .panel { width: 100%; }
 @media (max-width: 560px) { .me-gear { width: 32px; height: 32px; } }
 .star-pick span { white-space: normal; text-align: center; overflow-wrap: anywhere; }
+/* Signing for a club: the terms on the left of the pen, the clubs as offers. */
+.signing h2 { margin: 0 0 6px; }
+.signing-lede { margin: 0 0 18px; max-width: 68ch; font-size: 16px; line-height: 1.45; }
+.signing-terms { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px 28px; align-items: center; padding: 16px 18px; margin-bottom: 8px; border: 3px solid var(--ink); border-radius: 4px; background: #fffaf0; }
+.signing-terms .contract-days { margin: 0; flex-wrap: nowrap; }
+.signing-terms .contract-days button { display: grid; justify-items: center; align-content: center; min-width: 66px; min-height: 60px; padding: 6px 8px; font: 400 22px/1 var(--display); }
+.signing-terms .contract-days small { margin-top: 4px; font: 700 11px/1 var(--body); opacity: .75; }
+.signing-terms ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
+.signing .club-row { display: grid; grid-template-columns: 40px minmax(0, 1.5fr) minmax(0, 1fr) auto; align-items: center; gap: 6px 16px; }
+.signing .club-who, .signing .club-pay { display: flex; flex-direction: column; min-width: 0; }
+.signing .club-who strong { font: 400 18px/1.2 var(--display); }
+.signing .club-pay b { font: 400 18px/1.2 var(--display); }
+.signing .club-row .note { margin: 0; }
+.signing h3 { margin: 22px 0 6px; }
+@media (max-width: 760px) {
+  .signing-terms { grid-template-columns: 1fr; }
+  .signing-terms .contract-days { flex-wrap: wrap; }
+  .signing-terms .contract-days button { min-width: 56px; }
+  .signing .club-row { grid-template-columns: 40px minmax(0, 1fr); }
+  .signing .club-pay { grid-column: 2; }
+  .signing .club-row .action, .signing .club-row > .chip { grid-column: 1 / -1; justify-self: start; }
+}
