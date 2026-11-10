@@ -7,6 +7,7 @@ import { serverNow } from "../lib/time.js";
 import type { Club, Player, Rules, Stand, StandResult } from "../lib/types.js";
 import { COLS, PATTERNS, ROWS, leading, paint, pictureColor } from "../tifo.js";
 import { crestOf } from "./Crest.js";
+import { faceNumber, Head } from "./Look.js";
 
 const FOLLOW = "near-post.follows";
 const remembered = () => {
@@ -87,6 +88,13 @@ const remember = (club: string) => {
 };
 
 /** The live stadium: the tifo of a club's stand, painted by the fans who came. */
+/** Surname, or the full name when two players of the eleven share it. */
+function shortName(name: string, all: string[]): string {
+  const last = (n: string) => n.split(" ").slice(-1)[0] ?? n;
+  const mine = last(name);
+  return all.filter((n) => last(n) === mine).length > 1 ? name : mine;
+}
+
 export function Stands() {
   const { session, schedule, clubId, refresh } = useGame();
   const { data: table } = useData(() => league<Club[]>("table"), []);
@@ -112,7 +120,6 @@ export function Stands() {
     const t = setInterval(() => setNow(serverNow()), 1000);
     return () => clearInterval(t);
   }, []);
-  const [star, setStar] = useState("");
   const [, bump] = useState(0);
   const info = table?.find((c) => c.manager === current);
   const day = stand?.match_day ?? last + 1;
@@ -148,8 +155,7 @@ export function Stands() {
           <span className="eyebrow">MATCH DAY {stand?.match_day ?? "…"} · {info?.name.toUpperCase()}</span>
           <h1>{stand?.full_house ? "TIFO COMPLETE!" : stand?.fans ? `${need} ${need === 1 ? "FAN" : "FANS"} TO GO` : "NO FANS YET"}</h1>
           <p className="sub">
-            {stand?.present ?? 0} of {stand?.fans ?? 0} fans in. 60% completes the tifo: every fan present then gets {g(reward)}, or {g(withOla)} after
-            an ola. Otherwise 2% of the treasury ({g(info?.treasury ?? "0")}) burns. Streak: {info?.full_house_streak ?? 0}, best {info?.best_streak ?? 0}.
+            Fill the stand to 60% and every fan in it gets {g(reward)}. Leave it short and {g((BigInt(info?.treasury ?? "0") * 2n) / 100n)} of the club's treasury burns.
           </p>
           {flag && (
             <p className="flag-note">
@@ -175,6 +181,26 @@ export function Stands() {
         </label>
       </div>
       <section className={`stand${stand?.full_house ? " done" : ""}`} aria-label="Tifo">
+        {stand && stand.fans > 0 && (
+          <div className={`ola-board${olaOpen ? " open" : ""}${olaMade ? " made" : ""}`}>
+            <b>The ola</b>
+            <p>
+              {olaMade
+                ? `${stand.ola} fans came in together. A full house now pays ${g(withOla)} each.`
+                : olaOpen
+                  ? `Take your seat now: ${stand.ola} of ${stand.ola_target} in the wave.`
+                  : beforeKickoff
+                    ? `${stand.ola_target} fans who sit down in the last ${Math.round(olaWindow / 60_000)} minutes make a full house pay ${g(withOla)} each.`
+                    : `${stand.ola} of ${stand.ola_target} came in the last minutes: no wave today.`}
+            </p>
+            {beforeKickoff && !olaMade && (
+              <span className="ola-clock">
+                <strong>{clock(olaOpen ? kickoff - now : kickoff - olaWindow - now)}</strong>
+                {olaOpen ? "left" : "to the window"}
+              </span>
+            )}
+          </div>
+        )}
         <div className="grid" role="img" aria-label={`Tifo of ${info?.name}: ${stand?.present ?? 0} of ${stand?.target ?? 0} fans needed`}>
           {squares.map((s) => (
             <div key={s.index} className={`sq${s.lit ? " lit" : ""}`} style={{ background: s.color, transitionDelay: `${(s.rank % 60) * 12}ms` }} />
@@ -191,20 +217,13 @@ export function Stands() {
             <div style={{ width: `${pct}%`, background: color }} />
             <i aria-hidden="true" />
           </div>
-          {stand && stand.fans > 0 && (
-            <p className={`ola${olaOpen ? " open" : ""}${olaMade ? " made" : ""}`}>
-              <b>THE OLA</b>{" "}
-              {olaMade
-                ? `${stand.ola} fans came together: a full house pays ${g(withOla)} each.`
-                : olaOpen
-                  ? `Now! ${stand.ola} of ${stand.ola_target} in. Take your seat before kick-off (${clock(kickoff - now)}).`
-                  : beforeKickoff
-                    ? `Opens in ${clock(kickoff - olaWindow - now)}. ${stand.ola_target} fans who take their seat in the last ${Math.round(olaWindow / 60_000)} minutes, and a full house pays half more.`
-                    : `${stand.ola} of ${stand.ola_target} came in the last minutes.`}
-            </p>
-          )}
           {session && current ? (
             <>
+              {seated ? (
+                <p className="seat-stub">
+                  <b>You are in.</b> {info?.name} counts you for match day {day}.
+                </p>
+              ) : (
               <div className="buttons">
                 {fanOf(session.accountId) === current ? (
                   <Action
@@ -227,6 +246,7 @@ export function Stands() {
                   />
                 )}
               </div>
+              )}
               {((lastStand?.full_house && sat(session.accountId, last) === current) || BigInt(credits ?? "0") > 0n) && (
                 <div className="buttons">
                   {lastStand?.full_house && sat(session.accountId, last) === current && (
@@ -252,49 +272,22 @@ export function Stands() {
                   )}
                 </div>
               )}
-              {seated && (
+              {seated && (!voted("tifo", session.accountId, day) || (!voted("star", session.accountId, day) && (eleven?.length ?? 0) > 0)) && (
                 <div className="fan-votes">
-                  {!voted("star", session.accountId, day) && (eleven?.length ?? 0) > 0 && (
-                    <div className="vote-row">
-                      <label>
-                        <span className="k">YOUR STAR OF THE MATCH</span>
-                        <select value={star} onChange={(e) => setStar(e.target.value)} aria-label="Your star of the match">
-                          <option value="">Pick a player…</option>
-                          {eleven!.map((p) => (
-                            <option key={p.token_id} value={p.token_id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {star && (
-                        <Action
-                          label="VOTE"
-                          className="cta small"
-                          run={() => leagueCall(session, "vote_star", { token_id: star }, 30).then(() => setVoted("star", session.accountId, day))}
-                          done={() => {
-                            bump((n) => n + 1);
-                            soon(reload);
-                          }}
-                          success="Voted"
-                        />
-                      )}
-                    </div>
-                  )}
                   {!voted("tifo", session.accountId, day) && (
-                    <div>
-                      <span className="k">VOTE THE TIFO</span>
+                    <fieldset>
+                      <legend>Which tifo should the stand show?</legend>
                       <div className="tifo-picks">
                         {PATTERNS.map((name, i) => (
                           <Action
                             key={name}
-                            className="tifo-pick"
+                            className={`tifo-pick${pattern === i && (stand?.tifo_votes[i] ?? 0) > 0 ? " leading" : ""}`}
                             label={
                               <>
                                 <Mini pattern={i} />
                                 <span>
                                   {name}
-                                  {stand?.tifo_votes[i] ? ` · ${stand.tifo_votes[i]}` : ""}
+                                  {stand?.tifo_votes[i] ? <em>{stand.tifo_votes[i]}</em> : null}
                                 </span>
                               </>
                             }
@@ -307,26 +300,52 @@ export function Stands() {
                           />
                         ))}
                       </div>
-                    </div>
+                    </fieldset>
+                  )}
+                  {!voted("star", session.accountId, day) && (eleven?.length ?? 0) > 0 && (
+                    <fieldset>
+                      <legend>Who is your star of the match? The most voted gets up to {g(rules?.fans_star_prize ?? "100000000000")}.</legend>
+                      <div className="star-picks">
+                        {eleven!.map((p) => {
+                          const votes = stand?.star_votes.find(([t]) => t === p.token_id)?.[1] ?? 0;
+                          return (
+                            <Action
+                              key={p.token_id}
+                              className="star-pick"
+                              aria={`Vote ${p.name}`}
+                              label={
+                                <>
+                                  <Head look={p.look} n={faceNumber(p.token_id)} size={44} />
+                                  <span>{shortName(p.name, eleven!.map((q) => q.name))}</span>
+                                  {votes > 0 && <em>{votes}</em>}
+                                </>
+                              }
+                              run={() => leagueCall(session, "vote_star", { token_id: p.token_id }, 30).then(() => setVoted("star", session.accountId, day))}
+                              done={() => {
+                                bump((n) => n + 1);
+                                soon(reload);
+                              }}
+                              success={`Your star: ${p.name}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </fieldset>
                   )}
                 </div>
               )}
               {starLead && (
                 <p className="sub" style={{ fontSize: 14, margin: 0 }}>
-                  The stand's star so far: <b>{starName(starLead[0])}</b> ({starLead[1]} {starLead[1] === 1 ? "vote" : "votes"}). The most voted gets up to{" "}
-                  {g(rules?.fans_star_prize ?? "100000000000")} in his wallet.
+                  The stand's star so far: <b>{starName(starLead[0])}</b>, {starLead[1]} {starLead[1] === 1 ? "vote" : "votes"}.
                 </p>
               )}
-              <p className="sub" style={{ fontSize: 14, margin: 0 }}>
-                You support one club at a time. A full house pays every fan who came; once seated you vote the tifo and your star of the match.
-              </p>
             </>
           ) : (
             <a className="cta signin" href="#/locker">SIGN IN WITH EMAIL TO TAKE YOUR SEAT</a>
           )}
         </section>
-        <aside className="card rules" aria-label="Rules">
-          <span className="k">THE RULES</span>
+        <details className="card rules">
+          <summary>The rules of the stand</summary>
           <dl>
             <dt>Full house (60%)</dt>
             <dd style={{ color: "#1e7a47" }}>+{g(reward)} per fan</dd>
@@ -346,7 +365,7 @@ export function Stands() {
             <dd style={{ color: "#1e7a47" }}>+50k G per full house</dd>
           </dl>
           <span className="note">Fixed in the league contract. No method changes them.</span>
-        </aside>
+        </details>
       </div>
     </div>
   );

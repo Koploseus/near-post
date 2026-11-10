@@ -33,15 +33,16 @@ export function Dashboard() {
   const { data } = useData(async () => {
     if (!schedule) return null;
     const day = schedule.match_day;
-    const [table, fixtures, last, lineup, stand] = await Promise.all([
+    const [table, fixtures, last, lineup, stand, votes] = await Promise.all([
       league<Club[]>("table"),
       league<[string, string][]>("fixtures_of", { match_day: day }),
       day > 1 ? league<MatchResult[]>("results", { match_day: day - 1 }) : Promise.resolve([]),
       clubId ? league<Lineup>("lineup", { club_id: clubId }) : Promise.resolve(null),
       clubId ? league<Stand>("stand", { club_id: clubId }) : Promise.resolve(null),
+      clubId ? league<[string, string][]>("project_votes", { club_id: clubId }).catch(() => []) : Promise.resolve([]),
     ]);
     const live = ld?.state === "live" ? await league<MatchResult[]>("results", { match_day: ld.day }) : [];
-    return { table, fixtures, last, lineup, stand, live };
+    return { table, fixtures, last, lineup, stand, live, votes };
   }, [schedule?.match_day, schedule?.first_half_played, clubId, ld?.state]);
 
   const names = new Map((data?.table ?? []).map((c) => [c.manager, c.name]));
@@ -54,6 +55,7 @@ export function Dashboard() {
   const role = slot >= 0 && data?.lineup ? ROLE_NAME[data.lineup.roles[slot]!].toLowerCase() : null;
   const day = schedule?.match_day ?? 0;
   const trained = !!me && me.last_trained_day >= day;
+  const voted = !!me && !!data?.votes.some(([v]) => v === me.token_id);
   const owed = me ? BigInt(me.wallet) + BigInt(me.salary) : 0n;
   const c = liveMatch && schedule && ld?.state === "live" ? clock(liveMatch, ld.kickoff, schedule, now, kickoffs[ld.day]) : null;
   const halfTime = c?.phase === "half_time" || c?.phase === "waiting_second_half";
@@ -75,10 +77,15 @@ export function Dashboard() {
         { text: chose ? `You start: ${role}` : "Take your slot", href: "#/team", done: chose },
         { text: trained ? "Trained today" : "Train a skill (up to +3)", href: "#/locker", done: trained },
         {
-          text: data?.stand?.full_house ? "Tifo complete" : `Stand: ${data?.stand?.present ?? 0} of ${data?.stand?.fans ?? 0} fans`,
+          text: data?.stand?.full_house
+            ? "Tifo complete"
+            : data?.stand?.fans
+              ? `Stand: ${data.stand.present} of ${data.stand.fans} fans`
+              : "No fans yet: bring the first one in",
           href: "#/stands",
           done: !!data?.stand?.full_house,
         },
+        { text: voted ? "Your voice is in at the club house" : "Vote what the club builds next", href: "#/house", done: voted },
         ...(owed > 0n ? [{ text: `Collect ${g(owed)}`, href: "#/locker", done: false }] : []),
       ]
     : [];
@@ -225,7 +232,7 @@ export function Dashboard() {
  * rating, his money and what he won. The first thing you see of yourself.
  */
 function PlayerColumn() {
-  const { me, club, clubId, balance } = useGame();
+  const { me, club, clubId, balance, schedule } = useGame();
   const { data: champs } = useData(() => league<Champion[]>("champions", { before: null, limit: 50 }).catch(() => []), [clubId]);
   if (!me)
     return (
@@ -254,6 +261,14 @@ function PlayerColumn() {
         <dd>{me.goals}</dd>
         <dt>Wallet</dt>
         <dd>{g(balance)}</dd>
+        <dt>Energy</dt>
+        <dd className={me.energy < 50 ? "low" : undefined}>{me.energy}</dd>
+        {me.contract && schedule && (
+          <>
+            <dt>Contract</dt>
+            <dd>{Math.max(0, me.contract.until_day - schedule.match_day + 1)} match days</dd>
+          </>
+        )}
       </dl>
       <span className="k">TROPHY CABINET</span>
       {won.length ? (

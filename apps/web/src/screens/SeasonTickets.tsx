@@ -4,7 +4,7 @@ import { clubName, g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { type Briefing, buySeasonTicket, fanzone, league, ticketsOf, withdrawTicket } from "../lib/near.js";
 import type { Club } from "../lib/types.js";
-import { ClubHouse } from "./ClubHouse.js";
+import { Crest } from "./Crest.js";
 
 const PRICE = (300_000n * 1_000_000n).toString();
 
@@ -28,10 +28,18 @@ export function SeasonTickets() {
       <section className="paper panel season-ticket" aria-labelledby="st-title">
         <span className="k">SEASON {season} · 50 PER CLUB</span>
         <h2 id="st-title">Season ticket</h2>
-        <p className="lead">
-          It earns 50k G at every full house of its club (×2 in a derby) and a fifth of what the club earns from goals and sales, shared between its tickets. It
-          also votes what the treasury buys. Sell it, and its G, its earnings to come and its voice go with it.
-        </p>
+        <ul className="ticket-does">
+          <li>
+            <b>50k G</b> at every full house of its club, twice that in a derby
+          </li>
+          <li>
+            <b>A fifth</b> of what the club earns from its goals and its sales, shared between its tickets
+          </li>
+          <li>
+            <b>One voice</b> on what the club's treasury buys each week
+          </li>
+        </ul>
+        <p className="note">The G stay in the ticket until you withdraw them. Sell the ticket and its G, its earnings to come and its voice go with it.</p>
         <label className="field">
           <span>Club</span>
           <select value={club ?? ""} onChange={(e) => setPicked(e.target.value)}>
@@ -70,12 +78,17 @@ export function SeasonTickets() {
           <ul className="ticket-list">
             {mine!.map((t) => (
               <li key={t.token_id} className="ticket">
-                <span className="ticket-no">#{t.number}</span>
-                <span>
-                  <b>{names.get(t.club) ?? t.club}</b> <span className="note">Season {t.season}</span>
+                <span className="ticket-stub">
+                  <Crest clubId={t.club} name={names.get(t.club) ?? t.club} size={40} />
+                  <b>No. {t.number}</b>
                 </span>
-                <span>
-                  <b>{g(t.balance)}</b> <span className="note">held · {g(t.earned)} earned</span>
+                <span className="ticket-main">
+                  <b>{names.get(t.club) ?? t.club}</b>
+                  <span>Season {t.season}</span>
+                </span>
+                <span className="ticket-held">
+                  <b>{g(t.balance)}</b>
+                  <span>in the ticket, {g(t.earned)} earned so far</span>
                 </span>
                 {BigInt(t.balance) > 0n && <Action label="WITHDRAW" className="cta small" run={() => withdrawTicket(session, t.token_id)} done={() => (reload(), refresh())} success="G withdrawn" />}
               </li>
@@ -84,7 +97,13 @@ export function SeasonTickets() {
           <FanZone names={names} />
         </section>
       )}
-      {session && mine?.filter((t) => t.season === season).slice(0, 1).map((t) => <ClubHouse key={t.token_id} clubId={t.club} />)}
+      {session && mine?.some((t) => t.season === season) && (
+        <a className="house-link" href="#/house">
+          <span>
+            <b>Club house</b> Your ticket has a voice on what the treasury buys this week
+          </span>
+        </a>
+      )}
     </div>
   );
 }

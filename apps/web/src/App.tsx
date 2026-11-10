@@ -4,6 +4,7 @@ import { GameProvider, useGame } from "./lib/game.js";
 import { useHeartbeat } from "./lib/social.js";
 import { Toasts } from "./lib/toast.js";
 import { Agents } from "./screens/Agents.js";
+import { ClubHousePage } from "./screens/ClubHouse.js";
 import { Album } from "./screens/Album.js";
 import { Goalars } from "./screens/Goalars.js";
 import { SeasonTickets } from "./screens/SeasonTickets.js";
@@ -31,6 +32,7 @@ const ROUTES = {
   seasons: { tab: "club", view: Seasons },
   album: { tab: "club", view: Album },
   market: { tab: "club", view: Market },
+  house: { tab: "club", view: ClubHousePage },
   ai: { tab: "club", view: Agents },
   game: { tab: "club", view: Game },
   locker: { tab: "me", view: LockerRoom },
@@ -140,12 +142,13 @@ function Header({ tab }: { tab: Tab }) {
 }
 
 /** Results, album and market: the club's pages. (The AI agents' page, #/ai, is linked from Today.) */
-export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "ai" }) {
+export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "house" | "ai" }) {
   const tabs = [
     ["match", "Results"],
     ["seasons", "Seasons"],
     ["album", "Album"],
     ["market", "Market"],
+    ["house", "Club house"],
   ] as const;
   return (
     <nav className="sub-tabs" aria-label="Club">
@@ -184,7 +187,7 @@ export function App() {
     <GameProvider>
       <Header tab={tab} />
       <main className="wrap page">
-        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "ai") && <ClubTabs current={r} />}
+        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "house" || r === "ai") && <ClubTabs current={r} />}
         {(r === "stands" || r === "g" || r === "tickets") && <StandsTabs current={r} />}
         <View />
       </main>

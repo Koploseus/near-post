@@ -62,25 +62,24 @@ export function Wardrobe({ me }: { me: Player }) {
       <div className="wardrobe-grid">
         <div className="wardrobe-me">
           <Avatar look={me.look} n={n} />
-          <ul className="worn">
-            {worn.map(([k, id]) => (
-              <li key={k}>
-                <span className="k">{KIND_LABEL[k].toUpperCase()}</span>
-                {id ? (
-                  <>
-                    <span>
-                      {title(byId.get(id)?.style ?? id)}
-                      {effect(byId.get(id)) && <b className="effect"> {effect(byId.get(id))}</b>}
-                    </span>
-                    <Action className="chip" label="TAKE OFF" run={() => unequip(session, me.token_id, k)} done={later} success="Back in your wardrobe" />
-                  </>
-                ) : (
-                  <span className="note">nothing</span>
-                )}
-              </li>
-            ))}
-          </ul>
         </div>
+
+        <ul className="kit" aria-label="What he wears">
+          {worn.map(([k, id]) => {
+            const it = id ? byId.get(id) : undefined;
+            return (
+              <li key={k} className={it ? "worn" : ""} style={it ? { borderColor: RARITY_COLOR[it.rarity] } : undefined}>
+                <span className="kit-icon">{it ? <ItemIcon item={it} n={n} /> : <span aria-hidden="true">+</span>}</span>
+                <b>{KIND_LABEL[k]}</b>
+                <span className="kit-feeds">
+                  {it ? title(it.style) : KIND_SKILL[k] ? `adds ${KIND_SKILL[k]}${KIND_NOTE[k] ? `, ${KIND_NOTE[k]}` : ""}` : "for show"}
+                  {it && effect(it) && <em className="effect"> {effect(it).replace(/ \(.*\)$/, "")}</em>}
+                </span>
+                {it && <Action className="chip" label="Take off" run={() => unequip(session, me.token_id, k)} done={later} success="Back in your wardrobe" />}
+              </li>
+            );
+          })}
+        </ul>
 
         <div className="wardrobe-items">
           <div className="pack-row">
@@ -178,7 +177,7 @@ export function Wardrobe({ me }: { me: Player }) {
             )}
             <span className="note">
               {picked.length === 0
-                ? "Pick an item to wear it, or three of a kind and rarity to fuse them into a rarer one."
+                ? "Pick an item to wear it, or three alike to fuse them into a rarer one."
                 : three && !next
                   ? "Legendary items do not fuse."
                   : picked.length < 3
@@ -186,11 +185,7 @@ export function Wardrobe({ me }: { me: Player }) {
                     : ""}
             </span>
           </div>
-          <p className="note">
-            Items count on the pitch: boots add pace, a headband physical, grip socks dribbling, a wristband passing, ankle tape shooting, shin pads defending
-            (outfield) and gloves defending (in goal). Rare +1, epic +2, legendary +3. Haircuts are for show. While he wears an item, the league holds it; it
-            comes back when you take it off.
-          </p>
+          <p className="note">Rare items add 1 to their skill, epic 2, legendary 3. While he wears one the league holds it; it comes back when you take it off.</p>
         </div>
       </div>
     </div>
