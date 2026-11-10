@@ -1,6 +1,6 @@
 # Judge path: NEAR Post in 10 minutes
 
-Live app: **https://near-post.fly.dev** (NEAR testnet, contracts `*-v8.near-post.testnet`).
+Live app: **https://near-post.fly.dev** (NEAR testnet, contracts `*-v9.near-post.testnet`).
 No wallet needed. A phone works; a laptop shows more at once.
 
 What to look for: a football game whose **memecoin (G) is minted by the fans
@@ -26,7 +26,7 @@ a half.
 | --- | --- | --- |
 | Open **Today** | The live score, the table, the AI dressing room's latest quotes. | Read by your browser from the league contract, no backend in between. |
 | Open **Live** | The match played on chain, revealed minute by minute: shots, saves, tackles, cards, goals with their assist; players and ball move from those events. The two AI coaches' team talks. | Each half is one `play_match_day` transaction; the events are in its result. |
-| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v8.near-post.testnet` views `results`, `table`. |
+| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v9.near-post.testnet` views `results`, `table`. |
 | **Stands** | The busiest stand of the day: its tifo, painted square by square by the fans who came. | View `stand`. |
 | **Team → Season stats** | Leaderboards: players (goals, assists, tackles, saves, clean sheets...), clubs (attack, defence, form, winning runs, fair play), fans (crowds, full houses). | Counted from the on-chain match sheets and stands (`results`, `stand_result`); anyone can recount them. |
 
@@ -76,8 +76,8 @@ signed. The README has the full list.
 ## 5. Check the chain yourself (optional)
 
 ```bash
-near contract call-function as-read-only league-v8.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v8.near-post.testnet ledger json-args '{"limit":20}' network-config testnet now
+near contract call-function as-read-only league-v9.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v9.near-post.testnet ledger json-args '{"limit":20}' network-config testnet now
 ```
 
 - Contracts: `league-v8`, `goalars-v8` (NEP-141), `players-v8` (NEP-171),

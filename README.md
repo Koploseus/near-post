@@ -356,18 +356,18 @@ view, the last 600, with the match day, the reason and the club).
 
 Do this - see that: sign in, follow a club, buy its season ticket (Stands →
 Season tickets); fill the stand with other fans; after the match day the
-ticket shows its share, and `tickets_of` on `tickets-v8.near-post.testnet`
+ticket shows its share, and `tickets_of` on `tickets-v9.near-post.testnet`
 shows the same balance.
 
 ## Live on testnet (v8)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v8.near-post.testnet`](https://testnet.nearblocks.io/address/league-v8.near-post.testnet) |
-| Goalars | [`goalars-v8.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v8.near-post.testnet) |
-| Players | [`players-v8.near-post.testnet`](https://testnet.nearblocks.io/address/players-v8.near-post.testnet) |
-| Items | [`items-v8.near-post.testnet`](https://testnet.nearblocks.io/address/items-v8.near-post.testnet) |
-| Season tickets | [`tickets-v8.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v8.near-post.testnet) |
+| League | [`league-v9.near-post.testnet`](https://testnet.nearblocks.io/address/league-v9.near-post.testnet) |
+| Goalars | [`goalars-v9.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v9.near-post.testnet) |
+| Players | [`players-v9.near-post.testnet`](https://testnet.nearblocks.io/address/players-v9.near-post.testnet) |
+| Items | [`items-v9.near-post.testnet`](https://testnet.nearblocks.io/address/items-v9.near-post.testnet) |
+| Season tickets | [`tickets-v9.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v9.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -385,8 +385,8 @@ they are no longer used. v8 (6 November) is a fresh league for seasons of
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v8.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v8.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v9.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v9.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
