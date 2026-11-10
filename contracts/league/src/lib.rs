@@ -124,6 +124,21 @@ pub struct Rules {
     pub ola_bonus_bps: u32,
     /// Match days the winner of a derby flies its colours in the loser's stand.
     pub derby_flag_days: u32,
+    /// Paid once to a person, the first time the footballer he plays starts
+    /// a match. Nothing is paid for signing up.
+    pub debut_bonus: U128,
+    /// Trainings a new footballer gets without paying.
+    pub free_trainings: u8,
+    /// Energy, 0 to 100. A match and a training cost some; every match day
+    /// gives `energy_per_day` back, and a day without match or training
+    /// `energy_rest` more. Under `tired_below`, skills drop, down to
+    /// `tired_malus_pct` percent less at zero.
+    pub energy_match: u8,
+    pub energy_training: u8,
+    pub energy_per_day: u8,
+    pub energy_rest: u8,
+    pub tired_below: u8,
+    pub tired_malus_pct: u8,
 }
 
 pub fn the_rules() -> Rules {
@@ -138,9 +153,9 @@ pub fn the_rules() -> Rules {
         full_house_mint_per_fan: U128(100_000 * ONE_G),
         empty_stand_burn_bps: 200,
         relegation_burn_bps: 1_000,
-        signup_grant: U128(1_000_000 * ONE_G),
-        welcome_bonus: U128(1_000_000 * ONE_G),
-        welcome_visits: 4,
+        signup_grant: U128(0),
+        welcome_bonus: U128(0),
+        welcome_visits: 0,
         training_cost: U128(400_000 * ONE_G),
         pack_price: U128(500_000 * ONE_G),
         sale_tax_bps: 300,
@@ -162,6 +177,14 @@ pub fn the_rules() -> Rules {
         ola_target_bps: 5_000,
         ola_bonus_bps: 5_000,
         derby_flag_days: 7,
+        debut_bonus: U128(1_000_000 * ONE_G),
+        free_trainings: 1,
+        energy_match: 12,
+        energy_training: 15,
+        energy_per_day: 8,
+        energy_rest: 17,
+        tired_below: 50,
+        tired_malus_pct: 20,
     }
 }
 
@@ -257,6 +280,12 @@ pub struct Player {
     pub last_trained_day: u32,
     /// What he wears (items held by the league while he does).
     pub look: Look,
+    /// Energy (0 to 100) on `energy_day`, the last day he played or trained.
+    /// Views give it as of today. Academy players do not tire.
+    pub energy: u8,
+    pub energy_day: u32,
+    /// Trainings he can still take without paying.
+    pub free_trainings: u8,
 }
 
 /// `msg` of a payment to the league.
@@ -473,6 +502,8 @@ enum StorageKey {
     SeasonTicketsSold,
     Ledger,
     Ola,
+    Debuted,
+    Resting,
 }
 
 #[near(serializers = [json, borsh])]
@@ -711,6 +742,10 @@ pub struct League {
     ledger_next: u64,
     /// (club, match day) -> fans who took their seat in the ola window.
     ola: LookupMap<(AccountId, u32), u32>,
+    /// Footballers whose person got the debut bonus.
+    debuted: LookupSet<String>,
+    /// (player, match day): he sits this match day out.
+    resting: LookupSet<(String, u32)>,
 }
 
 /// How many ledger entries the league keeps (the oldest are overwritten).
@@ -840,6 +875,8 @@ impl League {
             ledger: LookupMap::new(StorageKey::Ledger),
             ledger_next: 0,
             ola: LookupMap::new(StorageKey::Ola),
+            debuted: LookupSet::new(StorageKey::Debuted),
+            resting: LookupSet::new(StorageKey::Resting),
         }
     }
 
@@ -899,6 +936,28 @@ impl League {
         player.skills.raise(ticket.skill, gain);
         player.refresh();
         player.clone()
+    }
+
+    /// A training that costs no G: a new footballer has `free_trainings` of
+    /// them. The same ticket, drill and energy as a paid one.
+    pub fn train_free(&mut self, token_id: String, skill: Skill) {
+        let caller = env::predecessor_account_id();
+        let left = self
+            .players
+            .get(&token_id)
+            .map(|p| p.free_trainings)
+            .unwrap_or_else(|| env::panic_str("no such player"));
+        require!(left > 0, "no free training left");
+        self.open_ticket(
+            &caller,
+            TrainOrder {
+                token_id: token_id.clone(),
+                skill,
+            },
+        );
+        if let Some(p) = self.players.get_mut(&token_id) {
+            p.free_trainings = left - 1;
+        }
     }
 
     pub fn rules(&self) -> Rules {
@@ -1047,6 +1106,7 @@ impl League {
         );
         let day = self.match_day;
         self.reported.insert((token.clone(), day));
+        self.resting.remove(&(token.clone(), day));
         let mut slots = self
             .slots
             .get(&(club.clone(), day))
@@ -1077,6 +1137,30 @@ impl League {
         votes.push((token, strategy));
     }
 
+    /// The caller's footballer sits this match day out: nobody picks him,
+    /// and a day without match or training gives his energy back faster.
+    /// Until a minute before kick-off; taking a slot again cancels it.
+    pub fn rest_today(&mut self) {
+        let (token, club) = self.my_player_and_club();
+        require!(
+            env::block_timestamp().saturating_add(MINUTE_NS) <= self.kickoff_ns,
+            "the team sheet closed a minute before kick-off"
+        );
+        let day = self.match_day;
+        self.resting.insert((token.clone(), day));
+        if let Some(slots) = self.slots.get_mut(&(club, day)) {
+            for s in slots.iter_mut() {
+                if s.as_ref() == Some(&token) {
+                    *s = None;
+                }
+            }
+        }
+    }
+
+    pub fn is_resting(&self, token_id: String, match_day: u32) -> bool {
+        self.resting.contains(&(token_id, match_day))
+    }
+
     /// The eleven for the next half: formation, strategy and every slot.
     pub fn lineup(&self, club_id: AccountId) -> Lineup {
         let formation = self.formation_of(&club_id);
@@ -1092,7 +1176,7 @@ impl League {
             roles: formation.roles().to_vec(),
             players: xi
                 .iter()
-                .map(|t| t.as_ref().and_then(|t| self.players.get(t).cloned()))
+                .map(|t| t.as_ref().and_then(|t| self.player_now(t)))
                 .collect(),
             chosen: (0..ELEVEN)
                 .map(|k| chosen_slots[k].is_some() && chosen_slots[k] == xi[k])
@@ -1144,7 +1228,7 @@ impl League {
     pub fn footballer_of(&self, account_id: AccountId) -> Option<Player> {
         self.footballer_of
             .get(&account_id)
-            .and_then(|t| self.players.get(t).cloned())
+            .and_then(|t| self.player_now(t))
     }
 
     /// The caller reports fit for his club's current match day. Without it, an
@@ -1410,11 +1494,7 @@ impl League {
     pub fn squad(&self, account_id: AccountId) -> Vec<Player> {
         self.squads
             .get(&account_id)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.players.get(id).cloned())
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.player_now(id)).collect())
             .unwrap_or_default()
     }
 
@@ -1423,12 +1503,12 @@ impl League {
         self.eleven_of(&club_id)
             .iter()
             .flatten()
-            .filter_map(|id| self.players.get(id).cloned())
+            .filter_map(|id| self.player_now(id))
             .collect()
     }
 
     pub fn get_player(&self, token_id: String) -> Option<Player> {
-        self.players.get(&token_id).cloned()
+        self.player_now(&token_id)
     }
 
     /// Called by the players contract after every transfer: the player moves
@@ -1968,21 +2048,41 @@ impl League {
             amount == the_rules().training_cost,
             "training costs exactly training_cost"
         );
+        let token = order.token_id.clone();
+        self.open_ticket(&sender_id, order);
+        self.log("training", Some(sender_id), amount.0, false);
+        ext_goalars::ext(self.goalars_id.clone())
+            .with_static_gas(BURN_GAS)
+            .burn(amount, Some(format!("training {token}")))
+            .detach();
+    }
+
+    /// Opens a training ticket for a player: once per match day, by the
+    /// person who plays him, and only with the energy for it.
+    fn open_ticket(&mut self, sender_id: &AccountId, order: TrainOrder) {
         let day = self.match_day;
         let token = order.token_id;
+        let cost = the_rules().energy_training;
         let player = self
             .players
-            .get_mut(&token)
+            .get(&token)
             .unwrap_or_else(|| env::panic_str("no such player"));
         require!(
-            player.beneficiary() == &sender_id,
+            player.beneficiary() == sender_id,
             "you cannot train that player"
         );
         require!(
             player.last_trained_day < day,
             "already trained this match day"
         );
-        player.last_trained_day = day;
+        require!(
+            self.energy_now(player) >= cost,
+            "too tired to train: rest a match day"
+        );
+        self.spend_energy(&token, cost);
+        if let Some(p) = self.players.get_mut(&token) {
+            p.last_trained_day = day;
+        }
         let id = self.next_ticket;
         self.next_ticket += 1;
         let seed = derive_seed(env::random_seed_array(), &[id, day as u64]);
@@ -1991,17 +2091,12 @@ impl League {
             token.clone(),
             Ticket {
                 id,
-                token_id: token.clone(),
+                token_id: token,
                 skill: order.skill,
                 match_day: day,
                 seed: hex,
             },
         );
-        self.log("training", Some(sender_id.clone()), amount.0, false);
-        ext_goalars::ext(self.goalars_id.clone())
-            .with_static_gas(BURN_GAS)
-            .burn(amount, Some(format!("training {token}")))
-            .detach();
     }
 
     /// A season ticket of `club`, paid `amount` G by `buyer`: the price goes
@@ -2587,7 +2682,10 @@ impl League {
         for (k, t) in xi.iter().enumerate() {
             match t.as_ref().and_then(|t| self.players.get(t)) {
                 Some(p) => {
-                    skills[k] = Some(wardrobe::dressed(p.skills, &p.look, k == 0));
+                    skills[k] = Some(tired(
+                        wardrobe::dressed(p.skills, &p.look, k == 0),
+                        self.energy_now(p),
+                    ));
                     booked[k] = first.booked.contains(&p.token_id);
                     names.push(p.token_id.clone());
                 }
@@ -2605,6 +2703,41 @@ impl League {
         side.booked = booked;
         side.takers = [slot_of(&named.free_kick), slot_of(&named.penalty)];
         (side, names, formation)
+    }
+
+    /// A player's energy today: what he had on `energy_day`, plus what the
+    /// days since gave back. Academy players do not tire.
+    fn energy_now(&self, p: &Player) -> u8 {
+        if p.controller.is_none() {
+            return 100;
+        }
+        let rules = the_rules();
+        let days = self.match_day.saturating_sub(p.energy_day);
+        let gain =
+            days * rules.energy_per_day as u32 + days.saturating_sub(1) * rules.energy_rest as u32;
+        (p.energy as u32 + gain).min(100) as u8
+    }
+
+    /// A player as he is today (his energy brought up to date).
+    fn player_now(&self, token_id: &String) -> Option<Player> {
+        let mut p = self.players.get(token_id).cloned()?;
+        p.energy = self.energy_now(&p);
+        p.energy_day = self.match_day;
+        Some(p)
+    }
+
+    /// Takes `cost` energy from a player today (not below zero).
+    fn spend_energy(&mut self, token_id: &String, cost: u8) {
+        let day = self.match_day;
+        let Some(now) = self.players.get(token_id).map(|p| self.energy_now(p)) else {
+            return;
+        };
+        if let Some(p) = self.players.get_mut(token_id)
+            && p.controller.is_some()
+        {
+            p.energy = now.saturating_sub(cost);
+            p.energy_day = day;
+        }
     }
 
     /// The caller's footballer and the club he plays for.
@@ -2657,6 +2790,11 @@ impl League {
         controller: Option<AccountId>,
     ) -> Player {
         let skills = Skills::roll(stream, position);
+        let free_trainings = if controller.is_some() {
+            the_rules().free_trainings
+        } else {
+            0
+        };
         let token_id = format!("p{}", self.next_player);
         self.next_player += 1;
         let player = Player {
@@ -2674,6 +2812,9 @@ impl League {
             salary: U128(0),
             last_trained_day: 0,
             look: Look::default(),
+            energy: 100,
+            energy_day: self.match_day,
+            free_trainings,
         };
         self.players.insert(token_id, player.clone());
         player
@@ -2779,9 +2920,11 @@ impl League {
             if !human {
                 continue;
             }
+            self.spend_energy(token, the_rules().energy_match);
+            self.debut(token);
             let treasury = self.clubs.get(club).map(|c| c.treasury.0).unwrap_or(0);
             if treasury < salary {
-                break; // the treasury is empty: no more salaries today
+                continue; // the treasury is empty: no salary for him today
             }
             self.take_from_treasury(club, salary);
             if let Some(p) = self.players.get_mut(token) {
@@ -2790,8 +2933,22 @@ impl League {
         }
     }
 
+    /// The first match a person's footballer starts pays that person the
+    /// debut bonus, once (a credit, minted on `claim`).
+    fn debut(&mut self, token: &String) {
+        let bonus = the_rules().debut_bonus.0;
+        let Some(person) = self.players.get(token).and_then(|p| p.controller.clone()) else {
+            return;
+        };
+        if bonus == 0 || !self.debuted.insert(token.clone()) {
+            return;
+        }
+        *self.credits.entry(person.clone()).or_insert(0) += bonus;
+        self.log("debut", Some(person), bonus, true);
+    }
+
     /// Whether a player can play today: everyone in the squad does, unless
-    /// suspended after a red card.
+    /// suspended after a red card or resting.
     /// Eleven and one more: past twelve, the weakest academy player leaves
     /// the squad (his NFT stays with the club), but never the last keeper.
     /// Twelve people and no academy player left: the newcomer sits on the bench.
@@ -2819,6 +2976,7 @@ impl League {
     fn available(&self, token: &String) -> bool {
         self.players.contains_key(token)
             && !self.suspended.contains(&(token.clone(), self.match_day))
+            && !self.resting.contains(&(token.clone(), self.match_day))
     }
 
     /// The eleven of a club for the next half, by slot of its formation:
@@ -2884,6 +3042,9 @@ impl League {
     /// Schedules a mint on the goalars contract. The amount is nominal: goalars
     /// scales it under the 10B cap.
     fn mint(&mut self, account_id: AccountId, amount: U128, memo: &str) {
+        if amount.0 == 0 {
+            return;
+        }
         let kind = if memo.starts_with("signup") {
             "signup"
         } else {
@@ -3201,6 +3362,29 @@ fn star(m: &MatchResult, players: &LookupMap<String, Player>) -> Option<Star> {
                 rating: r,
             })
         })
+}
+
+/// A tired player's skills: untouched from `tired_below` up, then lower in
+/// proportion, down to `tired_malus_pct` percent less at zero energy.
+pub fn tired(mut s: Skills, energy: u8) -> Skills {
+    let rules = the_rules();
+    if energy >= rules.tired_below {
+        return s;
+    }
+    let lost = rules.tired_malus_pct as u32 * (rules.tired_below - energy) as u32
+        / rules.tired_below as u32;
+    let cut = |v: &mut u8| *v = ((*v as u32 * (100 - lost) / 100).max(1)) as u8;
+    for v in [
+        &mut s.pace,
+        &mut s.shooting,
+        &mut s.passing,
+        &mut s.dribbling,
+        &mut s.defending,
+        &mut s.physical,
+    ] {
+        cut(v);
+    }
+    s
 }
 
 /// Fans in the ola window that make the ola: a share of the full-house

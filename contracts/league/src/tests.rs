@@ -97,10 +97,12 @@ fn due(l: &League) -> u64 {
 fn rules_match_the_design() {
     let r = league().rules();
     assert_eq!(r.goal_scorer_share.0 + r.goal_club_share.0, r.goal_mint.0);
+    // Signing up and following pay nothing: G come from playing.
     assert_eq!(
         r.signup_grant.0 + r.welcome_visits as u128 * r.welcome_bonus.0,
-        5_000_000 * ONE_G
+        0
     );
+    assert_eq!(r.debut_bonus, U128(1_000_000 * ONE_G));
     assert_eq!(r.max_supply, U128(10_000_000_000 * ONE_G));
     assert_eq!(r.stadium_target_bps, 6_000);
 }
@@ -339,19 +341,19 @@ fn switching_club_moves_the_fan() {
 }
 
 #[test]
-fn welcome_bonus_is_paid_on_the_first_four_visits_only() {
+fn following_and_coming_to_the_stand_mint_nothing_by_themselves() {
     let mut l = league();
     as_caller("koplo.testnet");
     l.create_club("Rive Nord".into());
     as_caller("fan.testnet");
-    assert_eq!(l.welcome_status(acc("fan.testnet")), None);
     l.follow(acc("koplo.testnet"));
-    assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
     for day in 1..=6 {
         l.match_day = day;
         l.check_in();
     }
-    assert_eq!(l.welcome_status(acc("fan.testnet")), Some(4));
+    assert_eq!(l.welcome_status(acc("fan.testnet")), Some(0));
+    assert_eq!(l.credits_of(acc("fan.testnet")), U128(0));
+    assert!(l.ledger(None).is_empty());
 }
 
 #[test]
@@ -1299,6 +1301,7 @@ impl Player {
     /// This player after a training opened on `day` (no points yet).
     fn with_trained(mut self, day: u32) -> Self {
         self.last_trained_day = day;
+        self.energy -= the_rules().energy_training;
         self
     }
 }
@@ -1747,7 +1750,6 @@ fn a_full_house_credits_the_season_tickets_and_the_ledger_says_so() {
             .iter()
             .any(|e| e.kind == "empty_stand" && e.who == Some(acc("c1.testnet")) && !e.mint)
     );
-    assert!(ledger.iter().any(|e| e.kind == "signup"));
     // Newest first.
     assert!(ledger.windows(2).all(|w| w[0].id > w[1].id));
 }
@@ -1911,4 +1913,115 @@ fn the_winner_of_a_derby_flies_its_colours_at_the_loser_for_a_week() {
     let flag = l.get_club(loser.clone()).unwrap().flag.unwrap();
     assert_eq!((flag.by, flag.until_day), (winner.clone(), day + 7));
     assert_eq!(l.get_club(winner).unwrap().flag, None);
+}
+
+// ---- v9: G come from playing, energy ----
+
+#[test]
+fn a_persons_first_match_pays_the_debut_bonus_once() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    assert_eq!(l.credits_of(acc("koplo.testnet")), U128(0));
+    kick_off(&mut l, 1);
+    assert_eq!(l.credits_of(acc("koplo.testnet")), the_rules().debut_bonus);
+    assert!(l.ledger(None).iter().any(|e| e.kind == "debut" && e.mint));
+    kick_off(&mut l, 2);
+    assert_eq!(l.credits_of(acc("koplo.testnet")), the_rules().debut_bonus);
+    assert!(l.get_player(token).unwrap().goals < 99);
+}
+
+#[test]
+fn a_new_footballer_trains_once_for_free() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.train_free(token.clone(), Skill::Passing);
+    let t = l.training_ticket(token.clone()).unwrap();
+    assert_eq!((t.skill, t.match_day), (Skill::Passing, 1));
+    let p = l.get_player(token).unwrap();
+    assert_eq!((p.free_trainings, p.energy), (0, 85));
+}
+
+#[test]
+#[should_panic(expected = "no free training left")]
+fn the_free_training_is_used_once() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.train_free(token.clone(), Skill::Passing);
+    l.match_day = 2;
+    l.train_free(token, Skill::Passing);
+}
+
+#[test]
+#[should_panic(expected = "you cannot train that player")]
+fn nobody_takes_someone_elses_free_training() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("thief.testnet");
+    l.train_free(token, Skill::Passing);
+}
+
+#[test]
+fn playing_every_day_tires_and_a_day_off_gives_energy_back() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let energy = |l: &League| l.get_player(token.clone()).unwrap().energy;
+    assert_eq!(energy(&l), 100);
+    // Match day 1: 100 - 12. Seen on day 2, a night later: + 8.
+    kick_off(&mut l, 1);
+    assert_eq!(energy(&l), 96);
+    // He plays days 2 to 6: 4 less each day.
+    for day in 2..=6 {
+        kick_off(&mut l, day);
+    }
+    assert_eq!(energy(&l), 76);
+    // He rests day 7: seen on day 8, 68 (after day 6) + 2 * 8 + 17.
+    as_caller("koplo.testnet");
+    l.rest_today();
+    assert!(l.is_resting(token.clone(), 7));
+    let m = kick_off(&mut l, 7);
+    assert!(
+        m.iter()
+            .all(|m| m.elevens.iter().all(|xi| !xi.contains(&token)))
+    );
+    assert_eq!(energy(&l), 100);
+    // Academy players do not tire.
+    let kid = l
+        .squad(acc("c0.testnet"))
+        .into_iter()
+        .find(|p| p.controller.is_none())
+        .unwrap();
+    assert_eq!(kid.energy, 100);
+}
+
+#[test]
+fn a_tired_player_is_worse_on_the_pitch() {
+    let s = all_99();
+    assert_eq!(tired(s, 100), s);
+    assert_eq!(tired(s, 50), s);
+    // Half way down: 10% less. At zero: 20% less.
+    assert_eq!(tired(s, 25).pace, 89);
+    assert_eq!(tired(s, 0).shooting, 79);
+}
+
+#[test]
+#[should_panic(expected = "too tired to train")]
+fn a_player_without_energy_cannot_train() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().energy = 10;
+    as_caller("koplo.testnet");
+    l.train_free(token, Skill::Pace);
+}
+
+#[test]
+fn taking_a_slot_ends_the_rest() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.rest_today();
+    l.take_slot(9);
+    assert!(!l.is_resting(token.clone(), 1));
+    assert!(kick_off(&mut l, 1)[0].elevens[0].contains(&token));
 }
