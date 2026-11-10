@@ -151,6 +151,26 @@ pub struct Rules {
     pub unpaid_to_free: u8,
     /// The most a club can offer per match.
     pub max_wage: U128,
+    /// The fans in a stand vote their star of the match: he gets this in his
+    /// wallet, in proportion to the stand (doubled in a derby).
+    pub fans_star_prize: U128,
+    /// Tifo patterns the fans in a stand choose from.
+    pub tifo_patterns: u8,
+    /// What a club's treasury can buy, voted each week by its players and
+    /// its season ticket holders: the stadium, the physio, the academy.
+    /// `project_cost` is the price of the first level (level n costs n
+    /// times that, burned), `project_max` the highest level.
+    pub project_cost: Vec<U128>,
+    pub project_max: Vec<u8>,
+    /// Per stadium level: more full-house reward for the club's fans.
+    pub stadium_bonus_bps: u32,
+    /// Per physio level: more energy back per match day for its people.
+    pub physio_energy: u8,
+    /// Per academy level: more of every skill for its academy players.
+    pub academy_bonus: u8,
+    /// Share of what a club earns (goals, sales) that goes to its season
+    /// tickets of the season, when it sold any.
+    pub ticket_revenue_bps: u32,
 }
 
 pub fn the_rules() -> Rules {
@@ -202,6 +222,18 @@ pub fn the_rules() -> Rules {
         clause_factor: 2,
         unpaid_to_free: 3,
         max_wage: U128(1_000_000 * ONE_G),
+        fans_star_prize: U128(100_000 * ONE_G),
+        tifo_patterns: 6,
+        project_cost: vec![
+            U128(2_000_000 * ONE_G),
+            U128(1_500_000 * ONE_G),
+            U128(2_000_000 * ONE_G),
+        ],
+        project_max: vec![5, 3, 5],
+        stadium_bonus_bps: 1_000,
+        physio_energy: 5,
+        academy_bonus: 1,
+        ticket_revenue_bps: 2_000,
     }
 }
 
@@ -256,6 +288,7 @@ pub trait SelfCallbacks {
     fn on_salary_paid(&mut self, token_id: String, amount: U128);
     fn on_sale(&mut self, offer_id: u64) -> String;
     fn on_collected(&mut self, account_id: AccountId, amount: U128);
+    fn on_ticket_revenue_sent(&mut self, season: u32, shares: Vec<(AccountId, U128)>);
 }
 
 /// What the players contract needs to mint one player (NEP-171 metadata).
@@ -557,6 +590,11 @@ enum StorageKey {
     Debuted,
     Resting,
     Signings,
+    StarVotes,
+    StarVoted,
+    TifoVotes,
+    TifoVoted,
+    ProjectVotes,
 }
 
 #[near(serializers = [json, borsh])]
@@ -577,6 +615,10 @@ pub struct Club {
     pub flag: Option<Flag>,
     /// What the club offers a person per match he starts.
     pub wage: U128,
+    /// Levels the club's people voted and its treasury paid for.
+    pub stadium: u8,
+    pub physio: u8,
+    pub academy: u8,
     pub played: u32,
     pub won: u32,
     pub drawn: u32,
@@ -584,6 +626,30 @@ pub struct Club {
     pub goals_for: u32,
     pub goals_against: u32,
     pub points: u32,
+}
+
+/// What a club's people vote to do with its treasury this week.
+#[near(serializers = [json, borsh])]
+#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Project {
+    Stadium,
+    Physio,
+    Academy,
+    /// Keep the money.
+    Save,
+}
+
+impl Project {
+    /// Index in `project_cost` and `project_max`.
+    fn index(self) -> Option<usize> {
+        match self {
+            Project::Stadium => Some(0),
+            Project::Physio => Some(1),
+            Project::Academy => Some(2),
+            Project::Save => None,
+        }
+    }
 }
 
 /// A derby winner's colours in the loser's stand.
@@ -606,6 +672,10 @@ pub struct Stand {
     /// Fans who came in the ola window, and how many make the ola.
     pub ola: u32,
     pub ola_target: u32,
+    /// The fans' votes so far: star of the match (player, votes) and tifo
+    /// pattern (votes by pattern).
+    pub star_votes: Vec<(String, u32)>,
+    pub tifo_votes: Vec<u32>,
 }
 
 #[near(serializers = [json, borsh])]
@@ -681,6 +751,11 @@ pub struct StandResult {
     pub multiplier: u32,
     /// The fans did the ola: the full-house reward is `ola_bonus_bps` higher.
     pub ola: bool,
+    /// The club's stadium level that day.
+    pub stadium: u8,
+    /// The player the fans voted star of the match, and the tifo they chose.
+    pub star: Option<String>,
+    pub tifo: Option<u8>,
     /// G burned from the treasury when the tifo was not complete.
     pub burned: U128,
 }
@@ -803,6 +878,14 @@ pub struct League {
     resting: LookupSet<(String, u32)>,
     /// Player -> the club and contract his person gave his word to.
     signings: LookupMap<String, Signing>,
+    /// (club, match day) -> (player, votes) for the fans' star of the match.
+    star_votes: LookupMap<(AccountId, u32), Vec<(String, u32)>>,
+    star_voted: LookupSet<(u32, AccountId)>,
+    /// (club, match day) -> votes by tifo pattern.
+    tifo_votes: LookupMap<(AccountId, u32), Vec<u32>>,
+    tifo_voted: LookupSet<(u32, AccountId)>,
+    /// (club, week) -> (voter: a player's token or `ticket:<id>`, project).
+    project_votes: LookupMap<(AccountId, u32), Vec<(String, Project)>>,
 }
 
 /// How many ledger entries the league keeps (the oldest are overwritten).
@@ -938,6 +1021,11 @@ impl League {
             debuted: LookupSet::new(StorageKey::Debuted),
             resting: LookupSet::new(StorageKey::Resting),
             signings: LookupMap::new(StorageKey::Signings),
+            star_votes: LookupMap::new(StorageKey::StarVotes),
+            star_voted: LookupSet::new(StorageKey::StarVoted),
+            tifo_votes: LookupMap::new(StorageKey::TifoVotes),
+            tifo_voted: LookupSet::new(StorageKey::TifoVoted),
+            project_votes: LookupMap::new(StorageKey::ProjectVotes),
         }
     }
 
@@ -1085,6 +1173,9 @@ impl League {
                 rival: None,
                 flag: None,
                 wage: the_rules().salary,
+                stadium: 0,
+                physio: 0,
+                academy: 0,
                 played: 0,
                 won: 0,
                 drawn: 0,
@@ -1537,12 +1628,39 @@ impl League {
         let price = offer.price.0;
         let shares = settle_payout(&payout, price, &env::current_account_id());
         let mut burn = 0u128;
+        // A club that sold season tickets shares what it earns with them.
+        let mut to_tickets: Vec<(AccountId, U128)> = Vec::new();
         for (account, amount) in shares {
             if account == env::current_account_id() {
                 burn += amount;
-            } else {
-                *self.owed.entry(account).or_insert(0) += amount;
+                continue;
             }
+            let cut = if self.clubs.contains_key(&account) {
+                ticket_cut(amount, self.tickets_sold(&account))
+            } else {
+                0
+            };
+            if cut > 0 {
+                to_tickets.push((account.clone(), U128(cut)));
+            }
+            *self.owed.entry(account).or_insert(0) += amount - cut;
+        }
+        let total: u128 = to_tickets.iter().map(|(_, v)| v.0).sum();
+        if total > 0 {
+            ext_goalars::ext(self.goalars_id.clone())
+                .with_static_gas(MINT_GAS)
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .ft_transfer(
+                    self.season_tickets_id.clone(),
+                    U128(total),
+                    Some(format!("season tickets, offer {offer_id}")),
+                )
+                .then(
+                    ext_self::ext(env::current_account_id())
+                        .with_static_gas(TICKETS_GAS.saturating_add(CALLBACK_GAS))
+                        .on_ticket_revenue_sent(self.season, to_tickets),
+                )
+                .detach();
         }
         if burn > 0 {
             self.log("sale_tax", None, burn, false);
@@ -1552,6 +1670,27 @@ impl League {
                 .detach();
         }
         "sold".into()
+    }
+
+    /// Credits the season tickets with their share of a sale once the G
+    /// reached their contract; if they did not, the clubs keep it.
+    #[private]
+    pub fn on_ticket_revenue_sent(
+        &mut self,
+        season: u32,
+        shares: Vec<(AccountId, U128)>,
+        #[callback_result] sent: Result<(), PromiseError>,
+    ) {
+        if sent.is_ok() {
+            ext_tickets::ext(self.season_tickets_id.clone())
+                .with_static_gas(TICKETS_GAS)
+                .credit(season, shares)
+                .detach();
+        } else {
+            for (club, amount) in shares {
+                *self.owed.entry(club).or_insert(0) += amount.0;
+            }
+        }
     }
 
     /// The buyer withdraws an open offer; its G become collectable again.
@@ -1947,10 +2086,20 @@ impl League {
             full_house: club.fans > 0 && present >= target,
             ola: self
                 .ola
-                .get(&(club_id, self.match_day))
+                .get(&(club_id.clone(), self.match_day))
                 .copied()
                 .unwrap_or(0),
             ola_target: ola_target(club.fans),
+            star_votes: self
+                .star_votes
+                .get(&(club_id.clone(), self.match_day))
+                .cloned()
+                .unwrap_or_default(),
+            tifo_votes: self
+                .tifo_votes
+                .get(&(club_id.clone(), self.match_day))
+                .cloned()
+                .unwrap_or_default(),
         }
     }
 
@@ -1960,6 +2109,86 @@ impl League {
             .iter()
             .map(|id| (id.clone(), self.stand(id.clone())))
             .collect()
+    }
+
+    // ---- The fans' votes ----
+
+    /// A fan in the stand votes his club's star of the match, once a match
+    /// day, until the final whistle. The most voted gets `fans_star_prize`.
+    pub fn vote_star(&mut self, token_id: String) {
+        let (fan, club) = self.fan_in_stand();
+        require!(
+            self.players.get(&token_id).map(|p| &p.owner) == Some(&club),
+            "vote for a player of your club"
+        );
+        let day = self.match_day;
+        require!(
+            self.star_voted.insert((day, fan)),
+            "you voted your star already"
+        );
+        let tally = self.star_votes.entry((club, day)).or_default();
+        match tally.iter_mut().find(|(t, _)| t == &token_id) {
+            Some((_, n)) => *n += 1,
+            None => tally.push((token_id, 1)),
+        }
+    }
+
+    /// A fan in the stand votes the tifo his stand shows (0 to
+    /// `tifo_patterns` - 1), once a match day.
+    pub fn vote_tifo(&mut self, pattern: u8) {
+        let n = the_rules().tifo_patterns;
+        require!(pattern < n, "no such tifo pattern");
+        let (fan, club) = self.fan_in_stand();
+        let day = self.match_day;
+        require!(
+            self.tifo_voted.insert((day, fan)),
+            "you voted the tifo already"
+        );
+        let tally = self.tifo_votes.entry((club, day)).or_default();
+        tally.resize(n as usize, 0);
+        tally[pattern as usize] += 1;
+    }
+
+    // ---- The club's projects ----
+
+    /// A person who plays for a club votes what its treasury buys this week
+    /// (or to save it). He can change his vote until the week ends.
+    pub fn vote_project(&mut self, project: Project) {
+        let (token, club) = self.my_player_and_club();
+        self.cast_project(club, token, project);
+    }
+
+    /// A season ticket's vote, sent by the season tickets contract for its
+    /// owner: one voice per ticket of this season.
+    pub fn on_ticket_vote(
+        &mut self,
+        club: AccountId,
+        season: u32,
+        ticket: String,
+        project: Project,
+    ) {
+        require!(
+            env::predecessor_account_id() == self.season_tickets_id,
+            "only the season tickets contract reports a ticket's vote"
+        );
+        require!(season == self.season, "only this season's tickets vote");
+        require!(self.clubs.contains_key(&club), "no such club");
+        self.cast_project(club, format!("ticket:{ticket}"), project);
+    }
+
+    /// This week's votes of a club (or a past week's).
+    pub fn project_votes(&self, club_id: AccountId, week: Option<u32>) -> Vec<(String, Project)> {
+        let week = week.unwrap_or(self.week_of(self.match_day));
+        self.project_votes
+            .get(&(club_id, week))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// What the next level of a project costs a club, or None at the top.
+    pub fn project_price(&self, club_id: AccountId, project: Project) -> Option<U128> {
+        let club = self.clubs.get(&club_id)?;
+        project_price(club, project).map(U128)
     }
 
     // ---- Season tickets ----
@@ -2113,7 +2342,7 @@ impl League {
             .unwrap_or_else(|| env::panic_str("that match day is not played yet"));
         require!(result.full_house, "the tifo was not complete that day");
         require!(self.stand_claims.insert(key), "already claimed");
-        let amount = full_house_reward(&the_rules(), result.multiplier, result.ola);
+        let amount = full_house_reward(&the_rules(), result.multiplier, result.ola, result.stadium);
         *self.credits.entry(fan).or_insert(0) += amount;
         U128(amount)
     }
@@ -2397,6 +2626,8 @@ impl League {
         let mut burn_total: u128 = 0;
         let mut derby_clubs: Vec<AccountId> = Vec::new();
         let mut releases = MAX_RELEASES;
+        // The season tickets' share of what their clubs earn today.
+        let mut ticket_revenue: Vec<(AccountId, u128)> = Vec::new();
         // How full each club's stand is today, in basis points of its target.
         let fill: std::collections::HashMap<AccountId, u128> = ids
             .iter()
@@ -2474,8 +2705,10 @@ impl League {
                             p.skills.raise(Skill::Shooting, 1);
                             p.refresh();
                         }
-                        treasury_mints
-                            .push((scorer.clone(), k * rules.goal_club_share.0 * f / 10_000));
+                        let club_share = k * rules.goal_club_share.0 * f / 10_000;
+                        let to_tickets = ticket_cut(club_share, self.tickets_sold(scorer));
+                        treasury_mints.push((scorer.clone(), club_share - to_tickets));
+                        ticket_revenue.push((scorer.clone(), to_tickets));
                         self.log(
                             "goals",
                             Some(scorer.clone()),
@@ -2550,8 +2783,8 @@ impl League {
             burn_total += self.settle_stand(id, day, k, &rules);
         }
 
-        // A full house pays the club's season tickets of this season.
-        let mut ticket_mints: Vec<(AccountId, U128)> = Vec::new();
+        // A full house pays the club's season tickets of this season, on top
+        // of their share of the club's goals.
         for id in &ids {
             let Some(st) = self.stands.get(&(id.clone(), day)) else {
                 continue;
@@ -2564,9 +2797,14 @@ impl League {
             if st.full_house && sold > 0 {
                 let amount = rules.season_ticket_share.0 * st.multiplier as u128 * sold as u128;
                 self.log("season_tickets", Some(id.clone()), amount, true);
-                ticket_mints.push((id.clone(), U128(amount)));
+                ticket_revenue.push((id.clone(), amount));
             }
         }
+        let ticket_mints: Vec<(AccountId, U128)> = merge(ticket_revenue)
+            .into_iter()
+            .filter(|(_, v)| *v > 0)
+            .map(|(k, v)| (k, U128(v)))
+            .collect();
         let ticket_total: u128 = ticket_mints.iter().map(|(_, v)| v.0).sum();
         if ticket_total > 0 {
             ext_goalars::ext(self.goalars_id.clone())
@@ -2635,8 +2873,18 @@ impl League {
         if (next - 1).is_multiple_of(rules.week_length) {
             let week = self.week_of(next);
             let ids: Vec<AccountId> = self.club_ids.iter().cloned().collect();
+            let mut spent: u128 = 0;
             for id in &ids {
                 self.elect_captain(id, week);
+                if let Some(last) = week.checked_sub(1) {
+                    spent += self.decide_project(id, last);
+                }
+            }
+            if spent > 0 {
+                ext_goalars::ext(self.goalars_id.clone())
+                    .with_static_gas(BURN_GAS)
+                    .burn(U128(spent), Some(format!("club projects, week {week}")))
+                    .detach();
             }
         }
         if closing.is_multiple_of(SEASON_DAYS) {
@@ -2833,14 +3081,20 @@ impl League {
                 *slot = None;
             }
         }
+        let school = self.clubs.get(club).map_or(0, |c| c.academy) * the_rules().academy_bonus;
         let mut skills = [None; ELEVEN];
         let mut booked = [false; ELEVEN];
         let mut names: Vec<String> = Vec::with_capacity(ELEVEN);
         for (k, t) in xi.iter().enumerate() {
             match t.as_ref().and_then(|t| self.players.get(t)) {
                 Some(p) => {
+                    let base = if p.controller.is_none() {
+                        schooled(p.skills, school)
+                    } else {
+                        p.skills
+                    };
                     skills[k] = Some(tired(
-                        wardrobe::dressed(p.skills, &p.look, k == 0),
+                        wardrobe::dressed(base, &p.look, k == 0),
                         self.energy_now(p),
                     ));
                     booked[k] = first.booked.contains(&p.token_id);
@@ -2848,7 +3102,7 @@ impl League {
                 }
                 None if first.off_slots.contains(&k) => names.push(String::new()),
                 None => {
-                    skills[k] = Some(BOT_SKILLS);
+                    skills[k] = Some(schooled(BOT_SKILLS, school));
                     names.push(BOT.to_string());
                 }
             }
@@ -2862,6 +3116,75 @@ impl League {
         (side, names, formation)
     }
 
+    /// The caller, a fan who took his seat today, and his club.
+    fn fan_in_stand(&self) -> (AccountId, AccountId) {
+        let fan = env::predecessor_account_id();
+        let club = self
+            .fan_of
+            .get(&fan)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("follow a club first"));
+        require!(
+            self.present
+                .contains(&(club.clone(), self.match_day, fan.clone())),
+            "take your seat in the stand first"
+        );
+        (fan, club)
+    }
+
+    fn cast_project(&mut self, club: AccountId, voter: String, project: Project) {
+        let week = self.week_of(self.match_day);
+        let votes = self.project_votes.entry((club, week)).or_default();
+        votes.retain(|(v, _)| v != &voter);
+        votes.push((voter, project));
+    }
+
+    /// Counts a club's votes of `week`: the project with strictly the most
+    /// votes is bought if the treasury can pay it. Returns the G to burn.
+    fn decide_project(&mut self, club_id: &AccountId, week: u32) -> u128 {
+        let Some(votes) = self.project_votes.get(&(club_id.clone(), week)) else {
+            return 0;
+        };
+        let count = |p: Project| votes.iter().filter(|(_, v)| *v == p).count();
+        let all = [
+            Project::Stadium,
+            Project::Physio,
+            Project::Academy,
+            Project::Save,
+        ];
+        let best = all.iter().map(|p| count(*p)).max().unwrap_or(0);
+        let winners: Vec<Project> = all.into_iter().filter(|p| count(*p) == best).collect();
+        let [project] = winners[..] else {
+            return 0;
+        };
+        let Some(club) = self.clubs.get_mut(club_id) else {
+            return 0;
+        };
+        let Some(price) = project_price(club, project) else {
+            return 0;
+        };
+        if club.treasury.0 < price {
+            return 0;
+        }
+        club.treasury = U128(club.treasury.0 - price);
+        match project {
+            Project::Stadium => club.stadium += 1,
+            Project::Physio => club.physio += 1,
+            Project::Academy => club.academy += 1,
+            Project::Save => {}
+        }
+        self.log("project", Some(club_id.clone()), price, false);
+        price
+    }
+
+    /// Season tickets a club sold this season.
+    fn tickets_sold(&self, club: &AccountId) -> u32 {
+        self.season_tickets_sold
+            .get(&(club.clone(), self.season))
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// A player's energy today: what he had on `energy_day`, plus what the
     /// days since gave back. Academy players do not tire.
     fn energy_now(&self, p: &Player) -> u8 {
@@ -2870,8 +3193,9 @@ impl League {
         }
         let rules = the_rules();
         let days = self.match_day.saturating_sub(p.energy_day);
-        let gain =
-            days * rules.energy_per_day as u32 + days.saturating_sub(1) * rules.energy_rest as u32;
+        let physio = self.clubs.get(&p.owner).map_or(0, |c| c.physio) as u32;
+        let per_day = rules.energy_per_day as u32 + physio * rules.physio_energy as u32;
+        let gain = days * per_day + days.saturating_sub(1) * rules.energy_rest as u32;
         (p.energy as u32 + gain).min(100) as u8
     }
 
@@ -3365,12 +3689,36 @@ impl League {
         let full_house = present >= full_house_target(fans);
         let ola = full_house
             && self.ola.get(&(club_id.clone(), day)).copied().unwrap_or(0) >= ola_target(fans);
+        let stadium = self.clubs.get(club_id).map_or(0, |c| c.stadium);
+        // The fans' star: most votes, then the lower token id.
+        let star = self
+            .star_votes
+            .get(&(club_id.clone(), day))
+            .and_then(|t| t.iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))))
+            .map(|(t, _)| t.clone());
+        if let Some(token) = &star {
+            let prize =
+                rules.fans_star_prize.0 * k as u128 * self.stand_fill_bps(club_id, day) / 10_000;
+            if let Some(p) = self.players.get_mut(token) {
+                p.wallet = U128(p.wallet.0 + prize);
+            }
+            self.log("fans_star", Some(club_id.clone()), prize, true);
+        }
+        // The tifo: most votes, then the lower pattern.
+        let tifo = self
+            .tifo_votes
+            .get(&(club_id.clone(), day))
+            .and_then(|v| {
+                let best = *v.iter().max()?;
+                v.iter().position(|n| *n == best && best > 0)
+            })
+            .map(|i| i as u8);
         let mut burned = 0;
         if full_house {
             self.log(
                 "full_house",
                 Some(club_id.clone()),
-                full_house_reward(rules, k, ola) * present as u128,
+                full_house_reward(rules, k, ola, stadium) * present as u128,
                 true,
             );
             if let Some(c) = self.clubs.get_mut(club_id) {
@@ -3394,6 +3742,9 @@ impl League {
                 full_house,
                 multiplier: k,
                 ola,
+                stadium,
+                star,
+                tifo,
                 burned: U128(burned),
             },
         );
@@ -3634,10 +3985,44 @@ pub fn ola_target(fans: u32) -> u32 {
     ((full_house_target(fans) as u64 * bps).div_ceil(10_000)).max(1) as u32
 }
 
-/// What a fan present in a full house gets: doubled in a derby, and
-/// `ola_bonus_bps` more after an ola.
-pub fn full_house_reward(rules: &Rules, multiplier: u32, ola: bool) -> u128 {
+/// The season tickets' part of what a club earns: `ticket_revenue_bps` of
+/// it when the club sold tickets this season, nothing otherwise.
+pub fn ticket_cut(earned: u128, tickets_sold: u32) -> u128 {
+    if tickets_sold == 0 {
+        return 0;
+    }
+    earned * the_rules().ticket_revenue_bps as u128 / 10_000
+}
+
+/// The price of a club's next level of a project (level n costs n times
+/// the first), or None for `Save` and at the top level.
+pub fn project_price(club: &Club, project: Project) -> Option<u128> {
+    let rules = the_rules();
+    let i = project.index()?;
+    let level = [club.stadium, club.physio, club.academy][i];
+    (level < rules.project_max[i]).then(|| rules.project_cost[i].0 * (level as u128 + 1))
+}
+
+/// An academy player's skills in a club whose academy adds `bonus` to each.
+pub fn schooled(mut s: Skills, bonus: u8) -> Skills {
+    for skill in [
+        Skill::Pace,
+        Skill::Shooting,
+        Skill::Passing,
+        Skill::Dribbling,
+        Skill::Defending,
+        Skill::Physical,
+    ] {
+        s.raise(skill, bonus);
+    }
+    s
+}
+
+/// What a fan present in a full house gets: doubled in a derby, more with
+/// each stadium level, and `ola_bonus_bps` more after an ola.
+pub fn full_house_reward(rules: &Rules, multiplier: u32, ola: bool, stadium: u8) -> u128 {
     let base = rules.full_house_mint_per_fan.0 * multiplier as u128;
+    let base = base + base * stadium as u128 * rules.stadium_bonus_bps as u128 / 10_000;
     if ola {
         base + base * rules.ola_bonus_bps as u128 / 10_000
     } else {

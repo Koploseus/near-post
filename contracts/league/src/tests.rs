@@ -2151,7 +2151,7 @@ fn a_stranger_does_not_set_the_wage() {
 
 fn pay_clause(l: &mut League, club: &str, token: &str, amount: u128) {
     as_caller("goalars.testnet");
-    l.ft_on_transfer(
+    let _ = l.ft_on_transfer(
         acc(club),
         U128(amount),
         format!("{{\"clause\":\"{token}\"}}"),
@@ -2223,4 +2223,239 @@ fn a_paid_contract_runs_to_its_end() {
     sign_person(&mut l, "koplo.testnet", "c0.testnet");
     as_caller("koplo.testnet");
     l.leave_club();
+}
+
+// ---- v9: the fans' votes, the club's projects, the tickets' share ----
+
+/// A league of 2 clubs with 5 fans each; c0's fans 0..n are in the stand.
+fn stand_with(n: usize) -> League {
+    let mut l = league_with(2, 5);
+    for f in 0..n {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.check_in();
+    }
+    l
+}
+
+#[test]
+fn the_fans_in_the_stand_vote_their_star_and_he_is_paid() {
+    let mut l = stand_with(3);
+    let squad = l.squad(acc("c0.testnet"));
+    let (a, b) = (squad[3].token_id.clone(), squad[7].token_id.clone());
+    for (f, pick) in [(0, &a), (1, &b), (2, &b)] {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.vote_star(pick.clone());
+    }
+    assert_eq!(
+        l.stand(acc("c0.testnet")).star_votes,
+        vec![(a.clone(), 1), (b.clone(), 2)]
+    );
+    let before = l.get_player(b.clone()).unwrap().wallet.0;
+    kick_off(&mut l, 1);
+    assert_eq!(
+        l.stand_result(acc("c0.testnet"), 1).unwrap().star,
+        Some(b.clone())
+    );
+    // A full stand (3 of a target of 3): the whole prize, on top of any goal.
+    let goals = l.results(1)[0]
+        .goals
+        .iter()
+        .filter(|g| g.player == b && g.kind != GoalKind::Own)
+        .count();
+    assert!(l.get_player(b).unwrap().wallet.0 >= before + the_rules().fans_star_prize.0);
+    let _ = goals;
+    assert!(
+        l.ledger(None)
+            .iter()
+            .any(|e| e.kind == "fans_star" && e.amount == the_rules().fans_star_prize)
+    );
+    // Nobody voted at c1: no star.
+    assert_eq!(l.stand_result(acc("c1.testnet"), 1).unwrap().star, None);
+}
+
+#[test]
+#[should_panic(expected = "take your seat in the stand first")]
+fn only_a_fan_in_the_stand_votes() {
+    let mut l = stand_with(1);
+    let token = l.squad(acc("c0.testnet"))[0].token_id.clone();
+    as_caller("f0-4.testnet");
+    l.vote_star(token);
+}
+
+#[test]
+#[should_panic(expected = "you voted your star already")]
+fn one_star_vote_per_fan_and_match_day() {
+    let mut l = stand_with(1);
+    let token = l.squad(acc("c0.testnet"))[0].token_id.clone();
+    as_caller("f0-0.testnet");
+    l.vote_star(token.clone());
+    l.vote_star(token);
+}
+
+#[test]
+#[should_panic(expected = "vote for a player of your club")]
+fn the_star_is_one_of_the_fans_club() {
+    let mut l = stand_with(1);
+    let token = l.squad(acc("c1.testnet"))[0].token_id.clone();
+    as_caller("f0-0.testnet");
+    l.vote_star(token);
+}
+
+#[test]
+fn the_stand_shows_the_tifo_its_fans_voted() {
+    let mut l = stand_with(3);
+    for (f, pattern) in [(0, 4), (1, 2), (2, 4)] {
+        as_caller(&format!("f0-{f}.testnet"));
+        l.vote_tifo(pattern);
+    }
+    assert_eq!(
+        l.stand(acc("c0.testnet")).tifo_votes,
+        vec![0, 0, 1, 0, 2, 0]
+    );
+    kick_off(&mut l, 1);
+    assert_eq!(l.stand_result(acc("c0.testnet"), 1).unwrap().tifo, Some(4));
+    assert_eq!(l.stand_result(acc("c1.testnet"), 1).unwrap().tifo, None);
+}
+
+#[test]
+#[should_panic(expected = "no such tifo pattern")]
+fn a_tifo_pattern_exists() {
+    let mut l = stand_with(1);
+    as_caller("f0-0.testnet");
+    l.vote_tifo(6);
+}
+
+fn ticket_vote(l: &mut League, club: &str, ticket: &str, project: Project) {
+    as_caller("tickets.testnet");
+    l.on_ticket_vote(acc(club), l.season, ticket.into(), project);
+}
+
+#[test]
+fn players_and_ticket_holders_vote_what_the_treasury_buys() {
+    let mut l = league_with(2, 0);
+    let price = the_rules().project_cost[1].0;
+    let rich = 100 * price;
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(rich);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.vote_project(Project::Stadium);
+    as_caller("ben.testnet");
+    l.vote_project(Project::Physio);
+    // Ana changes her mind; a ticket holder agrees: physio 3, stadium 0.
+    as_caller("ana.testnet");
+    l.vote_project(Project::Physio);
+    ticket_vote(&mut l, "c0.testnet", "c0.testnet:1:1", Project::Physio);
+    assert_eq!(l.project_votes(acc("c0.testnet"), None).len(), 3);
+    assert_eq!(
+        l.project_price(acc("c0.testnet"), Project::Physio),
+        Some(U128(price))
+    );
+    play_days(&mut l, 7);
+    let c = l.get_club(acc("c0.testnet")).unwrap();
+    assert_eq!((c.physio, c.stadium, c.academy), (1, 0, 0));
+    assert!(c.treasury.0 <= rich - price);
+    assert!(
+        l.ledger(None)
+            .iter()
+            .any(|e| e.kind == "project" && !e.mint && e.amount.0 == price)
+    );
+    // The next level costs twice the first.
+    assert_eq!(
+        l.project_price(acc("c0.testnet"), Project::Physio),
+        Some(U128(2 * price))
+    );
+}
+
+#[test]
+fn a_tie_a_vote_to_save_or_an_empty_treasury_buy_nothing() {
+    let rich = 100_000_000 * ONE_G;
+    // A tie.
+    let mut l = league_with(2, 0);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().treasury = U128(rich);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    sign_person(&mut l, "ben.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.vote_project(Project::Stadium);
+    as_caller("ben.testnet");
+    l.vote_project(Project::Academy);
+    // Saving wins at c1.
+    l.clubs.get_mut(&acc("c1.testnet")).unwrap().treasury = U128(rich);
+    sign_person(&mut l, "cleo.testnet", "c1.testnet");
+    as_caller("cleo.testnet");
+    l.vote_project(Project::Save);
+    play_days(&mut l, 7);
+    for c in ["c0.testnet", "c1.testnet"] {
+        let c = l.get_club(acc(c)).unwrap();
+        assert_eq!((c.stadium, c.physio, c.academy), (0, 0, 0));
+    }
+    // Not enough in the treasury.
+    let mut l = league_with(2, 0);
+    sign_person(&mut l, "ana.testnet", "c0.testnet");
+    as_caller("ana.testnet");
+    l.vote_project(Project::Stadium);
+    play_days(&mut l, 7);
+    assert_eq!(l.get_club(acc("c0.testnet")).unwrap().stadium, 0);
+}
+
+#[test]
+#[should_panic(expected = "only the season tickets contract reports a ticket's vote")]
+fn nobody_forges_a_tickets_vote() {
+    let mut l = league_with(1, 0);
+    as_caller("attacker.testnet");
+    l.on_ticket_vote(acc("c0.testnet"), 1, "x".into(), Project::Stadium);
+}
+
+#[test]
+#[should_panic(expected = "only this season's tickets vote")]
+fn a_past_seasons_ticket_does_not_vote() {
+    let mut l = league_with(1, 0);
+    l.season = 2;
+    as_caller("tickets.testnet");
+    l.on_ticket_vote(acc("c0.testnet"), 1, "x".into(), Project::Stadium);
+}
+
+#[test]
+fn what_the_projects_change() {
+    let r = the_rules();
+    // Stadium: 10% more per level, before the ola.
+    assert_eq!(full_house_reward(&r, 1, false, 2), 120_000 * ONE_G);
+    assert_eq!(full_house_reward(&r, 2, true, 1), 330_000 * ONE_G);
+    // Academy: one more of every skill per level, for academy players.
+    assert_eq!(schooled(BOT_SKILLS, 3).pace, 38);
+    // Physio: 5 more energy a day per level, for the club's people.
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().energy = 40;
+    l.match_day = 2;
+    assert_eq!(l.get_player(token.clone()).unwrap().energy, 48);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().physio = 2;
+    assert_eq!(l.get_player(token).unwrap().energy, 58);
+    // The stand keeps the stadium level of its day.
+    let mut l = stand_with(3);
+    l.clubs.get_mut(&acc("c0.testnet")).unwrap().stadium = 3;
+    kick_off(&mut l, 1);
+    as_caller("f0-0.testnet");
+    assert_eq!(l.claim_stand(acc("c0.testnet"), 1), U128(130_000 * ONE_G));
+}
+
+#[test]
+fn a_club_with_season_tickets_shares_what_it_earns_with_them() {
+    let r = the_rules();
+    // A fifth of what the club earns, only when it sold tickets.
+    assert_eq!(ticket_cut(r.goal_club_share.0, 0), 0);
+    assert_eq!(ticket_cut(r.goal_club_share.0, 1), 36_000 * ONE_G);
+    assert_eq!(ticket_cut(r.goal_club_share.0, 50), 36_000 * ONE_G);
+    // The goals' share comes out of the club's share: it is not a new mint,
+    // so the ledger still shows only the full house for the tickets.
+    let mut l = stand_with(3);
+    buy_season_ticket(&mut l, "t0.testnet", "c0.testnet", r.season_ticket_price.0);
+    kick_off(&mut l, 1);
+    let tickets: u128 = l
+        .ledger(None)
+        .iter()
+        .filter(|e| e.kind == "season_tickets")
+        .map(|e| e.amount.0)
+        .sum();
+    assert_eq!(tickets, r.season_ticket_share.0);
 }
