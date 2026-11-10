@@ -5,7 +5,7 @@ import { FORMATIONS, ROLE_LABEL, ROLE_NAME, SPOTS } from "../lib/pitch.js";
 import { useEffect, useState } from "react";
 import { serverNow } from "../lib/time.js";
 import type { Captain, Club, Lineup as LineupT, Player, Schedule, Strategy, Takers } from "../lib/types.js";
-import { short } from "../lib/format.js";
+import { positionLabel, short } from "../lib/format.js";
 import { Crest } from "./Crest.js";
 import { SeasonStats } from "./SeasonStats.js";
 import { faceNumber, Head } from "./Look.js";
@@ -35,10 +35,12 @@ export function Lineup() {
   const sheetId = picked ?? clubId ?? table?.[0]?.manager ?? null;
   const ownSheet = !!clubId && sheetId === clubId;
   const sheetClub = table?.find((c) => c.manager === sheetId) ?? null;
+  // The team sheet, the strategy and the set pieces are the squad's business: loaded for your own club only.
   const { data: lineup, reload } = useData(
-    () => (sheetId ? league<LineupT>("lineup", { club_id: sheetId }) : Promise.resolve(null)),
-    [sheetId, schedule?.match_day, schedule?.first_half_played],
+    () => (sheetId && ownSheet ? league<LineupT>("lineup", { club_id: sheetId }) : Promise.resolve(null)),
+    [sheetId, ownSheet, schedule?.match_day, schedule?.first_half_played],
   );
+  const { data: squad } = useData(() => (sheetId && !ownSheet ? league<Player[]>("squad", { account_id: sheetId }) : Promise.resolve(null)), [sheetId, ownSheet]);
   const [now, setNow] = useState(serverNow());
   useEffect(() => {
     const t = setInterval(() => setNow(serverNow()), 5_000);
@@ -53,6 +55,64 @@ export function Lineup() {
     () => (sheetId ? league<Captain | null>("captain", { club_id: sheetId }) : Promise.resolve(null)),
     [sheetId],
   );
+  const visitBar = (
+    <section className="visit-bar">
+      <label>
+        <span>Squad of</span>
+        <select value={sheetId ?? ""} onChange={(e) => setPicked(e.target.value)}>
+          {(table ?? []).map((c) => (
+            <option key={c.manager} value={c.manager}>
+              {c.name} · Division {c.division}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!clubId ? (
+        <a className="cta small" href="#/locker">
+          {me ? "SIGN FOR A CLUB" : "PLAY: CREATE YOUR FOOTBALLER"}
+        </a>
+      ) : (
+        <button type="button" className="chip" onClick={() => setPicked(null)}>
+          Back to my club
+        </button>
+      )}
+    </section>
+  );
+  // Another club (or no club of your own): its squad, not its plans.
+  if (sheetId && !ownSheet)
+    return (
+      <div className="lineup-page">
+        {visitBar}
+        <section className="paper panel">
+          <span className="k">SQUAD · DIVISION {sheetClub?.division ?? "…"}</span>
+          <h2 className="sheet-title">
+            {sheetClub && <Crest clubId={sheetId} name={sheetClub.name} size={36} />}
+            {sheetClub?.name ?? short(sheetId)}
+          </h2>
+          <p className="note">
+            Its team sheet, its strategy and its dressing room are for its players. {clubId ? "" : "Sign for a club to get yours: take a slot, vote the strategy, talk to your squad."}
+          </p>
+          <ul className="squad-list">
+            {[...(squad ?? [])]
+              .sort((a, b) => b.overall - a.overall)
+              .map((p) => (
+                <li key={p.token_id} className={p.controller ? "person" : ""}>
+                  <Head look={p.look} n={faceNumber(p.token_id)} size={40} />
+                  <span>
+                    <b>{p.name}</b>
+                    <span className="note">
+                      {positionLabel[p.position]} · {p.goals} {p.goals === 1 ? "goal" : "goals"}
+                      {p.controller ? "" : " · academy"}
+                    </span>
+                  </span>
+                  <span className="squad-rating">{p.overall}</span>
+                </li>
+              ))}
+          </ul>
+        </section>
+        <SeasonStats />
+      </div>
+    );
   if (!sheetId || !lineup)
     return (
       <div className="lineup-page">
@@ -66,29 +126,6 @@ export function Lineup() {
   const mine = shown.findIndex((p) => p && p.token_id === me?.token_id);
   return (
     <div className="lineup-page">
-      {!ownSheet && (
-        <section className="visit-bar">
-          <label>
-            <span>Team sheet of</span>
-            <select value={sheetId} onChange={(e) => setPicked(e.target.value)}>
-              {(table ?? []).map((c) => (
-                <option key={c.manager} value={c.manager}>
-                  {c.name} · Division {c.division}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!clubId ? (
-            <a className="cta small" href="#/locker">
-              {me ? "SIGN FOR A CLUB" : "PLAY: CREATE YOUR FOOTBALLER"}
-            </a>
-          ) : (
-            <button type="button" className="chip" onClick={() => setPicked(null)}>
-              Back to my club
-            </button>
-          )}
-        </section>
-      )}
       <section className="paper panel">
         <span className="k">TEAM SHEET · {half.toUpperCase()}</span>
         <h2 className="sheet-title">
@@ -96,9 +133,7 @@ export function Lineup() {
           {sheetClub?.name ?? short(sheetId)}
         </h2>
         <p className="note">
-          {!ownSheet
-            ? "Every slot is taken by a real person or an AI footballer of this club. Its dressing room is for its players: sign for a club to get yours."
-            : !open
+          {!open
             ? "The eleven is set: free slots went to the best of the squad for the role."
             : mine >= 0
               ? `You play ${ROLE_NAME[lineup.roles[mine]!].toLowerCase()} (slot ${mine + 1}). Tap another free slot to move.`
