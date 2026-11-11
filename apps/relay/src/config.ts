@@ -69,6 +69,14 @@ const Env = z.object({
   BOT_SIGNUPS_PER_IP_DAY: z.coerce.number().int().min(0).default(2),
   BOT_SIGNUPS_PER_DAY: z.coerce.number().int().min(0).default(10),
   /**
+   * G handed to each new email account, from the parent's own G (nothing is
+   * minted): enough to try a season ticket, a pack or a paid drill before a
+   * first match. "0" turns it off. In base units (6 decimals).
+   */
+  WELCOME_G: z.string().regex(/^\d+$/).default("0"),
+  /** Welcome gifts in all, per day: a cap on what free sign-ups can take. */
+  WELCOME_PER_DAY: z.coerce.number().int().min(0).default(30),
+  /**
    * AI agents (coaches of the fictional clubs, footballers): on with a seed,
    * the secret their keys are derived from. Off without one.
    */

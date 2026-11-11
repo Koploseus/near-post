@@ -14,6 +14,9 @@ primary_region = 'cdg'
   NEAR_RPC_URL = "https://test.rpc.fastnear.com"
   LEAGUE_ID = "league-v9.near-post.testnet"
   GOALARS_ID = "goalars-v9.near-post.testnet"
+  # 1M G to each new email account, from the parent's G (seeded from AI coaches, nothing minted), 30 a day at most.
+  WELCOME_G = "1000000000000"
+  WELCOME_PER_DAY = "30"
   PLAYERS_ID = "players-v9.near-post.testnet"
   TICKETS_ID = "tickets-v9.near-post.testnet"
   # AI agents: on with the AGENTS_SEED secret (and NEAR_AI_API_KEY for the model).
