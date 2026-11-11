@@ -75,10 +75,9 @@ accounts made for it (see [Limits](#limits)).
 ## Try it: every feature, step by step
 
 Live at https://near-post.fly.dev (testnet, no wallet, a phone works). Each
-row was played on the live app on 11 November 2026, except claiming a full
-house: no stand we sat in filled that day (the sandbox test
-`a_match_day_end_to_end` claims one). [JUDGE-PATH.md](JUDGE-PATH.md) gives the
-on-chain proof behind each step.
+row was played on the live app on 11 November 2026 (the full house: match
+day 57, Drawbridge Athletic, with an ola). [JUDGE-PATH.md](JUDGE-PATH.md)
+gives the on-chain proof behind each step.
 
 **When to do what.** A match day kicks off every 30 minutes: a 10-minute
 first half, 5 minutes of half-time, a 10-minute second half. The team sheet
