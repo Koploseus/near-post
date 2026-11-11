@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Action } from "../lib/Action.js";
-import { g } from "../lib/format.js";
+import { g, positionLabel } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
 import { buyPack, equip, fuse, itemsOf, league, unequip } from "../lib/near.js";
 import type { CatalogItem, Player } from "../lib/types.js";
@@ -48,6 +48,9 @@ export function Wardrobe({ me }: { me: Player }) {
     const skill = it && KIND_SKILL[it.kind];
     const points = it ? (data.bonus[RARITIES.indexOf(it.rarity)] ?? 0) : 0;
     if (!skill || points === 0) return "";
+    // Gloves count only in goal, shin pads only outfield (wardrobe::dressed in the league).
+    const counts = it!.kind === "gloves" ? me.position === "Gk" : it!.kind === "pads" ? me.position !== "Gk" : true;
+    if (!counts) return `no effect for a ${positionLabel[me.position]}`;
     return `+${points} ${skill}${KIND_NOTE[it!.kind] ? ` (${KIND_NOTE[it!.kind]})` : ""}`;
   };
   const one = picked.length === 1 ? byId.get(picked[0]!) : null;

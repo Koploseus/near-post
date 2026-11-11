@@ -8,7 +8,7 @@ import type { Career, Club, Player } from "../lib/types.js";
 import { SkillBars, Sticker } from "./Sticker.js";
 
 export function Album() {
-  const { session, me, club, clubId } = useGame();
+  const { session, me, club, clubId, schedule } = useGame();
   const { data } = useData(async () => {
     if (!clubId) return null;
     const [squad, eleven, captain] = await Promise.all([
@@ -29,7 +29,7 @@ export function Album() {
   return (
     <div className="album paper">
       <section className="album-left" aria-label="Club page">
-        <span className="k">SEASON 1 · DIVISION {club.division}</span>
+        <span className="k">SEASON {schedule?.season ?? 1} · DIVISION {club.division}</span>
         <h2>{club.name.toUpperCase()}</h2>
         <p className="note">
           {data?.squad.length ?? 0} players · {people.length} played by people · captain:{" "}
