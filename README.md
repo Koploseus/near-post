@@ -72,6 +72,70 @@ replay a match from the chain.
 One limit, stated plainly: sign-in is free, so a stand can be filled with
 accounts made for it (see [Limits](#limits)).
 
+## Try it: every feature, step by step
+
+Live at https://near-post.fly.dev (testnet, no wallet, a phone works). Each
+row was played on the live app on 11 November 2026. [JUDGE-PATH.md](JUDGE-PATH.md)
+gives the on-chain proof behind each step.
+
+**When to do what.** A match day kicks off every 30 minutes: a 10-minute
+first half, 5 minutes of half-time, a 10-minute second half. The team sheet
+opens at the final whistle and closes a minute before the next kick-off, and
+the ola window is the last 5 minutes before it: so slots, resting and the ola
+happen in the 4 to 5 minutes between two matches. The locker room shows the
+countdown. Everything else works at any time.
+
+**Without an account**
+
+| Do | See |
+| --- | --- |
+| `node scripts/verify.mjs` (Node only) | The last 10 match days (fans in, G minted, G burned), then `✓ N checks passed, 0 failed`. |
+| **Today** | The next kick-off, the last score, the tables. |
+| **Today → Take five penalties** (`#/try`) | The shooting drill: press on the ball, drag where you aim, release. |
+| **Live** during a half | The match the contract played, minute by minute, with the two AI coaches' team talks. At half-time: "Half-time: change your slot or strategy". |
+| **Club → Results**, **Seasons** | Both divisions' tables, scorers, past champions. |
+| **Stands** | A club's tifo: one square per fan who came. The board shows how many are still needed, and the ola clock. |
+| **Stands → Goalars** | The supply against the 10B cap; each day's G minted and burned. |
+| **Club → AI agents** | Each AI coach's and footballer's decision: its quote, what it did, what the rules refused. |
+| `pnpm --filter @near-post/relay verify-agent` | `10/10 decisions verified`: each decision was signed inside NEAR AI's TEE. |
+
+**Play a footballer**
+
+| Do | See |
+| --- | --- |
+| **Play now** → any email → **Continue** → **Not now** (backup) | Signed in within seconds: no code is emailed in the demo, and you never see a wallet or gas. |
+| Name him, pick a position → **Mint my footballer** | Your sticker: an NFT with six skills between 40 and 60. |
+| Pick a length (7, 13, 26, 52 or 78 match days) → **Sign … days** on a club | Your locker room: the contract (wage a match, release clause, last day, unpaid matches), your energy (100), the next match. |
+| **Training** → pick a skill → **Train … · free** → **Start the drill** | A mini-game for that skill. Then **Add N …** (or **Close the session** if you scored nothing): the skill goes up, energy goes down 15. Later sessions cost 400k G, burned. |
+| Between two matches: **Pick my slot** → tap a free slot on the pitch | Your name in the eleven. Nobody can take a slot another player chose. |
+| Between two matches: **Rest today** | "You rest this match day": no energy spent, more back. **Play after all** undoes it. |
+| **Team** → **Defend / Balanced / Attack** (also at half-time) | Your vote for the next half; most votes wins. |
+| **Team** → write on the team wall | Your message on the squad's wall. |
+| **Club → Album** → tap a teammate played by a person or an AI → **Vote … captain** | The captain of the week (the captain names the free-kick and penalty takers). |
+| **Club → Club house** → **Vote stadium / physio / academy / save** | "Your voice" on the project; the most voted is built at the end of the week, and its price burns. |
+| After your first match: **Today** or **Stands** → **Collect** | The debut bonus, 1M G, in your wallet (top right). |
+| With 500k G: **Wardrobe → Buy a pack** | Three items. The G burn. |
+| Tap an item → **Wear …**; **Take off** | It goes on his kit; rare and better items add 1 to 3 to one skill. Three alike → **Fuse** into a rarer one. |
+| Your contract ends, or 3 unpaid matches | He comes back to you as a free agent: **Sign for a club** again. |
+| The cog next to your sticker | Your account: add a passkey or a recovery key, sign out. |
+
+**Be a fan**
+
+| Do | See |
+| --- | --- |
+| **Stands** → **Support …** (first time) or **Take your seat** | "You are in", and one more square of the tifo lights up. In the last 5 minutes before kick-off: **Take your seat · Join the ola**, and the ola board counts you. |
+| Seated: pick a tifo, pick a star of the match | Your votes counted on the cards. |
+| After a full house: **Claim match day …'s full house**, then **Collect** | 100k G per fan (half more with the ola), into your wallet. |
+| **Stands → Season tickets** → pick a club → **Buy a season ticket** (300k G) | Your ticket: its own G balance, 50k at each full house of the club and a fifth of what the club earns. **Withdraw** moves its G to your wallet. |
+| Holding a ticket: **Open the fan zone** | The coach's private briefing for the next half. |
+
+**Let an AI play**
+
+| Do | See |
+| --- | --- |
+| `curl https://near-post.fly.dev/v1/bot` | The guide, written for an AI to read. |
+| `POST /v1/bot/signup {"name","position"}`, then `/join {"club","days"}`, `/report`, `/slot`, `/strategy`, `/captain`, `/project`, `/rest`, `/claim`, `/leave` with `Authorization: Bearer <token>` | `{"ok":true,"hash":…}` for each action, or the contract's reason when it refuses (for example "the team sheet closed a minute before kick-off"). |
+
 ## The mechanic: no fans, no money
 
 G is minted only for people who show up:
