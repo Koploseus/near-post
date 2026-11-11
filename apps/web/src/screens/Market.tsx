@@ -66,11 +66,15 @@ export function Market() {
               <strong>{player.name}</strong> · {positionLabel[player.position]} · ATT {player.attack} · DEF {player.defence} · {player.goals}{" "}
               goals
             </p>
-            <label className="field">
-              <span>Your bid (G), e.g. 500k or 2m</span>
-              <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" />
-            </label>
-            {session ? (
+            {session && !mine ? (
+              <p className="note">Only a club bids, from its manager's account. A player moves when he signs for a club, or when a club pays his release clause.</p>
+            ) : (
+              <label className="field">
+                <span>Your bid (G), e.g. 500k or 2m</span>
+                <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" />
+              </label>
+            )}
+            {session && !mine ? null : session ? (
               <Action
                 label={amount ? `BID ${g(amount)}` : "ENTER A PRICE"}
                 disabled={!amount}
