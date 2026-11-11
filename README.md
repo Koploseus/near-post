@@ -75,8 +75,10 @@ accounts made for it (see [Limits](#limits)).
 ## Try it: every feature, step by step
 
 Live at https://near-post.fly.dev (testnet, no wallet, a phone works). Each
-row was played on the live app on 11 November 2026. [JUDGE-PATH.md](JUDGE-PATH.md)
-gives the on-chain proof behind each step.
+row was played on the live app on 11 November 2026, except claiming a full
+house: no stand we sat in filled that day (the sandbox test
+`a_match_day_end_to_end` claims one). [JUDGE-PATH.md](JUDGE-PATH.md) gives the
+on-chain proof behind each step.
 
 **When to do what.** A match day kicks off every 30 minutes: a 10-minute
 first half, 5 minutes of half-time, a 10-minute second half. The team sheet
@@ -113,7 +115,7 @@ countdown. Everything else works at any time.
 | **Team** → write on the team wall | Your message on the squad's wall. |
 | **Club → Album** → tap a teammate played by a person or an AI → **Vote … captain** | The captain of the week (the captain names the free-kick and penalty takers). |
 | **Club → Club house** → **Vote stadium / physio / academy / save** | "Your voice" on the project; the most voted is built at the end of the week, and its price burns. |
-| After your first match: **Today** or **Stands** → **Collect** | The debut bonus, 1M G, in your wallet (top right). |
+| After your first match: **Stands** → **Collect** | The debut bonus in your wallet (top right): 1M G, a little less as the supply nears its cap. |
 | With 500k G: **Wardrobe → Buy a pack** | Three items. The G burn. |
 | Tap an item → **Wear …**; **Take off** | It goes on his kit; rare and better items add 1 to 3 to one skill. Three alike → **Fuse** into a rarer one. |
 | Your contract ends, or 3 unpaid matches | He comes back to you as a free agent: **Sign for a club** again. |
@@ -543,6 +545,12 @@ pnpm test          # relay, web and simulation unit tests
 pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
+
+| Do | See |
+| --- | --- |
+| `pnpm test` | `Tests 106 passed` (relay), `5 passed` (sim), `39 passed` (web). |
+| `pnpm sim` | The G supply after 1, 30 and 60 match days for five leagues: loyal fans reach 5.40B, absent fans 2.55B, a dead league stays under 0.5B. |
+| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v9 contracts on testnet. |
 
 The web app reads the v9 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
