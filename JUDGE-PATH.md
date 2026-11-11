@@ -34,7 +34,7 @@ a half.
 
 | Do | See | Proof |
 | --- | --- | --- |
-| **Play now** → any email → **Continue** | Signed in, about 5 seconds. Demo mode: the code is not emailed, so any address works. | A NEAR account `u….near-post.testnet` is created with **your browser's** public key. The relay never holds your key. |
+| **Play now** → any email → **Continue** | Signed in, about 5 seconds, with 1M G in your wallet (top right): a welcome, so you can buy a ticket or a pack at once. Demo mode: the code is not emailed, so any address works. | A NEAR account `u….near-post.testnet` is created with **your browser's** public key. The relay never holds your key. The welcome is an `ft_transfer` from `near-post.testnet`'s own G (moved there from AI coaches): nothing is minted for it. |
 | Backup screen → **Not now** (or try a passkey / recovery key) | | Passkey: WebAuthn PRF encrypts your key in the browser. Recovery key: for Bitwarden and the like, which have no PRF. |
 | Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v9` in your name. |
 | Pick a contract length → **Sign … days for** a club (one with fans) | Your locker room: club, ratings, energy, your contract, the club house. | `sign_for`, then your NFT is transferred to the club. Your contract is on the NFT's record (`get_player`): wage, last day, release clause. When it ends, or after 3 unpaid matches, the league sends the NFT back to you. |
@@ -58,7 +58,7 @@ minutes left, and closes training in the last 3. Gas is paid by the relay
 | **Locker → Rest today** (before kick-off) | You sit out; a day off gives energy back faster. | `rest_today`. |
 | **Stands → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
 | Read the rules card | A full house (60% of fans in) pays 100k G per fan present; a goal pays **up to 600k G, as full as the scoring club's stand is**; an incomplete tifo burns 2% of the club's treasury. | `rules` view. No admin method changes them. |
-| After your first match (its 1M G debut bonus pays for it): **Season tickets → Buy** (300k G, 50 per club) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v9` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
+| **Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v9` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
 
 Why it matters for a memecoin: supply follows attendance. Simulation over 60
 match days (`pnpm sim`): loyal fans 5.4B, absent fans 2.6B, a league that stops
