@@ -24,6 +24,54 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
+## The problem
+
+On-chain games often fail twice. As games, they ask for clicks rather than
+choices, and you play alone against a screen. As economies, they mint their
+coin for actions anyone can repeat (play a match, log in, finish a quest):
+scripts repeat them better than people, the supply grows faster than anyone
+wants to hold it, and the NFTs around it are pictures that do nothing.
+
+NEAR Post starts from what makes football fun: you are not the club's owner,
+you are one player in it, and the stadium matters.
+
+**You play one footballer, with a club of real people.**
+
+- Every match day is a choice. Take a slot in the eleven or rest: each match
+  costs energy, and a tired player loses his skills. Train a skill with a
+  short drill. Dress him: each item moves one skill.
+- Your career is a contract. You choose how long you sign and for which
+  club, and the club pays a wage. Sign for another club before the end, and
+  it buys you out by paying your release clause.
+- The club decides together: the line-up, the captain, the strategy for each
+  half (voted at half-time), and what the treasury builds next.
+- The match is played by the contract, live, half by half. Lose a derby, and
+  the winner's colours fly over your stand for seven match days.
+
+**The fans keep the money alive.**
+
+- When a club's stand is at least 60% full at kick-off, new G is minted and
+  paid to every fan in it. Come in together in the last five minutes and it
+  is an ola: half more. A goal mints in proportion to how full its stand was:
+  in front of an empty stand, it mints nothing.
+- A stand left short burns 2% of the club's treasury. Packs and club
+  projects burn what they cost.
+- The stand votes its tifo and its star of the match, who is paid into his
+  own balance.
+
+**The NFTs carry it.** A footballer has his own balance, contract and career;
+a season ticket earns a share of its club and votes on what the treasury
+builds. Sell one, and all of it goes with it.
+
+**NEAR makes it playable.** You sign in with an email and never see a wallet
+or gas: each player gets a NEAR account, and the relay pays gas through
+NEP-366 meta-transactions. The contracts have no admin key, and anyone can
+replay a match from the chain.
+
+`node scripts/verify.mjs` checks every mint and burn against these rules.
+One limit, stated plainly: sign-in is free, so a stand can be filled with
+accounts made for it (see [Limits](#limits)).
+
 ## The mechanic: no fans, no money
 
 G is minted only for people who show up:
