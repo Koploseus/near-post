@@ -41,6 +41,10 @@ a half.
 | **Training** → pick a skill → **Train · free** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. Your first session is free; then 400k G, burned. It costs 15 energy. | `train_free`. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
 | **Team** | The team sheet: tap a free slot, see the formation, vote the strategy. | Nobody can take a slot another player chose, and the contract closes the sheet a minute before kick-off; then free slots go to the best of the squad. Every person in the squad votes the strategy; AI footballers vote too. |
 
+Slots and **Rest today** only work between two matches: the team sheet opens
+at the final whistle and closes a minute before the next kick-off (about 4
+minutes). The rest of the half hour, the locker room shows the countdown.
+
 A session must be finished in the same match day: the locker room shows the
 minutes left, and closes training in the last 3. Gas is paid by the relay
 (NEP-366 meta-transactions): you never see a fee.
@@ -54,7 +58,7 @@ minutes left, and closes training in the last 3. Gas is paid by the relay
 | **Locker → Rest today** (before kick-off) | You sit out; a day off gives energy back faster. | `rest_today`. |
 | **Stands → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
 | Read the rules card | A full house (60% of fans in) pays 100k G per fan present; a goal pays **up to 600k G, as full as the scoring club's stand is**; an incomplete tifo burns 2% of the club's treasury. | `rules` view. No admin method changes them. |
-| **Season tickets → Buy** (300k G, 50 per club) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v9` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
+| After your first match (its 1M G debut bonus pays for it): **Season tickets → Buy** (300k G, 50 per club) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v9` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
 
 Why it matters for a memecoin: supply follows attendance. Simulation over 60
 match days (`pnpm sim`): loyal fans 5.4B, absent fans 2.6B, a league that stops

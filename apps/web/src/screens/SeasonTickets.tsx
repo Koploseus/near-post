@@ -10,7 +10,7 @@ const PRICE = (300_000n * 1_000_000n).toString();
 
 /** A club's season tickets: buy one, see what yours hold, open the fan zone. */
 export function SeasonTickets() {
-  const { session, schedule, clubId, refresh } = useGame();
+  const { session, schedule, clubId, refresh, balance } = useGame();
   const season = schedule?.season ?? 1;
   const { data: table } = useData(() => league<Club[]>("table"), []);
   const [picked, setPicked] = useState<string | null>(null);
@@ -54,7 +54,13 @@ export function SeasonTickets() {
           <strong>{g(PRICE)}</strong> <span className="note">to {info ? clubName(info.name) : "the club"}'s treasury · {sold ?? "…"} of 50 sold</span>
         </p>
         {session && club ? (
-          (sold ?? 0) < 50 ? (
+          (sold ?? 0) >= 50 ? (
+            <span className="chip">SOLD OUT</span>
+          ) : BigInt(balance ?? "0") < BigInt(PRICE) ? (
+            <p className="note">
+              You have {g(balance ?? "0")}. Your first match pays a 1M G debut bonus: collect it in the stand, then come back.
+            </p>
+          ) : (
             <Action
               label="BUY A SEASON TICKET"
               className="cta"
@@ -62,8 +68,6 @@ export function SeasonTickets() {
               done={() => (reload(), reloadSold(), refresh())}
               success="Season ticket bought"
             />
-          ) : (
-            <span className="chip">SOLD OUT</span>
           )
         ) : (
           <a className="cta" href="#/locker">
