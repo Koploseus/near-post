@@ -40,6 +40,7 @@ class FakeChain implements Chain {
     a.balance += yocto;
     return "tx-transfer";
   }
+  giveG?: (tokenId: string, receiverId: string, amount: bigint) => Promise<string>;
   relayed: unknown[] = [];
   async relay(signed: unknown) {
     this.relayed.push(signed);
@@ -95,6 +96,32 @@ describe("email login", () => {
     const verify = await post(app, "/v1/auth/verify", { email: "koplo@example.com", code: box.lastCode(), public_key: key });
     expect(await verify.json()).toEqual({ account_id, created: true, tx: "tx-create" });
     expect(chain.accounts.get(account_id)).toEqual({ balance: near("0.3"), keys: [key] });
+  });
+
+  it("a new account gets the welcome G once, within the daily cap; a failed gift never blocks sign-up", async () => {
+    const chain = new FakeChain();
+    const given: string[] = [];
+    let fail = false;
+    chain.giveG = async (token: string, to: string, amount: bigint) => {
+      if (fail) throw new Error("not enough G");
+      given.push(`${token} ${to} ${amount}`);
+      return "tx-welcome";
+    };
+    const box = mailbox();
+    const cfg = loadConfig({ LEAGUE_ID: "league-v3.near-post.testnet", WELCOME_G: "1000000000000", WELCOME_PER_DAY: "3", GOALARS_ID: "goalars-v9.near-post.testnet" });
+    const app = createApp(cfg, chain, { mailer: box.mailer });
+    const signUp = async (email: string) => {
+      await post(app, "/v1/auth/start", { email });
+      return (await (await post(app, "/v1/auth/verify", { email, code: box.lastCode(), public_key: newKey() })).json()) as Record<string, unknown>;
+    };
+    expect(await signUp("a@b.co")).toMatchObject({ created: true, welcome: "1000000000000", welcome_tx: "tx-welcome" });
+    expect((await signUp("a@b.co")).welcome).toBeUndefined(); // returning: nothing more
+    fail = true;
+    expect(await signUp("c@d.co")).toMatchObject({ created: true });
+    fail = false;
+    expect((await signUp("e@f.co")).welcome).toBe("1000000000000");
+    expect((await signUp("g@h.co")).welcome).toBeUndefined(); // over the cap of 3 a day (the failed gift counted)
+    expect(given).toHaveLength(2);
   });
 
   it("a returning player gets his account back, and learns if this browser holds its key", async () => {

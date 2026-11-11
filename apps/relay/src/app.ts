@@ -79,6 +79,19 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   const verifyByIp = new Limiter(30, 60 * 60_000, now);
   const topups = new Limiter(config.TOPUPS_PER_DAY, 24 * 60 * 60_000, now);
   const funding = near(config.ACCOUNT_FUNDING_NEAR);
+  const welcome = BigInt(config.WELCOME_G);
+  const welcomes = new Limiter(config.WELCOME_PER_DAY, 24 * 60 * 60_000, now);
+  /** The welcome gift for a new account: never blocks the sign-up, says what it gave. */
+  const giveWelcome = async (account_id: string): Promise<string | null> => {
+    const goalars = config.GOALARS_ID;
+    if (welcome === 0n || !goalars || !chain.giveG || !welcomes.allow("all")) return null;
+    try {
+      return await chain.giveG(goalars, account_id, welcome);
+    } catch (e) {
+      console.warn(`welcome gift to ${account_id} failed: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }
+  };
   const ip = (c: { req: { header(name: string): string | undefined } }) =>
     c.req.header(config.CLIENT_IP_HEADER)?.split(",")[0]?.trim() || "local";
 
@@ -120,7 +133,8 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       return c.json({ account_id, created: false, key_on_account, vaults: key_on_account ? [] : backups, passkeys: backups.length });
     }
     const tx = await chain.createAccount(account_id, body.data.public_key, funding);
-    return c.json({ account_id, created: true, tx });
+    const welcome_tx = await giveWelcome(account_id);
+    return c.json({ account_id, created: true, tx, ...(welcome_tx ? { welcome: welcome.toString(), welcome_tx } : {}) });
   });
 
   // ---- Passkey backups ----

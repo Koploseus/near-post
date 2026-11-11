@@ -11,6 +11,12 @@ export interface Chain {
   /** Signed by the parent account. Each returns the transaction hash. */
   createAccount(accountId: string, publicKey: string, yocto: bigint): Promise<string>;
   transfer(receiverId: string, yocto: bigint): Promise<string>;
+  /**
+   * Sends G from the parent to an account, registering it with the token
+   * first (NEP-145 storage, paid by the parent). Optional: tests and old
+   * relays leave it out.
+   */
+  giveG?(tokenId: string, receiverId: string, amount: bigint): Promise<string>;
   call(contractId: string, method: string, args: Record<string, unknown>, tgas: number, deposit?: bigint): Promise<string>;
   /** Like `call`, but also fails when a receipt it spawned failed (a cross-contract call that panicked). */
   callChecked?(contractId: string, method: string, args: Record<string, unknown>, tgas: number, deposit?: bigint): Promise<string>;
@@ -130,6 +136,19 @@ export function rpcChain(urls: string | string[], signer?: { accountId: string; 
     },
     async createAccount(accountId, publicKey, yocto) {
       const r = await parent().createAccount({ newAccountId: accountId, publicKey, nearToTransfer: yocto });
+      return r.transaction.hash;
+    },
+    async giveG(tokenId, receiverId, amount) {
+      const r = await parent().signAndSendTransaction({
+        receiverId: tokenId,
+        actions: [
+          actions.functionCall("storage_deposit", { account_id: receiverId, registration_only: true }, 30n * 10n ** 12n, near("0.00125")),
+          actions.functionCall("ft_transfer", { receiver_id: receiverId, amount: amount.toString(), memo: "welcome to NEAR Post" }, 30n * 10n ** 12n, 1n),
+        ],
+        throwOnFailure: false,
+      });
+      const failed = [r.status, ...r.receipts_outcome.map((o) => o.outcome.status)].find((s) => typeof s === "object" && s !== null && "Failure" in s);
+      if (failed) throw new Error(JSON.stringify(failed).match(/Smart contract panicked: ([^"\\]+)/)?.[1] ?? "the welcome transfer failed");
       return r.transaction.hash;
     },
     async transfer(receiverId, yocto) {

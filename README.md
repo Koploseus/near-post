@@ -104,7 +104,7 @@ countdown. Everything else works at any time.
 
 | Do | See |
 | --- | --- |
-| **Play now** → any email → **Continue** → **Not now** (backup) | Signed in within seconds: no code is emailed in the demo, and you never see a wallet or gas. |
+| **Play now** → any email → **Continue** → **Not now** (backup) | Signed in within seconds, with 1M G in your wallet (top right) to try the paid features at once. No code is emailed in the demo, and you never see a wallet or gas. |
 | Name him, pick a position → **Mint my footballer** | Your sticker: an NFT with six skills between 40 and 60. |
 | Pick a length (7, 13, 26, 52 or 78 match days) → **Sign … days** on a club | Your locker room: the contract (wage a match, release clause, last day, unpaid matches), your energy (100), the next match. |
 | **Training** → pick a skill → **Train … · free** → **Start the drill** | A mini-game for that skill. Then **Add N …** (or **Close the session** if you scored nothing): the skill goes up, energy goes down 15. Later sessions cost 400k G, burned. |
@@ -114,8 +114,8 @@ countdown. Everything else works at any time.
 | **Team** → write on the team wall | Your message on the squad's wall. |
 | **Club → Album** → tap a teammate played by a person or an AI → **Vote … captain** | The captain of the week (the captain names the free-kick and penalty takers). |
 | **Club → Club house** → **Vote stadium / physio / academy / save** | "Your voice" on the project; the most voted is built at the end of the week, and its price burns. |
-| After your first match: **Stands** → **Collect** | The debut bonus in your wallet (top right): 1M G, a little less as the supply nears its cap. |
-| With 500k G: **Wardrobe → Buy a pack** | Three items. The G burn. |
+| After your first match: **Stands** → **Collect** | The debut bonus in your wallet: 1M G more, a little less as the supply nears its cap. |
+| **Wardrobe → Buy a pack** (500k G) | Three items. The G burn. |
 | Tap an item → **Wear …**; **Take off** | It goes on his kit; rare and better items add 1 to 3 to one skill. Three alike → **Fuse** into a rarer one. |
 | Your contract ends, or 3 unpaid matches | He comes back to you as a free agent: **Sign for a club** again. |
 | The cog next to your sticker | Your account: add a passkey or a recovery key, sign out. |
@@ -729,6 +729,14 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   got the same treatment
   ([tx](https://testnet.nearblocks.io/txns/6kK16cXJcfsKB63wgj4CCPaWnCredveogp4NEQtVV9HW))
   to make goals pay with the stand (600k G at most, nothing with an empty one).
+
+- **The welcome G go to anyone with an email.** Each new email account gets
+  1M G (`WELCOME_G`) so a visitor can try a ticket, a pack or a drill at
+  once. They come from the parent's own G, seeded once by moving 10M G from
+  five AI coaches' wallets: nothing is minted for them, and the relay stops
+  at 30 a day (`WELCOME_PER_DAY`) or when the fund is empty. Free accounts
+  can still collect them; that is the price of a demo without a first-match
+  wait.
 
 - **A stand can be filled by accounts made for it.** Sign-in is free and a
   full house pays every fan in it, so many emails can fill a small club's
