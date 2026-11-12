@@ -103,7 +103,7 @@ export function Wardrobe({ me }: { me: Player }) {
             </span>
           </div>
           {reveal && data.unboxed.length > 0 && (
-            <span className="k">JUST UNBOXED</span>
+            <span className={`unbox-title ${best(data.unboxed.map((id) => byId.get(id)?.rarity))}`}>{best(data.unboxed.map((id) => byId.get(id)?.rarity)).toUpperCase()}!</span>
           )}
           {reveal && data.unboxed.length > 0 && (
             <div className="unboxed" role="status">
@@ -193,4 +193,10 @@ export function Wardrobe({ me }: { me: Player }) {
       </div>
     </div>
   );
+}
+
+const ORDER = ["common", "rare", "epic", "legendary"] as const;
+/** The rarest item of a pack names the moment: RARE!, EPIC!, LEGENDARY! */
+function best(r: (string | undefined)[]): string {
+  return ORDER[Math.max(...r.map((x) => ORDER.indexOf((x ?? "common") as (typeof ORDER)[number])))] ?? "common";
 }

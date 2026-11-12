@@ -1,0 +1,202 @@
+/*
+ * Floodlight Pixel: the kit's night surfaces, pixel borders and type laid over
+ * the app's own classes. Loaded after styles.css. tokens.css holds the values.
+ */
+:root {
+  --ink: var(--np-night);
+  --ink-deep: var(--np-night-deep);
+  --ink-shadow: var(--np-outline);
+  --seat: var(--np-chip);
+  --muted-on-ink: var(--np-muted);
+  --muted-on-paper: var(--np-muted);
+  --display: var(--np-display);
+  --led: var(--np-led);
+  --body: var(--np-body);
+  --px: 0 -3px 0 var(--np-outline), 0 3px 0 var(--np-outline), -3px 0 0 var(--np-outline), 3px 0 0 var(--np-outline), 0 7px 0 rgba(11, 8, 32, .6);
+}
+*, *::before, *::after { border-radius: 0 !important; }
+body { background: var(--np-night); color: var(--np-text); }
+h1, h2, h3, .brand, .cta, button { font-family: var(--np-display); }
+h1, h2, h3 { font-weight: 700; letter-spacing: .5px; }
+
+/* Light surfaces become night panels: swap the two colour roles inside them,
+   so every pair (light on dark, dark on light) keeps its contrast. */
+.paper, .card, .fan-votes, .locker-me, .my-seat, .pitch-points li, .trophy, .tone-paper .tile, .toast, .slip, .signing-terms {
+  --paper: var(--np-panel);
+  --ink: var(--np-text);
+  --ink-deep: var(--np-outline);
+  --ink-shadow: var(--np-outline);
+  background-image: none !important;
+  box-shadow: var(--px);
+}
+.panel.ink, .stand, .matchboard { background: var(--np-night-deep); border: 0; box-shadow: var(--px); }
+.paper .k, .k, .card .k, .eyebrow { font-family: var(--np-body); font-weight: 800; letter-spacing: 2px; color: var(--np-yellow); }
+
+/* Header and tabs: deep night band, one colour per tab. */
+.top-band { background: var(--np-night-deep); box-shadow: 0 3px 0 var(--np-outline); }
+.brand-text { font-family: var(--np-display); font-weight: 700; color: var(--np-yellow); }
+.nav a { font-family: var(--np-display); font-weight: 700; }
+.sub-tabs a, .div-tabs button, .seg button { font-family: var(--np-display); font-weight: 700; }
+.sub-tabs a[aria-current="page"], .div-tabs button[aria-pressed="true"], .seg button[aria-pressed="true"] { box-shadow: var(--px); }
+.me-chip { background: var(--np-panel); box-shadow: var(--px); }
+.me-chip em { font-family: var(--np-led); font-size: 10px; font-style: normal; color: var(--np-yellow); }
+
+/* Buttons: chunky, bevelled, pixel outline; press drops 3px. */
+.cta {
+  font-family: var(--np-display); font-weight: 700; letter-spacing: 1px; border: 0;
+  background: var(--np-yellow); color: var(--np-outline);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .28), inset 0 3px 0 rgba(255, 255, 255, .35), var(--px);
+}
+.cta:active { transform: translateY(3px); }
+.cta.small, .cta.ghost { background: var(--np-chip); color: var(--np-text); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .28), inset 0 2px 0 rgba(255, 255, 255, .2), var(--px); }
+.cta:disabled { filter: grayscale(.6) brightness(.8); }
+.link, .paper .link, .panel.paper .link { color: var(--np-yellow); }
+input, select, textarea { background: var(--np-outline); color: var(--np-text); border: 0; box-shadow: 0 0 0 3px var(--np-line); font-family: var(--np-body); }
+
+/* LED numbers: scores, clocks, counters. */
+.score, .board .score, .clock, .matchboard .count, .fascia-count b, .fascia-ola strong, .online-pill b, .gauge-n, .countdown { font-family: var(--np-led); font-weight: 400; }
+.clock { background: var(--np-outline); color: var(--np-yellow); box-shadow: none; }
+
+/* Meters are square cells, never smooth bars. */
+.bar { height: 14px; background: var(--np-outline); padding: 2px; }
+.bar > div { background-image: repeating-linear-gradient(90deg, transparent 0 10px, var(--np-outline) 10px 12px); }
+
+/* Stands: the tifo squares stay squares. */
+.sq { border-radius: 0 !important; }
+.pitch { border-top-color: var(--np-text); }
+
+/* ---- Art, screen by screen (kit README §4) ---- */
+.dim-art { position: relative; isolation: isolate; }
+
+/* Today: the match card in front of a full night stadium. */
+.hero { border: 0; box-shadow: var(--px); background: linear-gradient(180deg, rgba(18, 12, 48, .35), rgba(18, 12, 48, .88)), url(/art/bg/bg-stadium-full.webp) center 30% / cover; color: var(--np-text); }
+.hero::after { display: none; }
+.live-hero { background: linear-gradient(180deg, rgba(200, 32, 47, .35), rgba(18, 12, 48, .9)), url(/art/bg/bg-stadium-full.webp) center 30% / cover; }
+.hero-score b, .countdown { font-family: var(--np-led); font-weight: 400; color: var(--np-yellow); text-shadow: 0 4px 0 var(--np-outline); }
+.badge-live { font-family: var(--np-display); font-weight: 700; background: var(--np-red); color: var(--np-text); padding: 4px 10px; box-shadow: var(--px); }
+
+/* G: one visible currency, with its coin. */
+.me-chip em::before { content: ""; display: inline-block; width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; background: url(/art/objects/coin.png) center / contain no-repeat; }
+
+/* Sign in: the key art, full bleed, a dark veil under the form. */
+.signin { background: linear-gradient(180deg, rgba(18, 12, 48, .2) 0%, rgba(18, 12, 48, .78) 46%, rgba(18, 12, 48, .95) 100%), url(/art/bg/bg-signin.webp) center 18% / cover !important; min-height: 560px; justify-content: flex-end; }
+.signin h2 { font-size: clamp(30px, 7vw, 46px); color: var(--np-title-yellow); text-shadow: -3px 0 0 var(--np-title-shadow), 3px 0 0 var(--np-title-shadow), 0 -3px 0 var(--np-title-shadow), 0 3px 0 var(--np-title-shadow), 0 7px 0 var(--np-title-shadow-deep); }
+
+/* Locker room: the room behind your footballer, the hero in your club's colours. */
+.locker-me { position: relative; overflow: hidden; background: linear-gradient(90deg, rgba(18, 12, 48, .2) 0%, rgba(18, 12, 48, .55) 45%, rgba(18, 12, 48, .92) 70%), url(/art/bg/bg-locker.webp) left center / cover !important; }
+.locker-hero { position: absolute; left: -6px; bottom: -8px; height: 112%; width: auto; pointer-events: none; image-rendering: auto; z-index: 0; }
+.locker-me > :not(.locker-hero) { position: relative; z-index: 1; }
+.locker-me .sticker { margin-left: 34%; }
+@media (max-width: 720px) { .locker-hero { height: 70%; left: auto; right: -10px; } .locker-me .sticker { margin-left: 0; } }
+
+/* Team sheet: the painted pitch; slots stay placed in % on top. */
+.pitch-v { border: 0; box-shadow: var(--px); background: url(/art/bg/pitch-full.webp) center / 100% 100% no-repeat; image-rendering: pixelated; }
+.pitch-v .pitch-line { display: none; }
+
+/* Live: LED score, a strip of the stand above the pitch. */
+.board .score { font-family: var(--np-led); font-weight: 400; background: var(--np-outline); box-shadow: var(--px); }
+.scoreboard { background: linear-gradient(180deg, rgba(18, 12, 48, .4), rgba(18, 12, 48, .95) 55%), url(/art/bg/bg-stadium-full.webp) center 25% / 100% auto no-repeat, var(--np-night-deep); box-shadow: var(--px); }
+
+/* Stands: the stadium banner behind the count. */
+.fascia { background: linear-gradient(90deg, rgba(11, 8, 32, .92), rgba(11, 8, 32, .55) 55%, rgba(11, 8, 32, .85)), url(/art/bg/bg-stadium-full.webp) center 35% / cover; }
+.stand.done .fascia, .stand .fascia { border-bottom: 3px solid var(--np-outline); }
+.fascia-count b { font-size: 34px; }
+
+/* Album: the club panel under the floodlights. */
+.album-left { background: linear-gradient(180deg, rgba(18, 12, 48, .55), rgba(18, 12, 48, .95) 40%), url(/art/bg/bg-stadium-full.webp) center top / 100% auto no-repeat; border-right: 3px solid var(--np-outline); }
+
+/* Training: the arcade cabinet of the picked drill. */
+.cabinet { position: relative; display: block; width: 140px; aspect-ratio: 382 / 640; margin: 0 auto; }
+.cabinet-body { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cabinet-screen { position: absolute; left: 26%; top: 28.8%; width: 51.6%; height: 19.8%; object-fit: cover; }
+.training-cabinet { float: right; width: 96px; margin: -8px 0 8px 12px; }
+
+/* Packs: a legendary burst behind what you just opened. */
+.unboxed { padding: 14px; background: radial-gradient(circle, rgba(26, 18, 64, 0) 30%, rgba(26, 18, 64, .9) 75%), url(/art/fx/fx-legendary-burst.webp) center / cover; box-shadow: var(--px); }
+.item, .unbox { box-shadow: var(--px); }
+
+/* AI agents: the coaches' portraits. */
+.coach-face { width: 40px; height: 40px; object-fit: cover; box-shadow: var(--px); }
+
+/* Season ticket: night stock. */
+.ticket-stub, .ticket-main { box-shadow: var(--px); }
+
+/* Tabs (top on desktop, bottom on phones): the active tab is a filled cell in its colour. */
+.nav a, .tabbar a { --tab: var(--np-tab-club); --on: var(--np-outline); }
+.nav a:nth-child(1), .tabbar a:nth-child(1) { --tab: var(--np-tab-today); }
+.nav a:nth-child(2), .tabbar a:nth-child(2) { --tab: var(--np-tab-live); --on: var(--np-text); }
+.nav a:nth-child(3), .tabbar a:nth-child(3) { --tab: var(--np-tab-team); }
+.nav a:nth-child(4), .tabbar a:nth-child(4) { --tab: var(--np-tab-stands); --on: var(--np-text); }
+.nav a[aria-current="page"], .tabbar a[aria-current="page"] { background: var(--tab); color: var(--on); box-shadow: var(--px); }
+.nav a[aria-current="page"] .tile, .tabbar a[aria-current="page"] .tile { background: transparent; border-color: transparent; color: var(--on); box-shadow: none; }
+.tabbar { background: var(--np-night-deep); border-top: 0; box-shadow: 0 -3px 0 var(--np-outline); padding: 0 0 env(safe-area-inset-bottom); gap: 0; }
+.tabbar a { font-family: var(--np-display); font-weight: 700; padding: 8px 0 6px; color: var(--np-muted-2); }
+.tabbar a:not([aria-current="page"]) .tile { color: var(--tab); background: transparent; border-color: transparent; }
+.seg button { color: var(--np-muted-2); }
+
+/* Live: names keep whole words; the LED score fits a phone. */
+.board .team { word-break: normal; overflow-wrap: normal; hyphens: none; }
+@media (max-width: 560px) {
+  .board { gap: 8px; }
+  .board .team { font-size: 14px; }
+  .board .score { font-size: 30px; padding: 8px 10px; }
+  .fascia-count { font-size: 22px; }
+  .fascia-count b { font-size: 24px; }
+}
+
+/* Locker: the room and the hero as a header band, the card below. */
+.locker-me { flex-wrap: wrap; padding-top: 200px !important; background: linear-gradient(180deg, rgba(18, 12, 48, 0) 60%, var(--np-panel) 200px), url(/art/bg/bg-locker.webp) center top / auto 200px no-repeat, var(--np-panel) !important; }
+.locker-hero { top: 8px !important; bottom: auto !important; left: 50% !important; right: auto !important; height: 190px !important; transform: translateX(-50%); }
+.locker-me .sticker { margin-left: 0 !important; }
+.tabbar .tile, .nav .tile { border: 0 !important; box-shadow: none !important; }
+
+/* Desktop tabs are icon tiles: the active tile fills with its colour. */
+.nav a[aria-current="page"] { background: transparent; box-shadow: none; color: var(--np-text); }
+.nav a .tile { background: var(--np-panel) !important; color: var(--tab); box-shadow: var(--px) !important; }
+.nav a[aria-current="page"] .tile { background: var(--tab) !important; color: var(--on) !important; }
+@media (max-width: 720px) { .tabbar a[aria-current="page"] .tile { background: transparent !important; } }
+.paper [aria-pressed="true"], .paper [aria-checked="true"], .skill-pick button[aria-checked="true"] { background: var(--np-yellow) !important; color: var(--np-outline) !important; }
+/* Club house plates: night cards, the art on a deep panel. */
+.plate { --ink: var(--np-text); --paper: var(--np-panel); background: var(--np-panel); color: var(--np-text); box-shadow: var(--px); }
+.plate-art { background: #6E5FC2; }
+.plate h3 { font-weight: 700; color: var(--np-text); }
+.plate-foot b, .plate-foot .price { color: var(--np-yellow); }
+
+/* ---- Rewards and games (kit §4, §6) ---- */
+.np-title, .goal-flash, .unbox-title, .drill-title {
+  font-family: var(--np-display); font-weight: 700; color: var(--np-title-yellow); letter-spacing: 1px;
+  text-shadow: -3px 0 0 var(--np-title-shadow), 3px 0 0 var(--np-title-shadow), 0 -3px 0 var(--np-title-shadow), 0 3px 0 var(--np-title-shadow), -2px -2px 0 var(--np-title-shadow), 2px -2px 0 var(--np-title-shadow), -2px 2px 0 var(--np-title-shadow), 2px 2px 0 var(--np-title-shadow), 0 7px 0 var(--np-title-shadow-deep);
+}
+/* The goal replay: GOAL! lands as the ball does. */
+.highlight { position: relative; }
+.goal-flash { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(.4); font-size: clamp(44px, 12vw, 96px); opacity: 0; pointer-events: none; animation: goal-in .45s cubic-bezier(.2, 1.5, .4, 1) 2.2s forwards; }
+@keyframes goal-in { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+/* Pack: the rarest item names the moment. */
+.unboxed { flex-wrap: wrap; }
+.unbox-title { display: block; flex-basis: 100%; font-size: 30px; }
+.unbox-title.common { color: var(--np-common); }
+.unbox-title.rare { color: var(--np-rare); }
+.unbox-title.epic { color: var(--np-epic); }
+.unbox-title.legendary { color: var(--np-legendary); }
+.unbox.legendary, .unbox.epic { color: var(--np-outline); }
+/* Drill result: a burst, the hero cheering, the score. */
+.drill-result { display: grid; grid-template-columns: minmax(0, 1fr) 112px; align-items: center; gap: 6px 10px; padding: 16px; background: var(--np-night-deep); box-shadow: var(--px); }
+.drill-result.passed { background: linear-gradient(90deg, var(--np-night-deep) 45%, rgba(18, 12, 48, .2)), url(/art/fx/fx-legendary-burst.webp) right center / auto 160% no-repeat, var(--np-night-deep); }
+.drill-hero { grid-row: 1 / span 2; grid-column: 2; width: 112px; height: auto; }
+.drill-title { font-size: 24px; line-height: 1.1; }
+.drill-result:not(.passed) .drill-title { color: var(--np-muted-2); }
+.drill-result .big-score { margin: 0; font-family: var(--np-led); font-size: 12px; line-height: 1.8; color: var(--np-text); }
+.drill-result .big-score strong { color: var(--np-green); }
+/* Game HUD around the engines (the canvas and its 1000x600 frame are untouched). */
+.drill-wrap { background: var(--np-night-deep); box-shadow: var(--px); padding: 0 0 10px; }
+.drill-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--np-red); color: var(--np-text); font-family: var(--np-display); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 3px 0 var(--np-outline); margin-bottom: 10px; }
+.pen-dots { display: inline-flex; gap: 3px; padding: 3px; background: var(--np-outline); }
+.pen-dots i { width: 16px; height: 16px; border-radius: 0 !important; background: var(--np-chip); border: 0 !important; }
+.pen-dots i.in { background: var(--np-green); }
+.pen-dots i.out { background: var(--np-miss); }
+.pen-help { margin: 10px 12px 0; padding: 10px 12px 10px 64px; min-height: 56px; background: var(--np-panel) url(/art/heroes/hero-kick.png) 8px center / 46px auto no-repeat; box-shadow: var(--px); color: var(--np-text); }
+.game-canvas, .pen3d-stage { box-shadow: 0 0 0 3px var(--np-outline); }
+.pen3d-verdict { font-family: var(--np-display); font-weight: 700; }
+.just-watch { align-self: center; font-family: var(--np-display); font-weight: 700; }
+.trophy { color: var(--np-text); }
+.trophy b { color: var(--np-yellow); }

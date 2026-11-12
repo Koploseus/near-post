@@ -1,3 +1,4 @@
+import { ItemArt, itemArt } from "../floodlight/item-art.js";
 import type { ReactNode } from "react";
 import type { CatalogItem, ItemKind, Look, Skill } from "../lib/types.js";
 
@@ -317,6 +318,7 @@ export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look
 
 /** A small picture of an item, for the wardrobe grid. */
 export function ItemIcon({ item, n }: { item: CatalogItem; n: number }) {
+  if (itemArt(item.id)) return <ItemArt id={item.id} size={52} title={item.id} />;
   if (item.kind === "boots") {
     const [boot, stud] = BOOT_COLOR[item.style] ?? ["#151515", "#3a3a3a"];
     return (

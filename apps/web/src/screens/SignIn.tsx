@@ -68,6 +68,9 @@ export function SignIn() {
               {busy ? "…" : "CONTINUE"}
             </button>
           </form>
+          <a className="link just-watch" href="#/try">
+            No account yet? Take five penalties first
+          </a>
         </>
       )}
 

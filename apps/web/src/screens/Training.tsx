@@ -1,3 +1,4 @@
+import { Cabinet, HeroArt } from "../floodlight/art.js";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { type Click, type Drill as DrillT, drill } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
@@ -99,9 +100,13 @@ export function Training({ me }: { me: Player }) {
       {ticket ? (
         attested ? (
           <>
-            <p className="big-score">
-              {attested.hits} / {attested.rounds} · <strong>+{attested.points}</strong> {skillName(ticket.skill)}
-            </p>
+            <div className={`drill-result${attested.points ? " passed" : ""}`}>
+              <HeroArt className="drill-hero" pose={attested.points ? "cheer" : "idle"} />
+              <span className="drill-title">{attested.points ? "DRILL PASSED!" : "NOT THIS TIME"}</span>
+              <p className="big-score">
+                {attested.hits} / {attested.rounds} · <strong>+{attested.points}</strong> {skillName(ticket.skill)}
+              </p>
+            </div>
             <p className={left < TRAIN_CUTOFF_MS ? "err" : "note"}>
               The relay signed your score. Submit it before this match day ends{Number.isFinite(left) ? `, in ${minutes(left)}` : ""}.
             </p>
@@ -148,6 +153,7 @@ export function Training({ me }: { me: Player }) {
             {me.free_trainings > 0 ? "Your first session is free. " : "400k G, burned. "}Pick a skill, then play the drill. A session costs 15 energy (you have{" "}
             {me.energy}).
           </p>
+          <Cabinet skill={skill} className="training-cabinet" />
           <div className="skill-pick" role="radiogroup" aria-label="Skill to train">
             {SKILLS.map(([k, label, name]) => (
               <button key={k} type="button" role="radio" aria-checked={skill === k} onClick={() => setSkill(k)} title={name}>
