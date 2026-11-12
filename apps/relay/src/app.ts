@@ -410,7 +410,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return { account: p.controller!, token_id: p.token_id, name: p.name, position: p.position, overall: p.overall, goals: p.goals, value: valueOf(p), club: club?.manager ?? null, club_name: club?.name ?? null };
   };
   const directoryNow = new Memo<Person[]>(2 * 60_000, now);
-  /** Every person who plays a footballer: the squads of all clubs, and the free agents met here. */
+  /** Every person who plays a footballer: the squads of all clubs (read every two minutes), and the free agents met here. */
   const directory = () =>
     directoryNow.get(
       "all",
@@ -423,11 +423,14 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
           );
           for (const p of squads.flat()) if (p.controller) out.set(p.controller, asPerson(p, clubs));
         }
-        for (const [a, p] of met) if (!out.has(a)) out.set(a, p);
         return [...out.values()];
       },
       (v) => v.length > 0,
-    );
+    ).then((squads) => {
+      // Free agents are in no squad: they are listed as soon as they came by.
+      const inSquad = new Set(squads.map((p) => p.account));
+      return [...squads, ...[...met.values()].filter((p) => !inSquad.has(p.account))];
+    });
   const personNow = new Memo<Person | null>(60_000, now);
   const personOf = (account_id: string) =>
     personNow.get(account_id, async () => {
@@ -462,10 +465,15 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return c.json({ people: withOnline(found) });
   });
 
-  /** Who is online now (up to 60), the best rated first. */
-  app.get("/v1/people/online", async (c) => {
-    const all = withOnline(await directory()).filter((p) => p.online).sort((a, b) => b.overall - a.overall);
-    return c.json({ count: presence.count() + agentsActive().size, people: all.slice(0, 60) });
+  /**
+   * Everyone who plays a footballer, online first, then the best rated: 60 a
+   * page. `online` counts them among these people (visitors without a
+   * footballer and AI coaches are in the header's count, not here).
+   */
+  app.get("/v1/people/all", async (c) => {
+    const offset = Math.max(0, Math.min(10_000, Number(c.req.query("offset") ?? 0) || 0));
+    const all = withOnline(await directory()).sort((a, b) => Number(b.online) - Number(a.online) || b.overall - a.overall || a.name.localeCompare(b.name));
+    return c.json({ total: all.length, online: all.filter((p) => p.online).length, people: all.slice(offset, offset + 60) });
   });
 
   /** The league's rankings that are not a table: the footballers worth the most, the richest clubs, the best runs of full houses. */

@@ -14,7 +14,7 @@ import {
   declineFriend,
   inbox,
   newDuel,
-  onlinePeople,
+  allPeople,
   playDuel,
   removeFriend,
   sayOnTerrace,
@@ -38,7 +38,7 @@ const SECTIONS: [Section, string][] = [
   ["terrace", "Terrace"],
   ["messages", "Messages"],
   ["friends", "Friends"],
-  ["find", "Find a player"],
+  ["find", "Players"],
   ["duels", "Duels"],
 ];
 const DUEL_SKILLS: DuelSkill[] = ["shooting", "passing", "dribbling", "pace", "defending"];
@@ -400,7 +400,10 @@ function Find({ box, reload }: { box: Inbox | null; reload: () => void }) {
       clearTimeout(t);
     };
   }, [q]);
-  const { data: online } = useData(onlinePeople, []);
+  // Everyone, online first; more pages on demand.
+  const { data: first } = useData(() => allPeople(0), []);
+  const [more, setMore] = useState<Person[]>([]);
+  const everyone = [...(first?.people ?? []), ...more];
   const friends = new Set(box?.friends.map((f) => f.account) ?? []);
   const list = (ps: Person[]) => (
     <ul className="people">
@@ -423,11 +426,21 @@ function Find({ box, reload }: { box: Inbox | null; reload: () => void }) {
         </div>
         {found && (found.length === 0 ? <p className="note">Nobody by that name.</p> : list(found))}
       </section>
-      <section className="paper panel" aria-labelledby="online-title">
-        <span className="k" id="online-title">
-          ONLINE NOW{online ? ` · ${online.count}` : ""}
+      <section className="paper panel" aria-labelledby="everyone-title">
+        <span className="k" id="everyone-title">
+          ALL PLAYERS{first ? ` · ${first.total}` : ""}
         </span>
-        {!online ? <p className="note">Looking…</p> : online.people.length === 0 ? <p className="note">Nobody with a footballer right now.</p> : list(online.people)}
+        {first && (
+          <p className="note">
+            {first.online} online now, listed first. Then the best rated.
+          </p>
+        )}
+        {!first ? <p className="note">Looking…</p> : everyone.length === 0 ? <p className="note">Nobody has a footballer yet.</p> : list(everyone)}
+        {first && everyone.length < first.total && (
+          <button type="button" className="chip more-people" onClick={() => void allPeople(everyone.length).then((r) => setMore((m) => [...m, ...r.people]))}>
+            Show more
+          </button>
+        )}
       </section>
     </>
   );

@@ -182,32 +182,36 @@ describe("the terrace", () => {
 
 describe("search, online and rankings", () => {
   it("finds footballers by name, the best rated first, free agents once met", async () => {
-    const { app, player, act, later } = setup();
-    const a = player("Ada Lovelace", 70);
+    const { app, player, act } = setup();
+    player("Ada Lovelace", 70);
     player("Adam Smith", 55);
     const free = player("Adalbert", 60, null);
     const find = async (q: string) => ((await (await app.request(`/v1/people/search?q=${q}`)).json()) as { people: { name: string; club_name: string | null; online: boolean }[] }).people;
     expect(await find("a")).toEqual([]);
     expect((await find("ada")).map((p) => p.name)).toEqual(["Ada Lovelace", "Adam Smith"]);
-    // A free agent is in no squad: he shows once he came by (the list is refreshed every two minutes).
+    // A free agent is in no squad: he shows as soon as he came by.
     expect(await find("adal")).toEqual([]);
     await act(free, "inbox");
-    await act(a, "inbox");
-    later(2 * 60_000 + 1);
     const found = await find("adal");
     expect(found.map((p) => p.name)).toEqual(["Adalbert"]);
     expect(found[0]!.club_name).toBeNull();
   });
 
-  it("lists who is online and ranks by value", async () => {
+  it("lists everyone, online first, and ranks by value", async () => {
     const { app, player, act } = setup();
     const a = player("Ada", 70);
     player("Bo", 40);
+    player("Cy", 90);
     await act(a, "inbox");
-    const online = (await (await app.request("/v1/people/online")).json()) as { people: { name: string }[] };
-    expect(online.people.map((p) => p.name)).toEqual(["Ada"]);
+    const all = (await (await app.request("/v1/people/all")).json()) as { total: number; online: number; people: { name: string; online: boolean }[] };
+    // Everyone is listed, whoever is online first, then by rating.
+    expect(all.people.map((p) => p.name)).toEqual(["Ada", "Cy", "Bo"]);
+    expect([all.total, all.online]).toEqual([3, 1]);
+    expect(all.people.map((p) => p.online)).toEqual([true, false, false]);
+    const next = (await (await app.request("/v1/people/all?offset=2")).json()) as { people: { name: string }[] };
+    expect(next.people.map((p) => p.name)).toEqual(["Bo"]);
     const ranks = (await (await app.request("/v1/people/rankings")).json()) as { valuable: { name: string; value: number }[]; richest: { name: string }[]; streaks: { best_streak: number }[] };
-    expect(ranks.valuable.map((p) => p.name)).toEqual(["Ada", "Bo"]);
+    expect(ranks.valuable.map((p) => p.name)).toEqual(["Cy", "Ada", "Bo"]);
     expect(ranks.valuable[0]!.value).toBeGreaterThan(ranks.valuable[1]!.value);
     expect(ranks.richest[0]!.name).toBe("Northbank Rovers");
     expect(ranks.streaks[0]!.best_streak).toBe(2);

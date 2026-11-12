@@ -122,7 +122,8 @@ export const playDuel = (s: Session, id: number, clicks: Click[]) => act<{ duel:
 
 export const terrace = () => read<{ lines: ChatLine[] }>("/v1/people/chat", { lines: [] }).then((r) => r.lines);
 export const searchPeople = (q: string) => read<{ people: Person[] }>(`/v1/people/search?q=${encodeURIComponent(q)}`, { people: [] }).then((r) => r.people);
-export const onlinePeople = () => read<{ count: number; people: Person[] }>("/v1/people/online", { count: 0, people: [] });
+/** Everyone who plays a footballer, online first: 60 a page. */
+export const allPeople = (offset = 0) => read<{ total: number; online: number; people: Person[] }>(`/v1/people/all?offset=${offset}`, { total: 0, online: 0, people: [] });
 export const rankings = () => read<Rankings>("/v1/people/rankings", { valuable: [], scorers: [], richest: [], streaks: [] });
 
 /** "1.2M G" from whole G. */
