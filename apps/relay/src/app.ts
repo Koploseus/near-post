@@ -606,7 +606,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       const d = people.duel(challenger.account, target.account, skill, seed, rounds(drill(seed, DUEL_LEVEL, skill)));
       if (d) {
         people.score(d.id, challenger.account, played(drill(seed, DUEL_LEVEL, skill), challenger.overall).hits);
-        const text = await voices.speak(ca, await factsOf(ca), `you just challenged another player to a duel on the ${skill} drill: tell him it is waiting for him in his duels`);
+        const text = await voices.speak(ca, await factsOf(ca), `you are writing to a player you just challenged to a duel on the ${skill} drill: tell him, as "you", that it is waiting in his duels`);
         if (text) people.send(challenger.account, target.account, text);
       }
     }
@@ -623,7 +623,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       const coach = room && voices.agent(room.manager);
       if (room && coach) {
         const wage = Number(BigInt(room.wage ?? "0") / 1_000_000n);
-        const text = await voices.speak(coach, await factsOf(coach), `a footballer without a club is looking around: invite him to sign for your club${wage > 0 ? `, which pays ${wage} G a match` : ""}`);
+        const text = await voices.speak(coach, await factsOf(coach), `you are writing to a footballer who has no club: invite him, as "you", to sign for yours${wage > 0 ? `, which pays ${wage} G a match` : ""}`);
         if (text) people.send(coach.account, free.account, text);
       }
     }
@@ -638,7 +638,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         const coach = h?.club ? voices.agent(h.club) : null;
         if (!h || !coach || people.note(`scored ${h.account}`) === day) continue;
         people.setNote(`scored ${h.account}`, day);
-        const text = await voices.speak(coach, await factsOf(coach), `one of your players scored ${n === 1 ? "a goal" : `${n} goals`} in the last match: tell him, he is the one reading`);
+        const text = await voices.speak(coach, await factsOf(coach), `you are writing to one of your players, who scored ${n === 1 ? "a goal" : `${n} goals`} in your club's last match: tell him, as "you"`);
         if (text) people.send(coach.account, h.account, text);
         break; // one a look: the others at the next
       }
