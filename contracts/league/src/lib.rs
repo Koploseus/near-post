@@ -29,9 +29,11 @@
 //! is the one trusted party: it can grant at most `training_max_points` per
 //! paid ticket, and nothing else.
 
+mod life;
 mod live;
 mod play;
 mod wardrobe;
+pub use life::{Applicant, Condition, Diet, DietOrder, Gift, Instruction, Recruitment};
 pub use wardrobe::Look;
 
 pub use live::{Event, EventKind, FORMATIONS, Formation, Role, Strategy};
@@ -173,6 +175,23 @@ pub struct Rules {
     /// Share of what a club earns (goals, sales) that goes to its season
     /// tickets of the season, when it sold any.
     pub ticket_revenue_bps: u32,
+    /// Skill points an instruction moves from one skill to another.
+    pub instruction_points: u8,
+    /// A diet: its price (burned), how many match days it lasts, the energy
+    /// it gives back per match day (energy diet) or the points it adds to a
+    /// skill on the pitch (power, speed).
+    pub diet_price: U128,
+    pub diet_days: u32,
+    pub diet_energy: u8,
+    pub diet_skill: u8,
+    /// The longest holiday, in match days.
+    pub holiday_max_days: u32,
+    /// A person who ends a match under `injury_below` energy can be hurt:
+    /// up to `injury_chance_pct` percent at zero energy, for `injury_days`
+    /// match days (one fewer per physio level, at least one).
+    pub injury_below: u8,
+    pub injury_chance_pct: u8,
+    pub injury_days: u32,
 }
 
 pub fn the_rules() -> Rules {
@@ -236,6 +255,15 @@ pub fn the_rules() -> Rules {
         physio_energy: 5,
         academy_bonus: 1,
         ticket_revenue_bps: 2_000,
+        instruction_points: 4,
+        diet_price: U128(200_000 * ONE_G),
+        diet_days: 7,
+        diet_energy: 4,
+        diet_skill: 3,
+        holiday_max_days: 14,
+        injury_below: 30,
+        injury_chance_pct: 60,
+        injury_days: 3,
     }
 }
 
@@ -386,6 +414,10 @@ pub enum Order {
     SeasonTicket(AccountId),
     /// A club pays a player's release clause: `{"clause":"<token_id>"}`.
     Clause(String),
+    /// A diet for the sender's footballer: `{"diet":{"token_id":"<id>","diet":"energy"}}`.
+    Diet(DietOrder),
+    /// A gift to a club's treasury: `{"gift":"<club id>"}`.
+    Gift(AccountId),
 }
 
 #[near(serializers = [json])]
@@ -598,6 +630,11 @@ enum StorageKey {
     TifoVotes,
     TifoVoted,
     ProjectVotes,
+    Conditions,
+    Recruitment,
+    RecruitVotes,
+    ApplicantIds,
+    Gifts,
 }
 
 #[near(serializers = [json, borsh])]
@@ -889,6 +926,16 @@ pub struct League {
     tifo_voted: LookupSet<(u32, AccountId)>,
     /// (club, week) -> (voter: a player's token or `ticket:<id>`, project).
     project_votes: LookupMap<(AccountId, u32), Vec<(String, Project)>>,
+    /// Player -> instruction, diet, holiday and injury (people only).
+    conditions: LookupMap<String, Condition>,
+    /// How each club takes free agents (open when absent).
+    recruitment: LookupMap<AccountId, Recruitment>,
+    /// (club, applicant's player) -> (voter, yes).
+    recruit_votes: LookupMap<(AccountId, String), Vec<(AccountId, bool)>>,
+    /// Club -> the players whose person signed for it.
+    applicant_ids: LookupMap<AccountId, Vec<String>>,
+    /// Club -> its biggest gifts.
+    gifts: LookupMap<AccountId, Vec<Gift>>,
 }
 
 /// How many ledger entries the league keeps (the oldest are overwritten).
@@ -1030,6 +1077,11 @@ impl League {
             tifo_votes: LookupMap::new(StorageKey::TifoVotes),
             tifo_voted: LookupSet::new(StorageKey::TifoVoted),
             project_votes: LookupMap::new(StorageKey::ProjectVotes),
+            conditions: LookupMap::new(StorageKey::Conditions),
+            recruitment: LookupMap::new(StorageKey::Recruitment),
+            recruit_votes: LookupMap::new(StorageKey::RecruitVotes),
+            applicant_ids: LookupMap::new(StorageKey::ApplicantIds),
+            gifts: LookupMap::new(StorageKey::Gifts),
         }
     }
 
@@ -1263,6 +1315,10 @@ impl League {
             "the team sheet closed a minute before kick-off"
         );
         let day = self.match_day;
+        if let Some(c) = self.conditions.get_mut(&token) {
+            require!(c.injured_until < day, "you are injured");
+            c.holiday_until = 0;
+        }
         self.reported.insert((token.clone(), day));
         self.resting.remove(&(token.clone(), day));
         let mut slots = self
@@ -1354,6 +1410,12 @@ impl League {
             self.players.get(&token).map(|p| &p.owner) != Some(&club_id),
             "you play there already"
         );
+        if let Some(old) = self.signings.get(&token).map(|s| s.club.clone())
+            && old != club_id
+        {
+            self.drop_applicant(&old, &token);
+        }
+        self.note_applicant(&club_id, &token);
         self.signings.insert(
             token,
             Signing {
@@ -1541,7 +1603,7 @@ impl League {
         );
         let order: Order = near_sdk::serde_json::from_str(&msg).unwrap_or_else(|_| {
             env::panic_str(
-                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}}, {\"season_ticket\":\"<club>\"} or {\"clause\":\"<token_id>\"}",
+                "msg must be {\"train\":{\"token_id\":\"<id>\",\"skill\":\"pace\"}}, {\"bid\":\"<token_id>\"}, {\"pack\":{}}, {\"season_ticket\":\"<club>\"}, {\"clause\":\"<token_id>\"}, {\"diet\":{\"token_id\":\"<id>\",\"diet\":\"energy\"}} or {\"gift\":\"<club>\"}",
             )
         });
         match order {
@@ -1552,6 +1614,8 @@ impl League {
             Order::Pack(_) => self.open_pack_for(sender_id, amount),
             Order::SeasonTicket(club) => self.sell_season_ticket(sender_id, amount, club),
             Order::Clause(token) => self.pay_clause(sender_id, amount, token),
+            Order::Diet(order) => self.feed(sender_id, amount, order),
+            Order::Gift(club) => self.give(sender_id, amount, club),
         }
         PromiseOrValue::Value(U128(0))
     }
@@ -1799,6 +1863,30 @@ impl League {
         let Some(person) = self.players.get(&token_id).map(|p| p.controller.clone()) else {
             return;
         };
+        // A free agent who hands his registration to a club that votes on
+        // its recruits, before its people said yes: he goes back to himself
+        // and keeps his word, so they can still vote.
+        if let Some(p) = &person
+            && p == &old_owner
+            && self.clubs.contains_key(&new_owner)
+            && !self.may_join(&new_owner, &token_id)
+        {
+            if let Some(player) = self.players.get_mut(&token_id) {
+                player.owner = new_owner;
+                player.contract = None;
+            }
+            if let Some(squad) = self.squads.get_mut(&old_owner) {
+                squad.retain(|t| t != &token_id);
+            }
+            // Without the gas to send him back now, he waits at the club,
+            // outside its squad, and takes his registration back himself
+            // (`leave_club`).
+            let left = env::prepaid_gas().saturating_sub(env::used_gas());
+            if left >= RELEASE_GAS.saturating_add(CALLBACK_GAS) {
+                self.send_back(token_id, old_owner);
+            }
+            return;
+        }
         // A person who lands in a club is under contract there: the one he
         // gave his word for, or the default one. Anywhere else, none.
         let contract = match (person, self.clubs.get(&new_owner)) {
@@ -1820,7 +1908,15 @@ impl League {
             }
             _ => None,
         };
-        self.signings.remove(&token_id);
+        // His word is kept until he lands in the club he gave it to.
+        if self
+            .signings
+            .get(&token_id)
+            .is_some_and(|s| s.club == new_owner)
+        {
+            self.signings.remove(&token_id);
+            self.drop_applicant(&new_owner, &token_id);
+        }
         let Some(player) = self.players.get_mut(&token_id) else {
             return;
         };
@@ -1851,6 +1947,10 @@ impl League {
             .get(&token_id)
             .unwrap_or_else(|| env::panic_str("no such player"));
         require!(p.owner == club, "your club does not own that player");
+        require!(
+            p.controller.is_none() || p.contract.is_some(),
+            "he is not under contract here"
+        );
         let mut squad = self.squads.get(&club).cloned().unwrap_or_default();
         require!(!squad.contains(&token_id), "he is in the squad already");
         squad.push(token_id.clone());
@@ -3096,7 +3196,18 @@ impl League {
                     let base = if p.controller.is_none() {
                         schooled(p.skills, school)
                     } else {
-                        p.skills
+                        let rules = the_rules();
+                        let c = self.conditions.get(&p.token_id);
+                        let diet = c.and_then(|c| self.diet_now(c));
+                        life::fed(
+                            life::instructed(
+                                p.skills,
+                                c.map(|c| c.instruction).unwrap_or_default(),
+                                rules.instruction_points,
+                            ),
+                            diet,
+                            rules.diet_skill,
+                        )
                     };
                     skills[k] = Some(tired(
                         wardrobe::dressed(base, &p.look, k == 0),
@@ -3200,7 +3311,19 @@ impl League {
         let days = self.match_day.saturating_sub(p.energy_day);
         let physio = self.clubs.get(&p.owner).map_or(0, |c| c.physio) as u32;
         let per_day = rules.energy_per_day as u32 + physio * rules.physio_energy as u32;
-        let gain = days * per_day + days.saturating_sub(1) * rules.energy_rest as u32;
+        // An energy diet adds to each of its match days since.
+        let fed = self
+            .conditions
+            .get(&p.token_id)
+            .filter(|c| c.diet == Some(Diet::Energy))
+            .map_or(0, |c| {
+                c.diet_until
+                    .min(self.match_day)
+                    .saturating_sub(p.energy_day)
+            });
+        let gain = days * per_day
+            + days.saturating_sub(1) * rules.energy_rest as u32
+            + fed * rules.diet_energy as u32;
         (p.energy as u32 + gain).min(100) as u8
     }
 
@@ -3404,6 +3527,7 @@ impl League {
             };
             let wage = p.contract.as_ref().map_or(0, |c| c.wage.0);
             self.spend_energy(token, the_rules().energy_match);
+            self.maybe_injure(club, token);
             self.debut(token);
             let treasury = self.clubs.get(club).map(|c| c.treasury.0).unwrap_or(0);
             let paid = treasury >= wage;
@@ -3546,6 +3670,7 @@ impl League {
         self.players.contains_key(token)
             && !self.suspended.contains(&(token.clone(), self.match_day))
             && !self.resting.contains(&(token.clone(), self.match_day))
+            && !self.away(token)
     }
 
     /// The eleven of a club for the next half, by slot of its formation:

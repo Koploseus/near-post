@@ -1088,17 +1088,6 @@ async fn a_clause_moves_a_player_and_an_unpaid_contract_is_left() -> Result<()> 
         .as_str()
         .unwrap()
         .to_string();
-    let owner_of = |game: &Game, token: String| {
-        let c = game.players.clone();
-        async move {
-            let t: Value = c
-                .view("nft_token")
-                .args_json(json!({ "token_id": token }))
-                .await?
-                .json()?;
-            Ok::<String, anyhow::Error>(t["owner_id"].as_str().unwrap().to_string())
-        }
-    };
 
     // Rive Nord pays 50k a match; he signs there for 7 match days.
     let wage = 50_000 * ONE_G;
@@ -1211,5 +1200,168 @@ async fn a_clause_moves_a_player_and_an_unpaid_contract_is_left() -> Result<()> 
             .len(),
         11
     );
+    Ok(())
+}
+
+/// Who holds a player's NFT.
+async fn owner_of(game: &Game, token: String) -> Result<String> {
+    let t: Value = game
+        .players
+        .view("nft_token")
+        .args_json(json!({ "token_id": token }))
+        .await?
+        .json()?;
+    Ok(t["owner_id"].as_str().unwrap().to_string())
+}
+
+/// v10: a club that votes on its recruits sends a free agent back until its
+/// people said yes; a diet is burned and a gift lands in the treasury.
+#[tokio::test]
+async fn a_club_votes_its_recruits_and_a_person_feeds_and_rests() -> Result<()> {
+    let game = deploy().await?;
+    let club = game.account().await?;
+    let rival = game.account().await?;
+    for (c, name) in [(&club, "Rive Nord"), (&rival, "Port-Lune")] {
+        game.call(c, "create_club", json!({ "name": name }))
+            .await?
+            .into_result()?;
+    }
+    game.call(
+        &club,
+        "set_recruitment",
+        json!({ "club_id": club.id(), "recruitment": "vote" }),
+    )
+    .await?
+    .into_result()?;
+    let koplo = game.account().await?;
+    let me = game
+        .call(
+            &koplo,
+            "create_footballer",
+            json!({ "name": "Koplo", "position": "Fw" }),
+        )
+        .await?
+        .into_result()?
+        .json::<Value>()?;
+    let token = me["token_id"].as_str().unwrap().to_string();
+    game.call(
+        &koplo,
+        "sign_for",
+        json!({ "club_id": club.id(), "days": 13 }),
+    )
+    .await?
+    .into_result()?;
+    let join = || async {
+        koplo
+            .call(game.players.id(), "nft_transfer")
+            .args_json(json!({ "receiver_id": club.id(), "token_id": token }))
+            .deposit(NearToken::from_yoctonear(1))
+            .gas(Gas::from_tgas(100))
+            .transact()
+            .await
+    };
+    // Too early: the league sends his registration back to him.
+    let r = join().await?;
+    println!("refused transfer: {} Tgas", r.total_gas_burnt.as_tgas());
+    r.into_result()?;
+    assert_eq!(
+        owner_of(&game, token.clone()).await?,
+        koplo.id().to_string()
+    );
+    let p = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(p["owner"], json!(koplo.id()));
+    assert_eq!(p["contract"], Value::Null);
+    let list = game
+        .view("applicants", json!({ "club_id": club.id() }))
+        .await?;
+    assert_eq!(list[0]["token_id"], json!(token));
+    assert_eq!(list[0]["approved"], json!(false));
+
+    // The manager says yes: now the same transfer stays.
+    game.call(
+        &club,
+        "vote_recruit",
+        json!({ "token_id": token, "yes": true }),
+    )
+    .await?
+    .into_result()?;
+    join().await?.into_result()?;
+    assert_eq!(owner_of(&game, token.clone()).await?, club.id().to_string());
+    let p = game
+        .view("get_player", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(p["contract"]["until_day"], json!(13));
+    assert_eq!(
+        game.view("applicants", json!({ "club_id": club.id() }))
+            .await?,
+        json!([])
+    );
+
+    // A diet: its price is burned from his G.
+    let rules = game.view("rules", json!({})).await?;
+    let price = g(&rules["diet_price"]);
+    give(&game, &club, &koplo, price + 1_000 * ONE_G).await?;
+    let supply = game.supply().await?;
+    koplo
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": price.to_string(),
+            "msg": json!({ "diet": { "token_id": token, "diet": "energy" } }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?
+        .into_result()?;
+    assert_eq!(game.supply().await?, supply - price);
+    let c = game
+        .view("condition_of", json!({ "token_id": token }))
+        .await?;
+    assert_eq!(c["diet"], json!("energy"));
+    assert_eq!(c["diet_until"], json!(7));
+
+    // A gift: real G into the club's treasury, nothing minted or burned.
+    let before = g(&game
+        .view("get_club", json!({ "club_id": club.id() }))
+        .await?["treasury"]);
+    koplo
+        .call(game.goalars.id(), "ft_transfer_call")
+        .args_json(json!({
+            "receiver_id": game.league.id(),
+            "amount": (1_000 * ONE_G).to_string(),
+            "msg": json!({ "gift": club.id() }).to_string(),
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .gas(Gas::from_tgas(150))
+        .transact()
+        .await?
+        .into_result()?;
+    let after = g(&game
+        .view("get_club", json!({ "club_id": club.id() }))
+        .await?["treasury"]);
+    assert_eq!(after, before + 1_000 * ONE_G);
+    assert_eq!(game.supply().await?, supply - price);
+    let board = game
+        .view("gifts_of", json!({ "club_id": club.id() }))
+        .await?;
+    assert_eq!(board[0]["from"], json!(koplo.id()));
+
+    // An instruction, then a holiday: he is not in the eleven that day.
+    game.call(
+        &koplo,
+        "set_instruction",
+        json!({ "instruction": "shooter" }),
+    )
+    .await?
+    .into_result()?;
+    game.call(&koplo, "go_on_holiday", json!({ "days": 1 }))
+        .await?
+        .into_result()?;
+    let (_, second) = game.play_day(&club).await?;
+    let results = second.into_result()?.json::<Value>()?;
+    assert!(!results.to_string().contains(&format!("\"{token}\"")));
     Ok(())
 }
