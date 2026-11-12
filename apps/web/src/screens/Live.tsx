@@ -5,15 +5,15 @@ import { serverNow } from "../lib/time.js";
 import { type Clock, HALF_SECONDS, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
 import { frameAt, keyframes, positions } from "../lib/flow.js";
 import { league } from "../lib/near.js";
-import { BOT, type Club, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
+import { BOT, type Club, type MatchEvent, type MatchResult, type Player, type Stand, type StandResult } from "../lib/types.js";
 import { clubName } from "../lib/format.js";
 import { type AgentEntry, agentFeed, useAgents } from "../lib/agents.js";
 import { Highlight, type HighlightKind, type HighlightMoment } from "./Highlight.js";
-import { faceNumber, Head } from "./Look.js";
+import { faceNumber } from "./Look.js";
+import { Crest, crestOf } from "./Crest.js";
+import { PixelAvatar } from "../floodlight/PixelPlayer.js";
 
 /** Shirt colours on the pitch: the home side in club blue, the away side in red. */
-const HOME_SHIRT = "#2F5DA8";
-const AWAY_SHIRT = "#C8202F";
 
 const REDUCED = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -148,6 +148,19 @@ export function MatchView({
   );
   const who = useMemo(() => new Map((squads ?? []).flat().map((p) => [p.token_id, p.name])), [squads]);
   const players = useMemo(() => new Map((squads ?? []).flat().map((p) => [p.token_id, p])), [squads]);
+  // Each side's stand for this match day: settled once the match is over, live before.
+  const { data: standsOf } = useData(
+    () =>
+      Promise.all(
+        [m.home, m.away].map(async (club_id) => {
+          const done = await league<StandResult | null>("stand_result", { club_id, match_day: day }).catch(() => null);
+          if (done) return { present: done.present, fans: done.fans, full: done.full_house };
+          const now = await league<Stand | null>("stand", { club_id }).catch(() => null);
+          return now && now.match_day === day ? { present: now.present, fans: now.fans, full: now.full_house } : null;
+        }),
+      ),
+    [m.home, m.away, day],
+  );
   const c = final || !schedule ? FINAL : clock(m, kickoff, schedule, now, kickoffs[day]);
   // Until the real kick-off times are in (a few seconds), nothing replays.
   const syncing = !final && kickoffs[day] === undefined;
@@ -247,11 +260,26 @@ export function MatchView({
           {m.derby && <span className="tag">DERBY</span>}
         </span>
         <div className="board">
-          <span className="team">{clubName(names.get(m.home) ?? m.home)}</span>
+          {[m.home, m.away].map((id, side) => {
+            const st = standsOf?.[side];
+            return (
+              <span key={id} className={`team${side ? " away" : ""}`}>
+                <Crest clubId={id} name={names.get(id) ?? id} size={44} />
+                <span>
+                  <b>{clubName(names.get(id) ?? id)}</b>
+                  {st && st.fans > 0 && (
+                    <i className={`stand-tag${st.full ? " full" : ""}`}>
+                      {side ? "AWAY" : "HOME"} STAND {st.present}/{st.fans}
+                      {st.full ? " · FULL HOUSE" : ""}
+                    </i>
+                  )}
+                </span>
+              </span>
+            );
+          })}
           <span className="score">
-            {hs} - {as}
+            {hs}-{as}
           </span>
-          <span className="team">{clubName(names.get(m.away) ?? m.away)}</span>
         </div>
         <div className="clock-row">
           <span className={`clock${c.phase === "first_half" || c.phase === "second_half" ? " running" : ""}`}>{c.label}</span>
@@ -259,7 +287,7 @@ export function MatchView({
         <div className="match-bar" aria-hidden="true">
           <span style={{ width: `${c.progress * 100}%` }} />
         </div>
-        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} players={players} />)}
+        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} players={players} names={names} />)}
         {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
@@ -329,33 +357,35 @@ export function MatchView({
               <span className="k">MAN OF THE MATCH</span> {m.stats.man_of_the_match.name} · {(m.stats.man_of_the_match.rating / 10).toFixed(1)}
             </p>
           )}
-          <h3>Other matches</h3>
-          <ul className="others">
-            {all.map((o, i) => {
-              const [h, a] = final || !schedule ? [o.home_goals, o.away_goals] : scoreOf(visible(o, clock(o, kickoff, schedule, now, kickoffs[day])));
-              return (
-                <li key={o.home}>
-                  {pick ? (
-                    <button type="button" className={`link${i === idx ? " on" : ""}`} onClick={() => pick(i)}>
-                      {clubName(names.get(o.home) ?? "")} {h}-{a} {clubName(names.get(o.away) ?? "")}
-                    </button>
-                  ) : (
-                    <a className={`link${i === idx ? " on" : ""}`} href={`#/game/${day}/${i}`}>
-                      {clubName(names.get(o.home) ?? "")} {o.home_goals}-{o.away_goals} {clubName(names.get(o.away) ?? "")}
-                    </a>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
         </aside>
       </div>
+      <section className="other-matches" aria-label="Other matches">
+          <span className="np-label">OTHER MATCHES</span>
+        <ul className="others chips">
+          {all.map((o, i) => {
+            const [h, a] = final || !schedule ? [o.home_goals, o.away_goals] : scoreOf(visible(o, clock(o, kickoff, schedule, now, kickoffs[day])));
+            return (
+              <li key={o.home}>
+                {pick ? (
+                  <button type="button" className={`link${i === idx ? " on" : ""}`} onClick={() => pick(i)}>
+                    <Crest clubId={o.home} name={names.get(o.home) ?? ""} size={18} /> {clubName(names.get(o.home) ?? "")} <b>{h}-{a}</b> {clubName(names.get(o.away) ?? "")} <Crest clubId={o.away} name={names.get(o.away) ?? ""} size={18} />
+                  </button>
+                ) : (
+                  <a className={`link${i === idx ? " on" : ""}`} href={`#/game/${day}/${i}`}>
+                    <Crest clubId={o.home} name={names.get(o.home) ?? ""} size={18} /> {clubName(names.get(o.home) ?? "")} <b>{o.home_goals}-{o.away_goals}</b> {clubName(names.get(o.away) ?? "")} <Crest clubId={o.away} name={names.get(o.away) ?? ""} size={18} />
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 }
 
 /** A small pitch: 22 players in their formations, and the ball going where the play is. */
-function Pitch({ m, shown, c, players }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player> }) {
+function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player>; names: Map<string, string> }) {
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
   const f = [m.formations[second ? 2 : 0] ?? m.formations[0]!, m.formations[second ? 3 : 1] ?? m.formations[1]!];
@@ -373,7 +403,22 @@ function Pitch({ m, shown, c, players }: { m: MatchResult; shown: (MatchEvent & 
     (second && m.elevens[2 + side]?.[k] === "") ||
     shown.some((e) => e.kind === "red" && e.half === half && Number(!e.home) === side && e.player === k);
   const teams = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined));
+  // Club colours on the pitch; when both clubs wear the same, the away side changes.
+  const home = crestOf(m.home);
+  const away = crestOf(m.away);
+  const shirts = [home.main, away.main === home.main ? away.accent : away.main];
+  // Momentum: who has had the ball over the last ten minutes of this half (the same play the pitch shows).
+  const from = Math.max(half === 0 ? 0 : HALF_SECONDS, c.second - 600);
+  let mine = 0;
+  let all = 0;
+  if (!stopped)
+    for (let s = from; s <= c.second; s += 10) {
+      all++;
+      if (frameAt(keys, s).side === 0) mine++;
+    }
+  const share = all ? mine / all : 0.5;
   return (
+    <>
     <div className="mini-pitch" aria-hidden="true">
       <span className="mp-line mp-half" />
       <span className="mp-line mp-circle" />
@@ -388,15 +433,27 @@ function Pitch({ m, shown, c, players }: { m: MatchResult; shown: (MatchEvent & 
           const id = (second ? m.elevens[2 + side] : undefined)?.[k] || m.elevens[side]?.[k];
           const p = id ? players.get(id) : undefined;
           return (
-            <span key={`${side}-${k}`} className={`mp-dot mp-face ${side ? "away" : "home"}`} style={{ left: `${x}%`, top: `${y}%` }}>
-              {/* An academy kid (no footballer in the slot) gets a face too, from his slot. */}
-              <Head look={p?.look} n={p ? faceNumber(p.token_id) : 7 + side * 11 + k} shirt={side ? AWAY_SHIRT : HOME_SHIRT} size={22} />
+            <span key={`${side}-${k}`} className={`mp-sprite ${side ? "away" : "home"}`} style={{ left: `${x}%`, top: `${y}%` }}>
+              {/* The whole footballer in his club's shirt; an academy kid (empty slot) gets one from his slot. */}
+              <PixelAvatar look={p?.look} n={p ? faceNumber(p.token_id) : 7 + side * 11 + k} shirt={shirts[side]} size={34} />
             </span>
           );
         }),
       )}
       <span className="mp-ball" style={{ left: `${Math.min(99.5, Math.max(0.5, at.ball[0]))}%`, top: `${at.ball[1]}%` }} />
     </div>
+    {!stopped && (
+      <div className="momentum" aria-label={`Momentum: ${Math.round(share * 100)}% of the ball to the home side over the last ten minutes`}>
+        <span className="np-label">MOMENTUM</span>
+        <span className="np-label pressing">{share > 0.6 ? `${clubName(names.get(m.home) ?? "")} pressing` : share < 0.4 ? `${clubName(names.get(m.away) ?? "")} pressing` : "Even"}</span>
+        <span className="momentum-cells">
+          {Array.from({ length: 30 }, (_, i) => (
+            <i key={i} style={{ background: i < Math.round(share * 30) ? shirts[0] : shirts[1] }} />
+          ))}
+        </span>
+      </div>
+    )}
+    </>
   );
 }
 

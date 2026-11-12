@@ -423,3 +423,58 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .arcade-grid button[aria-checked="true"] > span, .arcade-grid button[aria-checked="true"] i, .arcade-grid button[aria-checked="true"] b { color: var(--np-outline); }
 .arcade-mini { width: 44px; margin: 0; }
 @media (min-width: 1100px) { .locker .skill-pick.arcade-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .locker .arcade-grid button { grid-template-columns: 1fr; justify-items: center; text-align: center; } .locker .arcade-grid button > span { justify-items: center; } }
+
+/* ======== Live, per the kit's Live board ======== */
+.scoreboard .board { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.board .team { grid-row: 1; grid-column: 1; display: flex; align-items: center; justify-content: flex-end; gap: 12px; text-align: right; }
+.board .team.away { grid-column: 3; flex-direction: row-reverse; justify-content: flex-end; text-align: left; }
+.board .score { grid-row: 1; grid-column: 2; font-size: clamp(34px, 6vw, 64px); padding: 8px 18px; color: var(--np-yellow); }
+.board .team > span { display: grid; gap: 6px; justify-items: end; min-width: 0; }
+.board .team.away > span { justify-items: start; }
+.board .team b { font-family: var(--np-display); font-weight: 700; font-size: clamp(15px, 2.4vw, 30px); line-height: 1.05; color: var(--np-text); text-shadow: 0 3px 0 var(--np-outline); }
+.board .crest { flex: none; filter: drop-shadow(0 3px 0 var(--np-outline)); }
+.stand-tag { padding: 3px 8px; background: var(--np-outline); color: var(--np-red-hi); font-style: normal; font-family: var(--np-display); font-weight: 700; font-size: 12px; letter-spacing: 1px; white-space: nowrap; }
+.stand-tag.full { color: var(--np-green); }
+.clock-row .clock { padding: 4px 12px; background: var(--np-outline); color: var(--np-red-hi); font-size: 14px; }
+/* Bright floodlit pitch, the whole footballer on it. */
+.mini-pitch { max-width: none; border: 0; outline: 4px solid rgba(243, 234, 215, .85); outline-offset: -10px; background: repeating-linear-gradient(90deg, #5BC72E 0 6.25%, #4AB226 6.25% 12.5%); box-shadow: 0 0 0 10px #3E9A22, var(--px); }
+.mp-line, .mp-box { border-color: rgba(255, 255, 255, .9) !important; }
+.mp-sprite { position: absolute; z-index: 2; width: 3.4%; min-width: 12px; transform: translate(-50%, -82%); transition: left 1s linear, top 1s linear; pointer-events: none; }
+.mp-sprite svg { display: block; width: 100%; height: auto; image-rendering: pixelated; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .35)); }
+.mp-ball { z-index: 3; border-radius: 0 !important; background: #fff; box-shadow: 0 0 0 2px var(--np-outline); }
+.moment { background: rgba(11, 8, 32, .78); }
+.moment.goal { background: rgba(11, 8, 32, .78); animation: moment 4s ease-out both; }
+.moment strong { font-family: var(--np-display); font-weight: 700; color: var(--np-title-yellow, #FFD23F); text-shadow: -4px 0 0 #2A1466, 4px 0 0 #2A1466, 0 -4px 0 #2A1466, 0 4px 0 #2A1466, 0 9px 0 #150A3D; }
+.moment span { font-family: var(--np-display); font-weight: 700; padding: 4px 12px; background: var(--np-text); color: var(--np-outline); }
+/* Momentum in cells, under the pitch. */
+.momentum { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; width: 100%; margin-top: 4px; }
+.momentum .pressing { justify-self: end; color: var(--np-red-hi); }
+.momentum-cells { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(30, 1fr); gap: 2px; padding: 3px; background: var(--np-outline); }
+.momentum-cells i { height: 14px; }
+/* The feed: LED minutes, goals on a lit row. */
+.ev-min { font-family: var(--np-led); font-size: 11px; color: var(--np-muted-2); }
+.ev.goal, .ev.own_goal { background: var(--np-chip); font-size: 16px; box-shadow: inset 4px 0 0 var(--np-yellow); }
+.ev.goal .ev-min, .ev.own_goal .ev-min { color: var(--np-yellow); }
+/* Other matches: a row of chips with both crests. */
+.other-matches { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.others.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.others.chips li { display: block; }
+.others.chips .link { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--np-chip); color: var(--np-text) !important; box-shadow: var(--px); text-decoration: none; font-family: var(--np-display); font-weight: 700; font-size: 13px; }
+.others.chips .link b { font-family: var(--np-led); font-size: 11px; color: var(--np-yellow); }
+.others.chips .link.on { background: var(--np-text); color: var(--np-outline) !important; }
+.others.chips .link.on b { color: var(--np-red); }
+
+/* Every bar in the app is a meter of square cells (kit §3: never a smooth bar). */
+.duel-bar, .match-bar, .bar, .season-bar, .track, .supply .bar { border-radius: 0 !important; -webkit-mask: repeating-linear-gradient(90deg, #000 0 10px, transparent 10px 12px); mask: repeating-linear-gradient(90deg, #000 0 10px, transparent 10px 12px); }
+.track { -webkit-mask: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 6px); mask: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 6px); }
+.duel-bar { height: 12px; }
+.match-bar { height: 10px; }
+@media (max-width: 720px) {
+  .board .team, .board .team.away { flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; text-align: center; }
+  .board .team > span, .board .team.away > span { justify-items: center; }
+  .board .team b { font-size: 13px; text-shadow: 0 2px 0 var(--np-outline); }
+  .board .crest { width: 34px; height: auto; }
+  .board .score { font-size: 28px; padding: 6px 8px; align-self: start; }
+  .stand-tag { font-size: 9px; letter-spacing: .5px; white-space: normal; }
+}
+.tabbar a[aria-current="page"] .tile { outline: 0 !important; transform: none !important; }
