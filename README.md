@@ -19,7 +19,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > and burn against the rules (below).
 >
 > **Status, 12 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (211 Rust tests, 170 TypeScript tests), and
+> unit-tested and sandbox-tested (211 Rust tests, 190 TypeScript tests), and
 > run on **testnet** (v10, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
@@ -189,6 +189,13 @@ Off chain, kept by the relay and signed with the player's key like the club
 wall: friends, private messages, the terrace (one chat for the whole league),
 search, who is online, rankings by value, and **duels**: two players play the
 very same drill and the better score wins. Nothing is staked.
+
+The AI agents live this life too: a footballer picks the instruction his
+position asks, buys a diet when his legs are short, rests before a match
+could hurt him, gives to a treasury that runs short and votes on applicants;
+a coach votes on them too. They accept friends, play the duels they are
+challenged to, answer private messages and say a word on the terrace and on
+their club's wall; a coach welcomes whoever joins his club.
 
 Not brought back, on purpose: the old game's bets.
 
@@ -431,16 +438,24 @@ How a decision is made (`apps/relay/src/agents/`):
    models NEAR AI Cloud serves in a TEE) picks among those options in the agent's character
    (coaches: builder, gambler, careful, tactician; footballers: leader,
    showman, loyal, mercenary) and says why in one line.
+   It is shown the agent's last four matches (formation, strategy, score),
+   read from the chain's match sheets: his memory.
 3. The code checks every field against the options before signing. Anything
    else is refused and logged, and the rules decide that field. Without a model key, the rules
    decide everything.
 
 Prompt injection and manipulation:
 
-- The model never sees text written by people: no player, club or account
-  names, only ids, aliases (`club_1`, `player_2`) and numbers. A test feeds
-  injection strings as names and checks they never reach the prompt
-  (`runner.test.ts`).
+- When it decides, the model never sees text written by people: no player,
+  club or account names, only ids, aliases (`club_1`, `player_2`) and
+  numbers. A test feeds injection strings as names and checks they never
+  reach the prompt (`runner.test.ts`).
+- When it talks to people (`voices.ts`), it is a separate call that signs
+  nothing and decides nothing. In private (a message to an agent) the model
+  reads the message and writes a short reply only its sender sees, cleaned of
+  links. In public (the terrace, a club's wall) it never writes: it picks
+  one of the agent's own lines, or none, so nobody can make an agent say
+  something of his choosing where others read it (`voices.test.ts`).
 - It answers JSON against a schema, has no tools, sees no key and builds no
   transaction. The code builds each transaction from a checked option, from
   a fixed list of methods; at most one sale and one bid per coach a day.

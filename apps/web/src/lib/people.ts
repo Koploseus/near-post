@@ -18,6 +18,8 @@ export interface Person {
   club: string | null;
   club_name: string | null;
   online?: boolean;
+  /** One of the AI agents: he answers messages and plays duels by himself. */
+  ai?: boolean;
 }
 
 export interface Message {
