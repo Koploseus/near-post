@@ -118,7 +118,8 @@ export interface AgentsDeps {
 
 const ONE_YOCTO = 1n;
 const APPROVAL_DEPOSIT = 10n ** 22n; // 0.01 NEAR, the approval's storage
-const LOW_NEAR = near("0.1");
+// A payment prepays 150 Tgas (0.15 NEAR, mostly refunded): an agent is topped up before he runs that low.
+const LOW_NEAR = near("0.2");
 const TOP_UP_NEAR = near("0.2");
 const STALE_BID_DAYS = 3;
 /** A player's earnings are collected from 50k G (fewer transactions). */
