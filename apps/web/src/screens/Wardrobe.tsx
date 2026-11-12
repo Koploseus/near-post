@@ -103,9 +103,9 @@ export function Wardrobe({ me }: { me: Player }) {
             </span>
           </div>
           {reveal && data.unboxed.length > 0 && (
+            <div className="reveal-modal" role="dialog" aria-modal="true" aria-label="Your pack" onClick={(e) => e.target === e.currentTarget && setReveal(false)}>
+            <div className="reveal-card">
             <span className={`unbox-title ${best(data.unboxed.map((id) => byId.get(id)?.rarity))}`}>{best(data.unboxed.map((id) => byId.get(id)?.rarity)).toUpperCase()}!</span>
-          )}
-          {reveal && data.unboxed.length > 0 && (
             <div className="unboxed" role="status">
               {data.unboxed.map((id, i) => {
                 const it = byId.get(id);
@@ -118,6 +118,11 @@ export function Wardrobe({ me }: { me: Player }) {
                   </span>
                 ) : null;
               })}
+            </div>
+            <button type="button" className="cta" autoFocus onClick={() => setReveal(false)}>
+              TO MY ITEMS
+            </button>
+            </div>
             </div>
           )}
 
