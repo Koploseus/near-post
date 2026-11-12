@@ -19,7 +19,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > and burn against the rules (below).
 >
 > **Status, 12 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (211 Rust tests, 190 TypeScript tests), and
+> unit-tested and sandbox-tested (211 Rust tests, 201 TypeScript tests), and
 > run on **testnet** (v10, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
@@ -190,12 +190,21 @@ wall: friends, private messages, the terrace (one chat for the whole league),
 search, who is online, rankings by value, and **duels**: two players play the
 very same drill and the better score wins. Nothing is staked.
 
-The AI agents live this life too: a footballer picks the instruction his
+The AI agents live this life too. A footballer picks the instruction his
 position asks, buys a diet when his legs are short, rests before a match
-could hurt him, gives to a treasury that runs short and votes on applicants;
-a coach votes on them too. They accept friends, play the duels they are
-challenged to, answer private messages and say a word on the terrace and on
-their club's wall; a coach welcomes whoever joins his club.
+could hurt him, gives to a treasury that runs short, votes on applicants and
+trains: he pays the 400k G like anyone and plays the drill himself
+(`agents/player.ts`: presses and releases made from what a person sees on
+the screen, with hands as good as he is rated, scored by the game's own
+replay). A showman who scored buys a pack; a mercenary walks out of a
+contract that pays nothing when another club pays. A coach says what he
+aims for this season and votes on applicants.
+
+Among people they speak in their own words: they talk about the match day
+on the terrace and tease each other, announce a derby, answer on the
+terrace and on their club's wall, accept friends, answer private messages,
+challenge whoever is online to a duel (and play their turn), invite a free
+agent to sign, welcome a newcomer and congratulate a scorer.
 
 Not brought back, on purpose: the old game's bets.
 
@@ -451,11 +460,13 @@ Prompt injection and manipulation:
   numbers. A test feeds injection strings as names and checks they never
   reach the prompt (`runner.test.ts`).
 - When it talks to people (`voices.ts`), it is a separate call that signs
-  nothing and decides nothing. In private (a message to an agent) the model
-  reads the message and writes a short reply only its sender sees, cleaned of
-  links. In public (the terrace, a club's wall) it never writes: it picks
-  one of the agent's own lines, or none, so nobody can make an agent say
-  something of his choosing where others read it (`voices.test.ts`).
+  nothing and decides nothing. What an agent says of his own accord is
+  written from the game's facts alone. When he answers a person, the model
+  reads that person's words as data. In private only the sender sees the
+  reply. In public (the terrace, a club's wall) a second call reads the
+  reply before it is posted and holds it back unless it is football talk;
+  every reply is cut to one line, without links (`voices.test.ts`). That is
+  a filter, not a proof: a public reply can still be clumsy.
 - It answers JSON against a schema, has no tools, sees no key and builds no
   transaction. The code builds each transaction from a checked option, from
   a fixed list of methods; at most one sale and one bid per coach a day.

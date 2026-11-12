@@ -1,3 +1,4 @@
+import { KeyPair } from "near-api-js";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app.js";
@@ -90,6 +91,7 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
 
 if (agents && config.AGENTS_SEED) {
   const seed = config.AGENTS_SEED;
+  const attester = config.ATTESTER_PRIVATE_KEY ? KeyPair.fromString(config.ATTESTER_PRIVATE_KEY as `ed25519:${string}`) : null;
   // One budget of RPC requests for all agents, so the scheduler keeps its share.
   const limiter = new Limiter(config.AGENTS_RPS);
   const runner = new Agents(
@@ -107,6 +109,8 @@ if (agents && config.AGENTS_SEED) {
       ask: askWith(brain),
       brain,
       journal: agents.journal,
+      // The drill attester's key: an agent pays for his training like anyone and plays the drill himself (agents/player.ts).
+      ...(attester ? { attest: (token: string, ticket: number, points: number) => Buffer.from(attester.sign(new TextEncoder().encode(`near-post:train:${config.LEAGUE_ID}:${token}:${ticket}:${points}`)).signature).toString("base64") } : {}),
     },
     agents.roster,
   );
@@ -124,6 +128,12 @@ if (agents && config.AGENTS_SEED) {
   };
   setInterval(() => void look(), config.AGENTS_EVERY_MS);
   console.log(`agents on: ${agents.roster.length}, ${brain ? `model ${brain.model}` : "rules only (no NEAR_AI_API_KEY)"}`);
+}
+
+// What the agents say and start by themselves (agents/voices.ts): a look a minute.
+if (agents) {
+  const alive = (app as typeof app & { alive?: () => Promise<void> }).alive;
+  if (alive) setInterval(() => void alive(), 60_000).unref();
 }
 
 serve({ fetch: app.fetch, port: config.PORT }, (info) => {

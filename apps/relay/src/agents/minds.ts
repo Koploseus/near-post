@@ -66,7 +66,7 @@ export async function decideTactic(a: Ask | null, s: TacticSituation): Promise<D
     `${COACH[s.style]} Pick the formation for the next half. ` +
     "Zones are mean ratings (1-99) of the players in the back, the middle and the front for each formation; `theirs` is the opponent's. " +
     "`score` is [ours, theirs]; `table` gives positions out of `clubs`. " +
-    "`history` is your last matches, the latest last, with the formation and strategy your side ended with and the score [ours, theirs]: keep what won, change what lost, and say so.";
+    "`history` is your last matches, the latest last, with the formation and strategy your side ended with and the score [ours, theirs]: keep what won, change what lost, and say so. `aim` is what you told your club you aim for this season (title, top_half or stay_up): play for it.";
   const withBriefing =
     `${system} Also write \`briefing\`: two or three sentences for your season ticket holders, the plan and the zone that decides the match, with its numbers.`;
   return decide(
@@ -133,7 +133,7 @@ export async function decideFootballer(a: Ask | null, s: FootballerDay): Promise
   }
   if (s.spend) {
     props.pack = { type: "boolean" };
-    parts.push("Decide whether to spend `pack_price` G of your `wallet` on a pack of three cosmetic items (`pack`).");
+    parts.push("Decide whether to spend `pack_price` G of your `wallet` on a pack of three cosmetic items (`pack`); `scored` is how many goals you scored in your last match.");
     if (s.spend.season_ticket_price !== undefined) {
       props.season_ticket = { type: "boolean" };
       parts.push(
