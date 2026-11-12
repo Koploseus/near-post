@@ -218,6 +218,8 @@ export interface TacticSituation {
   table: { ours: number; theirs: number; clubs: number };
   /** His last matches, the latest last: the formation and strategy his side ended with, and the score. */
   history?: Memory[];
+  /** What he said he aims for this season. */
+  aim?: Aim;
 }
 
 export function tacticSituation(
@@ -548,6 +550,8 @@ export interface SpendSituation {
   pack_price: number;
   /** Offered when his club has season tickets left and he holds none this season. */
   season_ticket_price?: number;
+  /** Goals he scored in his club's last match. */
+  scored?: number;
 }
 
 /** What a footballer keeps in his wallet before he buys a pack (whole G). */
@@ -560,7 +564,9 @@ export function fallbackSpend(s: SpendSituation): { pack: boolean; season_ticket
     (s.character === "loyal" || s.character === "leader") &&
     s.wallet >= s.season_ticket_price + SAVINGS[s.character] / 2;
   const left = s.wallet - (ticket ? s.season_ticket_price! : 0);
-  return { pack: left >= s.pack_price + SAVINGS[s.character], ...(s.season_ticket_price !== undefined ? { season_ticket: ticket } : {}) };
+  // A showman who just scored treats himself, savings or not.
+  const treat = s.character === "showman" && (s.scored ?? 0) > 0;
+  return { pack: left >= s.pack_price + (treat ? 0 : SAVINGS[s.character]), ...(s.season_ticket_price !== undefined ? { season_ticket: ticket } : {}) };
 }
 
 /** How long each character signs for, in match days (one of the league's `contract_days`). */
@@ -713,3 +719,44 @@ export interface Memory {
 
 /** "W", "D" or "L" for each remembered match, the latest last. */
 export const form = (history: Memory[]) => history.map((m) => (m.score[0] > m.score[1] ? "W" : m.score[0] < m.score[1] ? "L" : "D")).join("");
+
+// ---- Training, wants and aims ----
+
+/**
+ * The skill a footballer trains: of the two his position lives on, the weaker.
+ * He pays the same G and the same energy as anyone and plays the drill
+ * himself (player.ts).
+ */
+export function trainSkill(position: Position, s: Skills): keyof Skills {
+  const pair: [keyof Skills, keyof Skills] = position === "Fw" ? ["shooting", "pace"] : position === "Mf" ? ["passing", "dribbling"] : position === "Df" ? ["defending", "physical"] : ["defending", "passing"];
+  return s[pair[0]] <= s[pair[1]] ? pair[0] : pair[1];
+}
+
+/** How many times the price of a training a footballer wants in his wallet before he pays for one. */
+export const TRAIN_RESERVE: Record<Character, number> = { leader: 2, showman: 2.5, loyal: 3, mercenary: 3 };
+
+/** Whether he pays for a training today: the G for it and to spare, and the legs for it without ending under `floor`. */
+export function wantsTraining(character: Character, wallet: number, cost: number, energy: number, energyCost: number, floor: number): boolean {
+  return cost > 0 && wallet >= cost * TRAIN_RESERVE[character] && energy - energyCost >= floor;
+}
+
+/**
+ * A mercenary under a contract that pays nothing walks out when another club
+ * with room pays at least `min` a match (whole G). Returns that wage, or 0.
+ */
+export function walksOut(character: Character, wage: number, others: { wage: number; people: number }[], min = 50_000): number {
+  if (character !== "mercenary" || wage > 0) return 0;
+  const best = Math.max(0, ...others.filter((c) => c.people < 12).map((c) => c.wage));
+  return best >= min ? best : 0;
+}
+
+export type Aim = "title" | "top_half" | "stay_up";
+
+/** What a coach aims for this season, from where his club stands and who he is. */
+export function aimFor(style: Style, rank: number, clubs: number): Aim {
+  if (clubs <= 1) return "title";
+  const share = (rank - 1) / (clubs - 1); // 0: first, 1: last
+  if (share <= (style === "gambler" ? 0.5 : 0.25)) return "title";
+  if (share >= (style === "careful" ? 0.55 : 0.75)) return "stay_up";
+  return "top_half";
+}

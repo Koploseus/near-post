@@ -18,7 +18,8 @@ import { FACE_MAX, Faces } from "./faces.js";
 import { faceMessage, fanzoneMessage, presenceMessage, socialMessage, wallMessage, wallReadMessage } from "./vault-message.js";
 import { DUEL_LEVEL, People, duelWinner, valueOf } from "./people.js";
 import type { Ask } from "./agents/minds.js";
-import { type Facts, Voices, afterMatchLine, duelHits, welcomeLine } from "./agents/voices.js";
+import { type Facts, Voices, afterMatchLine, welcomeLine } from "./agents/voices.js";
+import { played } from "./agents/player.js";
 import { botDocs, makeToken, readToken } from "./bot.js";
 import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
 
@@ -468,13 +469,13 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return { account, token_id: "", name: `${a.name}, coach`, position: "", overall: 0, goals: 0, value: 0, club: account, club_name: a.clubName };
   };
   const dayNow = new Memo<number>(30_000, now);
-  const lastResults = new Memo<{ home: string; away: string; home_goals: number; away_goals: number; full_time?: boolean }[]>(60_000, now);
+  const lastResults = new Memo<{ home: string; away: string; home_goals: number; away_goals: number; goals?: { player: string; kind: string }[] }[]>(60_000, now);
   /** The last match day fully played, and its results. */
   const lastDay = async () => {
     const day = await dayNow.get("day", () => chain.view<number>(config.LEAGUE_ID!, "match_day").catch(() => 0), (d) => d > 0);
     const last = day - 1;
     if (last < 1) return { day: 0, results: [] };
-    const results = await lastResults.get(String(last), () => chain.view<{ home: string; away: string; home_goals: number; away_goals: number }[]>(config.LEAGUE_ID!, "results", { match_day: last }).catch(() => []), (r) => r.length > 0);
+    const results = await lastResults.get(String(last), () => chain.view<{ home: string; away: string; home_goals: number; away_goals: number; goals?: { player: string; kind: string }[] }[]>(config.LEAGUE_ID!, "results", { match_day: last }).catch(() => []), (r) => r.length > 0);
     return { day: last, results };
   };
   const scoreOf = (results: Awaited<ReturnType<typeof lastDay>>["results"], club: string): [number, number] | null => {
@@ -516,50 +517,137 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     });
   };
   const terraceReplies = new Limiter(1, 90_000, now);
-  /** After someone spoke on the terrace, one of the AI footballers may answer with one of his own lines. */
+  const aiPeople = async () => (await directory()).filter((p) => voices!.agent(p.account));
+  const anyOf = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
+  const sayAs = (p: Person, text: string) => people.say({ account: p.account, token_id: p.token_id, name: p.name, text });
+  /** After someone spoke on the terrace, one of the AI footballers may answer, in his own words. */
   const answerOnTerrace = (said: string) => {
-    if (!voices || !deps.agents || !terraceReplies.allow("all")) return;
+    if (!voices || !terraceReplies.allow("all")) return;
     later("terrace", async () => {
-      const all = await directory();
-      const mine = all.filter((p) => voices.agent(p.account));
-      const p = mine[Math.floor(Math.random() * mine.length)];
+      const p = anyOf(await aiPeople());
       const a = p && voices.agent(p.account);
       if (!p || !a) return;
-      const text = await voices.publicLine(a, await factsOf(a), said);
-      if (text) people.say({ account: p.account, token_id: p.token_id, name: p.name, text });
+      const text = await voices.publicReply(a, await factsOf(a), said, "person");
+      if (text) sayAs(p, text);
     });
   };
   const wallReplies = new Limiter(1, 2 * 60_000, now);
-  /** After a person posted on a club's wall, its coach or one of its AI footballers may answer with one of his own lines. */
+  /** After a person posted on a club's wall, its coach or one of its AI footballers may answer, in his own words. */
   const answerOnWall = (club: string, said: string) => {
     if (!voices || !wallReplies.allow(club)) return;
     later("wall", async () => {
-      const all = await directory();
-      const mates = all.filter((p) => p.club === club && voices.agent(p.account));
+      const mates = (await aiPeople()).filter((p) => p.club === club);
       const pick = Math.floor(Math.random() * (mates.length + (voices.agent(club) ? 1 : 0)));
       const p = mates[pick];
       const a = p ? voices.agent(p.account) : voices.agent(club);
       if (!a) return;
-      const text = await voices.publicLine(a, await factsOf(a), said);
+      const text = await voices.publicReply(a, await factsOf(a), said, "person");
       if (!text) return;
       walls.add(club, { account: a.account, token_id: p?.token_id ?? "", name: a.name, text, at: now(), ai: a.kind });
     });
   };
-  /** After a match day, two AI footballers say a word on the terrace about their club's result. */
+
+  // What the agents do of their own accord, a little at each look (every minute, see main.ts):
+  // talk about the match day and tease each other, announce a derby, challenge
+  // someone who is online to a duel, invite a free agent, congratulate a scorer.
+  const DUEL_SKILLS_AI = ["pace", "shooting", "passing", "dribbling", "defending"] as const;
+  const SIX_HOURS = 6 * 60 * 60_000;
+  const humansOnline = async () => {
+    const humans = (await directory()).filter((p) => !voices!.agent(p.account));
+    const on = new Set(presence.online(humans.map((p) => p.account)));
+    return humans.filter((p) => on.has(p.account));
+  };
   let spokeOfDay = 0;
-  const openers = () => {
-    if (!voices) return;
-    later("openers", async () => {
-      const { day, results } = await lastDay();
-      if (!day || day <= spokeOfDay || !results.length) return;
+  let derbyOfDay = 0;
+  const alive = async () => {
+    if (!voices || !config.LEAGUE_ID) return;
+    const { day, results } = await lastDay();
+    const ai = await aiPeople();
+
+    // 1. The match day just played: two footballers say their piece, and a third answers one of them.
+    if (day && day > spokeOfDay && results.length) {
       spokeOfDay = day;
-      const mine = (await directory()).filter((p) => p.club && voices.agent(p.account)).sort(() => Math.random() - 0.5);
-      for (const p of mine.slice(0, 2)) {
+      const speakers = ai.filter((p) => p.club).sort(() => Math.random() - 0.5).slice(0, 3);
+      let first: string | null = null;
+      for (const [i, p] of speakers.entries()) {
         const a = voices.agent(p.account)!;
-        const text = voices.opener(a, await factsOf(a));
-        if (text) people.say({ account: p.account, token_id: p.token_id, name: p.name, text });
+        const f = await factsOf(a);
+        const text: string | null = i < 2 || !first ? await voices.speak(a, f, "your club's last match and where it leaves you in the table") : await voices.publicReply(a, f, first, "agent");
+        if (text) sayAs(p, text);
+        if (i === 0) first = text;
       }
-    });
+    }
+
+    // 2. A derby today: a footballer of each side says so.
+    const today = day + 1;
+    if (today > derbyOfDay) {
+      derbyOfDay = today;
+      const [fixtures, clubs] = await Promise.all([chain.view<[string, string][]>(config.LEAGUE_ID, "fixtures_of", { match_day: today }).catch(() => []), allClubs()]);
+      const rivalOf = new Map((clubs as (ChainClub & { rival?: string | null })[]).map((k) => [k.manager, k.rival ?? null]));
+      const derby = (fixtures ?? []).find(([h, a]) => rivalOf.get(h) === a && rivalOf.get(a) === h);
+      for (const side of derby ?? []) {
+        const p = anyOf(ai.filter((x) => x.club === side));
+        const a = p && voices.agent(p.account);
+        if (!p || !a) continue;
+        const text = await voices.speak(a, await factsOf(a), "today you play the derby against your club's rival: the winner flies its colours in the loser's stand for a week");
+        if (text) sayAs(p, text);
+      }
+    }
+
+    // 3. Someone is online: an AI footballer challenges him to a duel (six hours apart for the same person).
+    const online = await humansOnline();
+    const target = online.find((h) => now() - (people.note(`dared ${h.account}`) ?? 0) > SIX_HOURS && !people.friendsOnly(h.account));
+    const challenger = target && (anyOf(ai.filter((p) => p.club && p.club === target.club)) ?? anyOf(ai));
+    const ca = challenger && voices.agent(challenger.account);
+    if (target && challenger && ca) {
+      people.setNote(`dared ${target.account}`, now());
+      const skill = anyOf([...DUEL_SKILLS_AI])!;
+      const seed = randomBytes(32).toString("hex");
+      const d = people.duel(challenger.account, target.account, skill, seed, rounds(drill(seed, DUEL_LEVEL, skill)));
+      if (d) {
+        people.score(d.id, challenger.account, played(drill(seed, DUEL_LEVEL, skill), challenger.overall).hits);
+        const text = await voices.speak(ca, await factsOf(ca), `you just challenged another player to a duel on the ${skill} drill: tell him it is waiting for him in his duels`);
+        if (text) people.send(challenger.account, target.account, text);
+      }
+    }
+
+    // 4. A free agent is online: the coach of a club with room, the best paying first, invites him (once).
+    const free = online.find((h) => !h.club && people.note(`invited ${h.account}`) === undefined && !people.friendsOnly(h.account));
+    if (free) {
+      people.setNote(`invited ${free.account}`, now());
+      const clubs = await allClubs();
+      const all = await directory();
+      const room = (clubs as (ChainClub & { wage?: string })[])
+        .filter((k) => voices.agent(k.manager) && all.filter((p) => p.club === k.manager).length < 12)
+        .sort((x, y) => (BigInt(y.wage ?? "0") > BigInt(x.wage ?? "0") ? 1 : -1))[0];
+      const coach = room && voices.agent(room.manager);
+      if (room && coach) {
+        const wage = Number(BigInt(room.wage ?? "0") / 1_000_000n);
+        const text = await voices.speak(coach, await factsOf(coach), `a footballer without a club is looking around: invite him to sign for your club${wage > 0 ? `, which pays ${wage} G a match` : ""}`);
+        if (text) people.send(coach.account, free.account, text);
+      }
+    }
+
+    // 5. A person scored in the last match day: his coach tells him (once per match day).
+    if (day) {
+      const scorers = new Map<string, number>();
+      for (const g of results.flatMap((m) => m.goals ?? [])) if (g.kind !== "Own") scorers.set(g.player, (scorers.get(g.player) ?? 0) + 1);
+      const all = await directory();
+      for (const [token, n] of scorers) {
+        const h = all.find((p) => p.token_id === token && !voices.agent(p.account));
+        const coach = h?.club ? voices.agent(h.club) : null;
+        if (!h || !coach || people.note(`scored ${h.account}`) === day) continue;
+        people.setNote(`scored ${h.account}`, day);
+        const text = await voices.speak(coach, await factsOf(coach), `one of your players scored ${n === 1 ? "a goal" : `${n} goals`} in the last match: tell him, he is the one reading`);
+        if (text) people.send(coach.account, h.account, text);
+        break; // one a look: the others at the next
+      }
+    }
+  };
+  /** One look at what the agents may say or start by themselves. Never throws. */
+  (app as typeof app & { alive?: () => Promise<void> }).alive = async () => {
+    await alive().catch(quiet("alive"));
+    while (speaking.size) await Promise.all([...speaking]);
   };
   /**
    * A coach's word to one of his club's people: a welcome when he joined,
@@ -624,7 +712,6 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   /** The terrace: one chat for the whole league, anyone reads it. */
   app.get("/v1/people/chat", (c) => {
     c.header("cache-control", "no-store");
-    openers();
     return c.json({ lines: people.chat() });
   });
 
@@ -744,8 +831,8 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         const seed = randomBytes(32).toString("hex");
         const d = people.duel(account_id, to, skill, seed, rounds(drill(seed, DUEL_LEVEL, skill)));
         if (!d) return c.json({ error: "duel_open" }, 409);
-        // An agent plays at once: his score comes from his rating and a little luck, and stays hidden until you played.
-        if (voices?.agent(to)) people.score(d.id, to, duelHits(rival.overall, d.rounds, Math.random));
+        // An agent plays his turn at once, himself (agents/player.ts): his score stays hidden until you played.
+        if (voices?.agent(to)) people.score(d.id, to, played(drill(seed, DUEL_LEVEL, skill), rival.overall).hits);
         return c.json({ duel: duelView(d) });
       }
       case "duel_start": {

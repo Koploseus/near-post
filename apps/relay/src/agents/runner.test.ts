@@ -117,9 +117,12 @@ const ALLOWED = new Set([
   "recall_player",
   "set_instruction",
   "vote_recruit",
+  "train_free",
+  "finish_training",
+  "leave_club",
 ]);
 
-const run = async (w: ReturnType<typeof world>, ask: Ask) => {
+const run = async (w: ReturnType<typeof world>, ask: Ask, more: Partial<ConstructorParameters<typeof Agents>[0]> = {}) => {
   const journal = new Journal(null);
   const agents = new Agents(
     {
@@ -132,6 +135,7 @@ const run = async (w: ReturnType<typeof world>, ask: Ask) => {
       ask,
       brain: null,
       journal,
+      ...more,
     },
     w.agents,
   );
@@ -241,5 +245,44 @@ describe("agents runner", () => {
     // The coach is shown what he remembers: the formation and strategy his side ended with, and the scores.
     const tactic = m.shown.find((t) => t.includes('"history"') && t.includes('"options"'))!;
     expect(tactic).toContain('"history":[{"formation":"4-3-3","strategy":"attack","score":[1,1]},{"formation":"4-3-3","strategy":"attack","score":[2,1]}]');
+  });
+
+  it("a footballer pays for a training, plays the drill himself and submits the score the game gives his trace", async () => {
+    const v10 = { pack_price: G(500_000), week_length: 7, energy_match: 12, energy_training: 15, injury_below: 30, diet_price: G(200_000), training_cost: G(400_000) };
+    let open = false;
+    const w = world(false, {
+      rules: () => v10,
+      condition_of: () => ({ instruction: "shooter", diet: "energy", diet_until: 9, holiday_until: 0, injured_until: 0 }),
+      recruitment_of: () => "open",
+      training_ticket: () => (open ? { id: 7, seed: "ab".repeat(32) } : null),
+    });
+    w.ai.energy = 90;
+    w.ai.last_trained_day = 2;
+    const signed: [string, number, number][] = [];
+    const m = model((schema) => (props(schema).formation ? { formation: "4-4-2", quote: "As we are." } : props(schema).sell ? { sell: "none", buy: { id: "none", price: 0 }, quote: "No." } : { strategy: "balanced", vote: "me", pack: false, quote: "Work." }));
+    const chain = w.chain;
+    w.chain = (signer) => {
+      const c = chain(signer);
+      const callChecked = c.callChecked!;
+      return { ...c, callChecked: async (contract, method, args, ...rest) => ((open ||= String((args as { msg?: string }).msg).includes("train")), callChecked(contract, method, args, ...rest)) };
+    };
+    const journal = await run(w, m.ask, { attest: (token, ticket, points) => (signed.push([token, ticket, points]), "c2ln"), roll: () => 0.4 });
+    const by = (method: string) => w.calls.filter((c) => c.method === method);
+    // 400k G for the skill his position lives on (a forward: shooting or pace, the weaker; equal here, so shooting).
+    expect(by("ft_transfer_call").map((c) => [c.args.msg, c.args.amount])).toContainEqual(['{"train":{"token_id":"p900","skill":"shooting"}}', G(400_000)]);
+    // The score is the replay's, between 0 and 3, signed for that ticket and submitted by him.
+    expect(signed).toHaveLength(1);
+    const [token, ticket, points] = signed[0]!;
+    expect([token, ticket]).toEqual(["p900", 7]);
+    expect([0, 1, 2, 3]).toContain(points);
+    expect(by("finish_training")).toEqual([{ signer: AI, contract: "league", method: "finish_training", args: { token_id: "p900", points, signature: "c2ln" } }]);
+    expect(journal.feed(10).flatMap((e) => e.acts).find((a) => a.what === "trained")).toEqual({ what: "trained", skill: "shooting", points, price: 400_000 });
+    // The coach said what he aims for, once.
+    expect(journal.feed(10).flatMap((e) => e.acts).filter((a) => a.what === "aim")).toHaveLength(1);
+    // Without the attester's key, or already trained today, nobody trains.
+    const w2 = world(false, { rules: () => v10, condition_of: () => ({ instruction: "shooter", diet: "energy", diet_until: 9, holiday_until: 0, injured_until: 0 }), recruitment_of: () => "open" });
+    w2.ai.energy = 90;
+    await run(w2, m.ask);
+    expect(w2.calls.filter((c) => String(c.args.msg).includes("train"))).toEqual([]);
   });
 });
