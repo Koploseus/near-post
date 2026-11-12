@@ -396,7 +396,7 @@ export class Agents {
         c,
         out,
         () =>
-          me.callChecked!(this.d.playersId, "nft_approve", { token_id: sell.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: sell.offer_id }) }, 250, APPROVAL_DEPOSIT),
+          me.callChecked!(this.d.playersId, "nft_approve", { token_id: sell.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: sell.offer_id }) }, 300, APPROVAL_DEPOSIT),
         { what: "sold", token_id: sell.token_id, price: sell.price, offer_id: sell.offer_id },
       );
     }
