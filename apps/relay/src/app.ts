@@ -18,6 +18,7 @@ import { FACE_MAX, Faces } from "./faces.js";
 import { faceMessage, fanzoneMessage, presenceMessage, socialMessage, wallMessage, wallReadMessage } from "./vault-message.js";
 import { DUEL_LEVEL, People, duelWinner, valueOf } from "./people.js";
 import type { Ask } from "./agents/minds.js";
+import { type Selves, answersIn, awake, chattiness, feeling, wakesAt } from "./agents/self.js";
 import { type Facts, Voices, afterMatchLine, welcomeLine } from "./agents/voices.js";
 import { played } from "./agents/player.js";
 import { botDocs, makeToken, readToken } from "./bot.js";
@@ -58,7 +59,7 @@ export interface Deps {
   /** Keep the season stats counted in the background (the first count reads every stand of the season). */
   warmStats?: boolean;
   /** The AI agents and what they did. */
-  agents?: { roster: Agent[]; journal: Journal; /** The model the agents speak with (their own lines without one). */ ask?: Ask | null };
+  agents?: { roster: Agent[]; journal: Journal; /** The model the agents speak with (their own lines without one). */ ask?: Ask | null; /** What each agent remembers, believes and feels (agents/self.ts). */ selves?: Selves; /** They keep hours: asleep eight hours a day, and they take their time to answer. */ rhythm?: boolean };
   /** The clubs' walls (who is online lives in memory). */
   walls?: Walls;
   /** Friends, private messages, the terrace and duels. */
@@ -210,6 +211,26 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
 
   /** The AI agents: who they are, and their journal (decisions, quotes, transactions, model evidence). */
   app.get("/v1/agents", (c) => c.json({ agents: deps.agents?.roster ?? [] }));
+  /**
+   * What each agent carries today (agents/self.ts): his mood, whether he is
+   * up, what he believes, his last memories and his ties with other agents.
+   * People are never named here.
+   */
+  app.get("/v1/agents/selves", (c) => {
+    const s = deps.agents?.selves;
+    if (!s || !deps.agents) return c.json({ selves: [] });
+    const name = (account: string) => deps.agents!.roster.find((a) => a.account === account)?.name ?? null;
+    const t = now();
+    return c.json({
+      selves: deps.agents.roster.map((a) => ({
+        agent: a.account,
+        awake: !deps.agents!.rhythm || awake(a.account, t),
+        wakes_at: wakesAt(a.account),
+        ...s.inner(a.account, name),
+        ties: s.tiesOf(a.account).map((x) => ({ name: name(x.other), tie: Math.round(x.tie) })).filter((x) => x.name).slice(0, 4),
+      })),
+    });
+  });
   app.get("/v1/agents/feed", (c) => {
     const limit = Math.min(200, Math.max(1, Number(c.req.query("limit") ?? 50) || 50));
     const day = c.req.query("day");
@@ -325,6 +346,8 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   // (what they answer to people is in agents/voices.ts, further down).
   const agentsActive = () => {
     const t = now();
+    // With hours of their own, an agent is online while he is up.
+    if (deps.agents?.rhythm) return new Set(deps.agents.roster.filter((a) => awake(a.account, t)).map((a) => a.account));
     return new Set((deps.agents?.journal.feed(300) ?? []).filter((e) => t - e.at < ONLINE_MS).map((e) => e.agent));
   };
   const squadOf = new Memo<{ token_id: string; name: string; controller: string | null }[]>(2 * 60_000, now);
@@ -462,7 +485,12 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   // the terrace and on their club's wall. Nothing a person wrote reaches a
   // decision; in public an agent only says one of his own lines.
 
-  const voices = deps.agents ? new Voices(deps.agents.roster, deps.agents.ask ?? null) : null;
+  const selves = deps.agents?.selves ?? null;
+  const rhythm = deps.agents?.rhythm === true;
+  const agentName = (account: string) => deps.agents?.roster.find((a) => a.account === account)?.name ?? null;
+  const voices = deps.agents ? new Voices(deps.agents.roster, deps.agents.ask ?? null, (a, to) => selves?.inner(a.account, agentName, to) ?? null) : null;
+  /** Up and about: always, unless the agents keep hours. */
+  const up = (account: string) => !rhythm || awake(account, now());
   const coachCard = (account: string): Person | null => {
     const a = voices?.agent(account);
     if (!a || a.kind !== "coach") return null;
@@ -511,23 +539,51 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   const answerInPrivate = (from: string, to: string, text: string) => {
     const a = voices?.agent(to);
     if (!a || !repliesTo.allow(from)) return;
+    // Being written to warms him a little, once a day; he remembers that it happened, not what was written.
+    if (selves?.onceToday(`talk ${to}|${from}`)) {
+      selves.move(to, from, 3);
+      selves.remember(to, "talk", "{them} wrote to you", from);
+    }
+    // With hours of his own he answers in his time (see `answerDue`); otherwise at once.
+    if (rhythm && selves) return selves.owe(to, from, now() + answersIn(to, now()));
     later("reply", async () => {
-      const reply = await voices!.reply(a, await factsOf(a), text);
+      const reply = await voices!.reply(a, await factsOf(a), text, from);
       people.send(to, from, reply);
     });
+  };
+  /** The answers that are due: he reads what was written to him since his last word, and answers once. */
+  const answerDue = async () => {
+    for (const { agent, person } of selves?.due() ?? []) {
+      const a = voices?.agent(agent);
+      if (!a) continue;
+      const thread = people.thread(agent, person);
+      const since = thread.slice(thread.map((m) => m.from).lastIndexOf(agent) + 1).filter((m) => m.from === person);
+      if (!since.length) continue;
+      const reply = await voices!.reply(a, await factsOf(a), since.map((m) => m.text).join(" ").slice(-200), person);
+      people.send(agent, person, reply);
+    }
   };
   const terraceReplies = new Limiter(1, 90_000, now);
   const aiPeople = async () => (await directory()).filter((p) => voices!.agent(p.account));
   const anyOf = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
+  const byWeight = <T,>(xs: T[], weight: (x: T) => number): T | undefined => {
+    let at = Math.random() * xs.reduce((s, x) => s + weight(x), 0);
+    return xs.find((x) => (at -= weight(x)) < 0) ?? xs[0];
+  };
   const sayAs = (p: Person, text: string) => people.say({ account: p.account, token_id: p.token_id, name: p.name, text });
   /** After someone spoke on the terrace, one of the AI footballers may answer, in his own words. */
-  const answerOnTerrace = (said: string) => {
+  const answerOnTerrace = (said: string, by: string) => {
     if (!voices || !terraceReplies.allow("all")) return;
     later("terrace", async () => {
-      const p = anyOf(await aiPeople());
+      // Whoever has a tie with the speaker, friend or rival, is the likelier to answer.
+      const p = byWeight((await aiPeople()).filter((x) => up(x.account)), (x) => 1 + Math.abs(selves?.tie(x.account, by) ?? 0) / 20);
       const a = p && voices.agent(p.account);
       if (!p || !a) return;
-      const text = await voices.publicReply(a, await factsOf(a), said, "person");
+      if (rhythm) {
+        if (Math.random() > chattiness(p.account)) return; // he read it and let it pass
+        await new Promise((done) => setTimeout(done, 8_000 + Math.random() * 50_000).unref());
+      }
+      const text = await voices.publicReply(a, await factsOf(a), said, "person", Math.random, by);
       if (text) sayAs(p, text);
     });
   };
@@ -557,22 +613,80 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const on = new Set(presence.online(humans.map((p) => p.account)));
     return humans.filter((p) => on.has(p.account));
   };
+  /**
+   * What a match day leaves in each agent: the result (a derby counts double),
+   * his goals, and his ties: warmer with those who won beside him, cooler
+   * with those who beat him. Written from the chain's results; a club that a
+   * person named is "another club".
+   */
+  const rememberDay = async (day: number, results: Awaited<ReturnType<typeof lastDay>>["results"]) => {
+    if (!selves || !voices) return;
+    const [clubs, everyone] = [await allClubs(), await directory()];
+    const rivalOf = new Map((clubs as (ChainClub & { rival?: string | null })[]).map((k) => [k.manager, k.rival ?? null]));
+    const clubName = (manager: string) => { const a = voices.agent(manager); return a?.kind === "coach" ? a.clubName : "another club"; };
+    const goals = new Map<string, number>();
+    for (const g of results.flatMap((m) => m.goals ?? [])) if (g.kind !== "Own") goals.set(g.player, (goals.get(g.player) ?? 0) + 1);
+    for (const m of results) {
+      const derby = rivalOf.get(m.home) === m.away && rivalOf.get(m.away) === m.home;
+      const sides = [
+        { club: m.home, other: m.away, score: [m.home_goals, m.away_goals] as const },
+        { club: m.away, other: m.home, score: [m.away_goals, m.home_goals] as const },
+      ];
+      for (const { club, other, score } of sides) {
+        const [us, them] = score;
+        const kind = us > them ? (derby ? "derby_won" : "win") : us < them ? (derby ? "derby_lost" : "loss") : "draw";
+        const text = `match day ${day}: ${us > them ? "won" : us < them ? "lost" : "drew"} ${us}-${them} against ${clubName(other)}${derby ? ", the derby" : ""}`;
+        const mates = everyone.filter((p) => p.club === club);
+        const foes = everyone.filter((p) => p.club === other);
+        const coach = voices.agent(club);
+        if (coach) selves.remember(club, kind, text);
+        for (const p of mates) {
+          if (!voices.agent(p.account)) continue;
+          selves.remember(p.account, kind, text);
+          const n = goals.get(p.token_id) ?? 0;
+          if (n) selves.remember(p.account, "goal", `match day ${day}: scored ${n === 1 ? "a goal" : `${n} goals`}`);
+          if (us > them) for (const q of mates) if (q.account > p.account || !voices.agent(q.account)) selves.move(p.account, q.account, 2);
+          if (us < them) for (const q of foes) selves.move(p.account, q.account, derby ? -6 : -2);
+        }
+      }
+    }
+  };
   let spokeOfDay = 0;
   let derbyOfDay = 0;
   const alive = async () => {
     if (!voices || !config.LEAGUE_ID) return;
     const { day, results } = await lastDay();
-    const ai = await aiPeople();
+    const everyAi = await aiPeople();
+    /** Those who are up: the others sleep, and say and start nothing. */
+    const ai = everyAi.filter((p) => up(p.account));
 
-    // 1. The match day just played: two footballers say their piece, and a third answers one of them.
+    // 0. What the match day left in each of them, the answers that are due, and one of them thinks his days over.
+    if (selves) {
+      if (day && results.length && (selves.mark("day") ?? 0) < day) {
+        selves.setMark("day", day);
+        await rememberDay(day, results);
+      }
+      await answerDue();
+      const thinker = deps.agents!.roster.find((a) => up(a.account) && selves.shouldReflect(a.account));
+      if (thinker) {
+        const ties = selves.tiesOf(thinker.account).map((t) => ({ name: agentName(t.other), tie: t.tie })).filter((t) => t.name).slice(0, 4).map((t) => `${t.name}: ${feeling(t.tie)}`);
+        const memories = selves.memories(thinker.account).slice(-12).map((m) => m.text.replace("{them}", (m.with && agentName(m.with)) || "another player"));
+        selves.reflected(thinker.account, await voices.reflect(thinker, await factsOf(thinker), memories, ties));
+      }
+    }
+
+    // 1. The match day just played: two footballers say their piece, and a third answers the first: the one who has most to do with him.
     if (day && day > spokeOfDay && results.length) {
       spokeOfDay = day;
-      const speakers = ai.filter((p) => p.club).sort(() => Math.random() - 0.5).slice(0, 3);
+      const pool = ai.filter((p) => p.club).sort(() => Math.random() - 0.5);
+      const opener = pool[0];
+      const third = opener && [...pool.slice(2)].sort((x, y) => Math.abs(selves?.tie(y.account, opener.account) ?? 0) - Math.abs(selves?.tie(x.account, opener.account) ?? 0))[0];
+      const speakers = [...pool.slice(0, 2), ...(third ? [third] : [])];
       let first: string | null = null;
       for (const [i, p] of speakers.entries()) {
         const a = voices.agent(p.account)!;
         const f = await factsOf(a);
-        const text: string | null = i < 2 || !first ? await voices.speak(a, f, "your club's last match and where it leaves you in the table") : await voices.publicReply(a, f, first, "agent");
+        const text: string | null = i < 2 || !first ? await voices.speak(a, f, "your club's last match and where it leaves you in the table") : await voices.publicReply(a, f, first, "agent", Math.random, opener!.account);
         if (text) sayAs(p, text);
         if (i === 0) first = text;
       }
@@ -597,7 +711,9 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     // 3. Someone is online: an AI footballer challenges him to a duel (six hours apart for the same person).
     const online = await humansOnline();
     const target = online.find((h) => now() - (people.note(`dared ${h.account}`) ?? 0) > SIX_HOURS && !people.friendsOnly(h.account));
-    const challenger = target && (anyOf(ai.filter((p) => p.club && p.club === target.club)) ?? anyOf(ai));
+    // His rival first (the one he has the worst tie with), then a clubmate, then anyone.
+    const rival = target && [...ai].sort((x, y) => (selves?.tie(x.account, target.account) ?? 0) - (selves?.tie(y.account, target.account) ?? 0))[0];
+    const challenger = target && (rival && (selves?.tie(rival.account, target.account) ?? 0) <= -15 ? rival : (anyOf(ai.filter((p) => p.club && p.club === target.club)) ?? anyOf(ai)));
     const ca = challenger && voices.agent(challenger.account);
     if (target && challenger && ca) {
       people.setNote(`dared ${target.account}`, now());
@@ -606,7 +722,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       const d = people.duel(challenger.account, target.account, skill, seed, rounds(drill(seed, DUEL_LEVEL, skill)));
       if (d) {
         people.score(d.id, challenger.account, played(drill(seed, DUEL_LEVEL, skill), challenger.overall).hits);
-        const text = await voices.speak(ca, await factsOf(ca), `you are writing to a player you just challenged to a duel on the ${skill} drill: tell him, as "you", that it is waiting in his duels`);
+        const text = await voices.speak(ca, await factsOf(ca), `you are writing to a player you just challenged to a duel on the ${skill} drill: tell him, as "you", that it is waiting in his duels`, Math.random, target.account);
         if (text) people.send(challenger.account, target.account, text);
       }
     }
@@ -621,7 +737,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         .filter((k) => voices.agent(k.manager) && all.filter((p) => p.club === k.manager).length < 12)
         .sort((x, y) => (BigInt(y.wage ?? "0") > BigInt(x.wage ?? "0") ? 1 : -1))[0];
       const coach = room && voices.agent(room.manager);
-      if (room && coach) {
+      if (room && coach && up(coach.account)) {
         const wage = Number(BigInt(room.wage ?? "0") / 1_000_000n);
         const text = await voices.speak(coach, await factsOf(coach), `you are writing to a footballer who has no club: invite him, as "you", to sign for yours${wage > 0 ? `, which pays ${wage} G a match` : ""}`);
         if (text) people.send(coach.account, free.account, text);
@@ -636,9 +752,9 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       for (const [token, n] of scorers) {
         const h = all.find((p) => p.token_id === token && !voices.agent(p.account));
         const coach = h?.club ? voices.agent(h.club) : null;
-        if (!h || !coach || people.note(`scored ${h.account}`) === day) continue;
+        if (!h || !coach || !up(coach.account) || people.note(`scored ${h.account}`) === day) continue;
         people.setNote(`scored ${h.account}`, day);
-        const text = await voices.speak(coach, await factsOf(coach), `you are writing to one of your players, who scored ${n === 1 ? "a goal" : `${n} goals`} in your club's last match: tell him, as "you"`);
+        const text = await voices.speak(coach, await factsOf(coach), `you are writing to one of your players, who scored ${n === 1 ? "a goal" : `${n} goals`} in your club's last match: tell him, as "you"`, Math.random, h.account);
         if (text) people.send(coach.account, h.account, text);
         break; // one a look: the others at the next
       }
@@ -801,7 +917,11 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         if (!(await other())) return c.json({ error: "no_such_player" }, 404);
         const state = people.ask(account_id, to);
         // An agent says yes to anyone.
-        if (state === "asked" && voices?.agent(to) && people.accept(to, account_id)) return c.json({ state: "friends" });
+        if (state === "asked" && voices?.agent(to) && people.accept(to, account_id)) {
+          selves?.move(to, account_id, 10);
+          selves?.remember(to, "friend", "{them} and you became friends", account_id);
+          return c.json({ state: "friends" });
+        }
         return c.json({ state });
       }
       case "friend_accept":
@@ -819,7 +939,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         const clean = cleanPost(text);
         if (!clean) return c.json({ error: "bad_text", max: WALL_MAX }, 400);
         const line = people.say({ account: account_id, token_id: me.token_id, name: me.name, text: clean });
-        answerOnTerrace(clean);
+        answerOnTerrace(clean, account_id);
         return c.json({ line });
       }
       case "duel_new": {
@@ -858,6 +978,14 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         duelStarts.delete(k);
         const scored = people.score(d.id, account_id, hits(game, trace));
         if (!scored) return c.json({ error: "duel_over" }, 409);
+        // Against an agent: he remembers it, and a duel makes a rival, the more so when he lost it.
+        const foe = scored.from === account_id ? scored.to : scored.from;
+        const winner = duelWinner(scored);
+        if (selves && voices?.agent(foe) && winner !== undefined) {
+          const [his, yours] = [scored.hits[foe]!, scored.hits[account_id]!];
+          selves.remember(foe, winner === foe ? "duel_won" : winner === null ? "duel_drawn" : "duel_lost", `${winner === foe ? "won" : winner === null ? "drew" : "lost"} a ${scored.skill} duel ${his}-${yours} against {them}`, account_id);
+          selves.move(foe, account_id, winner === foe ? -2 : winner === null ? 1 : -6);
+        }
         return c.json({ duel: duelView(scored) });
       }
     }

@@ -10,6 +10,7 @@ import { parseCrowd } from "./crowd.js";
 import { Journal } from "./agents/journal.js";
 import { askWith } from "./agents/minds.js";
 import { agentKey, roster } from "./agents/roster.js";
+import { Selves } from "./agents/self.js";
 import { Agents } from "./agents/runner.js";
 import { Limiter, readsFrom, throttle } from "./agents/throttle.js";
 import { Kickoffs, startScheduler } from "./schedule.js";
@@ -41,6 +42,9 @@ const agents = agentsOn
   ? {
       roster: roster(config.PARENT_ACCOUNT_ID),
       journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null),
+      // What each remembers, believes and feels, and the hours he keeps (agents/self.ts).
+      selves: new Selves(config.DATA_DIR ? `${config.DATA_DIR}/selves-${config.LEAGUE_ID}.json` : null),
+      rhythm: true,
       // What they say to people (agents/voices.ts): the same model, a separate call that signs nothing.
       ask: askWith(brain),
     }

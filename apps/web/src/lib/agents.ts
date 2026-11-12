@@ -55,6 +55,25 @@ export interface AgentEntry {
   signature: { matches: boolean; signature_kind: string | null } | null;
 }
 
+/** What an agent carries today: his mood, his hours, what he believes and remembers, his ties with other agents. */
+export interface AgentSelf {
+  agent: string;
+  awake: boolean;
+  /** The hour (UTC) he gets up. */
+  wakes_at: number;
+  mood: string;
+  style: string;
+  beliefs: string[];
+  memories: string[];
+  ties: { name: string; tie: number }[];
+}
+
+export const agentSelves = (): Promise<AgentSelf[]> =>
+  fetch(`${RELAY}/v1/agents/selves`)
+    .then((r) => (r.ok ? (r.json() as Promise<{ selves: AgentSelf[] }>) : { selves: [] }))
+    .then((j) => j.selves)
+    .catch(() => []);
+
 let roster: Promise<Map<string, AgentInfo>> | null = null;
 
 export function agents(): Promise<Map<string, AgentInfo>> {
