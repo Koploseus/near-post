@@ -113,6 +113,12 @@ function actText(a: Act, clubs: Map<string, string>, names: Map<string, string>)
       return `gives ${gOf(a.amount)} to ${clubs.get(a.club) ?? "his club"}`;
     case "recruit_vote":
       return `says ${a.yes ? "yes" : "no"} to ${p(a.token_id)} joining`;
+    case "trained":
+      return `trains ${a.skill}${a.points ? `, +${a.points}` : ", no point this time"}${a.price ? ` (${gOf(a.price)})` : " (free session)"}`;
+    case "left":
+      return `walks out of ${clubs.get(a.club) ?? "his club"}: no wage`;
+    case "aim":
+      return a.aim === "title" ? "aims for the title" : a.aim === "top_half" ? "aims for the top half" : "aims to stay up";
     case "season_ticket":
       return `buys a season ticket of ${clubs.get(a.club) ?? "his club"}`;
     default:

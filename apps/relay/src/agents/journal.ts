@@ -31,7 +31,10 @@ export type Act =
   | { what: "instruction"; instruction: string }
   | { what: "diet"; diet: string; price: number }
   | { what: "gift"; club: string; amount: number }
-  | { what: "recruit_vote"; token_id: string; yes: boolean };
+  | { what: "recruit_vote"; token_id: string; yes: boolean }
+  | { what: "trained"; skill: string; points: number; price: number }
+  | { what: "left"; club: string }
+  | { what: "aim"; aim: string };
 
 export interface Entry {
   at: number;

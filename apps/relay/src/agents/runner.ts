@@ -4,6 +4,8 @@ import { type BrainConfig, signatureOf } from "./brain.js";
 import type { Act, Entry, Journal, SeenOffer } from "./journal.js";
 import { type Ask, decideFootballer, decideMarket, decideTactic } from "./minds.js";
 import type { Agent, CoachAgent, FootballerAgent } from "./roster.js";
+import { type Skill as DrillSkill, drill, points as drillPoints } from "../drill.js";
+import { played } from "./player.js";
 import {
   CONTRACT_DAYS,
   type Candidate,
@@ -20,8 +22,12 @@ import {
   fallbackProject,
   giftFor,
   instructionFor,
+  aimFor,
   recruitVote,
   restBelow,
+  trainSkill,
+  walksOut,
+  wantsTraining,
   marketSituation,
   tacticSituation,
   wageFor,
@@ -62,6 +68,8 @@ export interface LeaguePlayer extends Player {
   look?: { hair: string | null; boots: string | null; band: string | null };
   /** Energy today, 0 to 100 (v9). */
   energy?: number;
+  free_trainings?: number;
+  last_trained_day?: number;
   contract?: { club: string; wage: string; until_day: number } | null;
 }
 interface MatchResult {
@@ -69,6 +77,7 @@ interface MatchResult {
   away: string;
   home_goals: number;
   away_goals: number;
+  goals?: { player: string; kind: string }[];
   /** First half home, first half away, then the second half's. */
   formations?: Formation[];
   strategies?: Strategy[];
@@ -87,8 +96,10 @@ interface LifeRules {
   season_ticket_price?: string;
   season_tickets_per_club?: number;
   energy_match?: number;
+  energy_training?: number;
   injury_below?: number;
   diet_price?: string;
+  training_cost?: string;
 }
 /** Matches an agent remembers. */
 const MEMORY = 4;
@@ -112,6 +123,15 @@ export interface AgentsDeps {
   brain: BrainConfig | null;
   journal: Journal;
   now?: () => number;
+  /**
+   * Signs a training score for an agent's open ticket (the drill attester's
+   * key). An agent plays the drill himself (player.ts): his presses go
+   * through the game's own replay, and that score is what gets signed.
+   * Without it, no agent trains.
+   */
+  attest?: (tokenId: string, ticket: number, points: number) => string;
+  /** A roll in [0, 1) for his hands. */
+  roll?: () => number;
   /** How many agents act at once (each may wait for the model). */
   concurrency?: number;
 }
@@ -265,8 +285,18 @@ export class Agents {
     });
     const history = await this.history(ctx, c.account);
     if (history.length) s.history = history;
+    // What he aims for this season: said the first time he looks at it, then kept.
+    const aims = ["title", "top_half", "stay_up"] as const;
+    let aim = aims.find((x) => this.d.journal.isDone(`aim:${ctx.season}:${c.account}:${x}`));
+    let said: Act | null = null;
+    if (!aim) {
+      aim = aimFor(c.style, rank(c.account), this.divisionSize(ctx, c.account));
+      this.d.journal.markDone(`aim:${ctx.season}:${c.account}:${aim}`);
+      said = { what: "aim", aim };
+    }
+    s.aim = aim;
     const d = await decideTactic(this.d.ask, s);
-    const out: Partial<Entry> = { quote: d.decision.quote, acts: [], txs: [], errors: [] };
+    const out: Partial<Entry> = { quote: d.decision.quote, acts: said ? [said] : [], txs: [], errors: [] };
     // With a captain, the formation is his call (the contract says so): the coach only talks.
     const captain = await this.league<unknown>("captain", { club_id: c.account });
     if (!captain && d.decision.formation !== mine.formation) {
@@ -449,6 +479,46 @@ export class Agents {
       )
         wallet -= price;
     }
+    // A training: his free one first, then paid ones when he has the G and the legs.
+    if (life && this.d.attest && rules.training_cost && (fb.last_trained_day ?? 0) < ctx.day && !outOfIt) {
+      const cost = whole(rules.training_cost);
+      const energyCost = rules.energy_training ?? 15;
+      const floor = restBelow(f.character, rules.injury_below ?? 0, rules.energy_match ?? 12);
+      const free = (fb.free_trainings ?? 0) > 0;
+      if (free ? energy - energyCost >= floor : wantsTraining(f.character, wallet, cost, energy, energyCost, floor)) {
+        const skill = trainSkill(fb.position, fb.skills);
+        const opened = await this.open(f, out, () =>
+          free
+            ? me.call(this.d.leagueId, "train_free", { token_id: fb.token_id, skill }, 30)
+            : me.callChecked!(
+                this.d.goalarsId,
+                "ft_transfer_call",
+                { receiver_id: this.d.leagueId, amount: rules.training_cost!, msg: JSON.stringify({ train: { token_id: fb.token_id, skill } }) },
+                150,
+                ONE_YOCTO,
+              ),
+        );
+        const ticket = opened ? await this.league<{ id: number; seed: string } | null>("training_ticket", { token_id: fb.token_id }).catch(() => null) : null;
+        if (ticket) {
+          // He plays the drill of his ticket, at the level of the skill he trains, with hands as good as he is rated.
+          const game = played(drill(ticket.seed, fb.skills[skill], skill as DrillSkill), fb.overall, this.d.roll ?? Math.random);
+          const points = drillPoints(game.hits, game.rounds);
+          const signature = this.d.attest(fb.token_id, ticket.id, points);
+          await this.act(f, out, () => me.call(this.d.leagueId, "finish_training", { token_id: fb.token_id, points, signature }, 30), { what: "trained", skill, points, price: free ? 0 : cost });
+          if (!free) wallet -= cost;
+        }
+      }
+    }
+    // A mercenary whose contract pays nothing walks out when another club pays.
+    if (club && life && whole(fb.contract?.wage ?? "0") === 0) {
+      const others = await Promise.all(
+        ctx.table.filter((k) => k.manager !== fb.owner).map(async (k) => ({ wage: whole(k.wage ?? "0"), people: (await this.squad(ctx, k.manager)).filter((p) => p.controller).length })),
+      );
+      if (walksOut(f.character, 0, others) > 0 && (await this.act(f, out, () => me.call(this.d.leagueId, "leave_club", {}, 100), { what: "left", club: fb.owner }))) {
+        this.log(f, ctx.day, "day", { ...out, half: 1, quote: "No wage, no me. I am going where they pay." });
+        return;
+      }
+    }
     // Once a week, a loyal footballer or a leader helps a treasury that runs short.
     if (club && life && !this.d.journal.isDone(`gift:${week}:${f.account}`)) {
       const people = (await this.squad(ctx, fb.owner)).filter((p) => p.controller).length;
@@ -485,10 +555,12 @@ export class Agents {
     const move = club ? undefined : await this.choices(ctx, fb);
     const packPrice = whole(rules.pack_price);
     const ticketPrice = club ? await this.seasonTicketOffer(ctx, f, fb.owner, rules) : null;
+    const scored = club ? await this.scoredLast(ctx, fb.token_id) : 0;
     const spend = {
       character: f.character,
       wallet,
       pack_price: packPrice,
+      ...(scored > 0 ? { scored } : {}),
       ...(ticketPrice !== null && wallet >= ticketPrice ? { season_ticket_price: ticketPrice } : {}),
     };
     const d = await decideFootballer(this.d.ask, {
@@ -647,6 +719,25 @@ export class Agents {
       out.push({ formation, strategy, score: home ? [m.home_goals, m.away_goals] : [m.away_goals, m.home_goals] });
     }
     return out;
+  }
+
+  /** Runs a transaction that is only a step (it is told by what follows it); false when it failed. */
+  private async open(_a: Agent, out: Partial<Entry>, run: () => Promise<string>): Promise<boolean> {
+    try {
+      out.txs!.push(await run());
+      return true;
+    } catch (e) {
+      out.errors!.push(`training: ${msg(e)}`);
+      return false;
+    }
+  }
+
+  /** Goals a footballer scored in the last match day. */
+  private async scoredLast(ctx: Ctx, token: string): Promise<number> {
+    if (ctx.day <= 1) return 0;
+    await this.history(ctx, ""); // reads the last match days once
+    const last = await (this.past.get(ctx.day - 1) ?? Promise.resolve([] as MatchResult[]));
+    return last.flatMap((m) => m.goals ?? []).filter((g) => g.player === token && g.kind !== "Own").length;
   }
 
   /** His voice on the people who applied to a club that votes on its recruits: once per applicant. */
