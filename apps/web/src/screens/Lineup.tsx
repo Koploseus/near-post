@@ -83,6 +83,7 @@ export function Lineup() {
     return (
       <div className="lineup-page">
         {visitBar}
+        <div className="squad-split">
         <section className="paper panel">
           <span className="k">SQUAD · DIVISION {sheetClub?.division ?? "…"}</span>
           <h2 className="sheet-title">
@@ -111,6 +112,7 @@ export function Lineup() {
           </ul>
         </section>
         <SeasonStats />
+        </div>
       </div>
     );
   if (!sheetId || !lineup)

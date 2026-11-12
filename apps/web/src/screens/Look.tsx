@@ -1,4 +1,5 @@
 import { ItemArt, itemArt } from "../floodlight/item-art.js";
+import { PixelAvatar, PixelHead } from "../floodlight/PixelPlayer.js";
 import type { ReactNode } from "react";
 import type { CatalogItem, ItemKind, Look, Skill } from "../lib/types.js";
 
@@ -257,63 +258,14 @@ export function Face({ n, skin }: { n: number; skin: string }) {
 /** A number for a footballer's face, from his token id ("p42" → 42). */
 export const faceNumber = (tokenId: string | null | undefined) => (tokenId ? Number(tokenId.replace(/\D/g, "")) || 0 : 0);
 
-/** Just the head and the collar of his shirt: for the pitch, the squad and the wall. */
+/** Just the head and the collar of his shirt: for the pitch, the squad and the wall. Pixel rig (floodlight/PixelPlayer). */
 export function Head({ look, n, shirt = "#2F5DA8", size = 36, title }: { look?: Look; n: number; shirt?: string; size?: number; title?: string }) {
-  const skin = SKIN[n % SKIN.length]!;
-  return (
-    <svg viewBox="12 3 36 40" width={size} height={size * (40 / 36)} className="face-head" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
-      <LookDefs />
-      <path d="M13 43 C14 37 21 35 30 35 C39 35 46 37 47 43 Z" fill={shirt} />
-      <path d="M25.5 35 L30 39.5 L34.5 35" fill="none" stroke="#F2B705" strokeWidth="1.6" />
-      <HairBack look={look} n={n} />
-      <ellipse cx="30" cy="25" rx="11" ry="13" fill={skin} />
-      <Face n={n} skin={skin} />
-      <HairFront look={look} n={n} />
-    </svg>
-  );
+  return <PixelHead look={look} n={n} shirt={shirt} size={size} title={title} />;
 }
 
-/** A footballer head to toe, wearing his look: for the wardrobe. */
+/** A footballer head to toe, wearing his look: for the wardrobe. Pixel rig (floodlight/PixelPlayer); size is the height. */
 export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look; n: number; shirt?: string; size?: number }) {
-  const skin = SKIN[n % SKIN.length]!;
-  const [boot, stud] = BOOT_COLOR[style(look?.boots) ?? ""] ?? ["#151515", "#3a3a3a"];
-  return (
-    <svg viewBox="0 0 60 130" width={size * 0.46} height={size} aria-hidden="true">
-      <LookDefs />
-      <ellipse cx="30" cy="126" rx="18" ry="3" fill="#000" opacity=".18" />
-      {/* Legs, socks, boots */}
-      <rect x="21" y="78" width="7" height="30" rx="3" fill={skin} />
-      <rect x="32" y="78" width="7" height="30" rx="3" fill={skin} />
-      <rect x="20.5" y="96" width="8" height="18" rx="2" fill={kit(look?.socks, "#f7f4ec")!} stroke="#1B2340" strokeWidth=".3" />
-      <rect x="31.5" y="96" width="8" height="18" rx="2" fill={kit(look?.socks, "#f7f4ec")!} stroke="#1B2340" strokeWidth=".3" />
-      {look?.pads && [22, 33].map((x) => <rect key={x} x={x} y="98" width="5" height="10" rx="2" fill={kit(look.pads)!} stroke="#1B2340" strokeWidth=".5" />)}
-      {look?.tape && [20.5, 31.5].map((x) => <rect key={x} x={x} y="109" width="8" height="3.5" fill={kit(look.tape)!} stroke="#1B2340" strokeWidth=".4" />)}
-      {[18, 30].map((x) => (
-        <g key={x}>
-          <path d={`M${x} 113 h11 c2 0 3 2 3 4 v3 h-14 Z`} fill={boot} stroke="#1B2340" strokeWidth=".6" />
-          <path d={`M${x + 2} 116 h9`} stroke={stud} strokeWidth="1.4" strokeLinecap="round" />
-        </g>
-      ))}
-      {/* Shorts and shirt */}
-      <path d="M18 70 h24 l2 14 h-11 l-3 -5 l-3 5 h-11 Z" fill="#1B2340" />
-      <path d="M14 46 C16 41 22 39 30 39 C38 39 44 41 46 46 L44 72 H16 Z" fill={shirt} />
-      <path d="M24 39 L30 46 L36 39" fill="none" stroke="#F2B705" strokeWidth="2" />
-      <rect x="9" y="46" width="6" height="22" rx="3" fill={skin} transform="rotate(8 12 46)" />
-      <rect x="45" y="46" width="6" height="22" rx="3" fill={skin} transform="rotate(-8 48 46)" />
-      {look?.wrist && <rect x="8.4" y="59" width="7.2" height="3.4" rx="1" fill={kit(look.wrist)!} stroke="#1B2340" strokeWidth=".4" transform="rotate(8 12 46)" />}
-      {look?.gloves &&
-        [
-          [8.2, 8],
-          [44.2, -8],
-        ].map(([x, r]) => <rect key={x} x={x} y="62" width="7.6" height="8" rx="3" fill={kit(look.gloves)!} stroke="#1B2340" strokeWidth=".5" transform={`rotate(${r} ${x! + 3.8} 46)`} />)}
-      <rect x="26" y="34" width="8" height="7" fill={skin} />
-      {/* Head */}
-      <HairBack look={look} n={n} />
-      <ellipse cx="30" cy="25" rx="11" ry="13" fill={skin} />
-      <Face n={n} skin={skin} />
-      <HairFront look={look} n={n} />
-    </svg>
-  );
+  return <PixelAvatar look={look} n={n} shirt={shirt} size={size} />;
 }
 
 /** A small picture of an item, for the wardrobe grid. */
