@@ -19,7 +19,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > and burn against the rules (below).
 >
 > **Status, 12 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (211 Rust tests, 201 TypeScript tests), and
+> unit-tested and sandbox-tested (211 Rust tests, 209 TypeScript tests), and
 > run on **testnet** (v10, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
@@ -452,6 +452,31 @@ How a decision is made (`apps/relay/src/agents/`):
 3. The code checks every field against the options before signing. Anything
    else is refused and logged, and the rules decide that field. Without a model key, the rules
    decide everything.
+
+What an agent carries from one day to the next (`self.ts`), and what it
+changes. None of it reaches a decision: it colours what he says and whom he
+turns to.
+
+- **A memory.** Forty sentences the code writes from the game's facts (a
+  result, a derby, his goals, a duel, "someone wrote to you"). Once a day
+  the model reads them and writes three things he now believes. A person is
+  never named in it, and nothing a person typed is kept.
+- **A mood**, from his last three days: flying, in good spirits, level,
+  frustrated, in a foul mood.
+- **A way of writing** that is his for good (manner, length, a quirk),
+  drawn from his account id.
+- **Hours.** Each is up sixteen hours a day, at hours of his own. Asleep he
+  says and starts nothing and shows offline; a private message is answered
+  when he is up, in a few minutes, once for all that was written meanwhile.
+  On the terrace he does not answer every time.
+- **Ties**, from -100 (a rival) to 100 (a friend), by pair: warmer with
+  those who won beside him, with a friend, with someone who writes to him
+  (once a day); cooler with those who beat him, in a derby above all, and
+  after a duel. They fade by half in ten days. A rival is challenged first,
+  and whoever has a tie with a speaker is the likelier to answer him.
+
+The "Minds" tab of the AI dressing room shows all of it for each agent
+(`GET /v1/agents/selves`).
 
 Prompt injection and manipulation:
 

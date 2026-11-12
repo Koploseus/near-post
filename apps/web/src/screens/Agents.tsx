@@ -1,6 +1,6 @@
 import { CoachFace } from "../floodlight/art.js";
 import { useEffect, useState } from "react";
-import { type Act, type AgentEntry, type AgentInfo, agentFeed, roleOf, useAgents } from "../lib/agents.js";
+import { type Act, type AgentEntry, type AgentInfo, agentFeed, agentSelves, roleOf, useAgents } from "../lib/agents.js";
 import { EXPLORER } from "../lib/config.js";
 import { clubName, g } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
@@ -14,7 +14,7 @@ const gOf = (whole: number) => g(BigInt(Math.round(whole)) * ONE_G);
 export function Agents() {
   const { schedule } = useGame();
   const roster = useAgents();
-  const [who, setWho] = useState<"all" | "coach" | "footballer">("all");
+  const [who, setWho] = useState<"all" | "coach" | "footballer" | "minds">("all");
   const { data: feed } = useData(() => agentFeed({ limit: 120 }), [schedule?.match_day, schedule?.first_half_played]);
   const { data: table } = useData(() => league<Club[]>("table"), [schedule?.match_day]);
   const clubs = new Map((table ?? []).map((c) => [c.manager, clubName(c.name)]));
@@ -26,20 +26,59 @@ export function Agents() {
       <span className="k">AI COACHES · AI FOOTBALLERS</span>
       <h2 id="agents-title">The AI dressing room</h2>
       <div className="seg" role="group" aria-label="Show">
-        {(["all", "coach", "footballer"] as const).map((k) => (
+        {(["all", "coach", "footballer", "minds"] as const).map((k) => (
           <button key={k} type="button" aria-pressed={who === k} onClick={() => setWho(k)}>
-            {k === "all" ? "All" : k === "coach" ? "Coaches" : "Footballers"}
+            {k === "all" ? "All" : k === "coach" ? "Coaches" : k === "footballer" ? "Footballers" : "Minds"}
           </button>
         ))}
       </div>
-      {feed === null && <p className="note">…</p>}
-      {feed !== null && shown.length === 0 && <p className="note">Nothing yet today.</p>}
-      <ol className="agent-feed">
+      {who === "minds" && <Minds roster={roster} clubs={clubs} />}
+      {who !== "minds" && feed === null && <p className="note">…</p>}
+      {who !== "minds" && feed !== null && shown.length === 0 && <p className="note">Nothing yet today.</p>}
+      <ol className="agent-feed" hidden={who === "minds"}>
         {shown.map((e) => (
           <AgentLine key={`${e.agent}-${e.at}-${e.kind}`} e={e} a={roster.get(e.agent)} clubs={clubs} names={names} />
         ))}
       </ol>
     </section>
+  );
+}
+
+const tieWord = (t: number) => (t >= 40 ? "friend" : t >= 15 ? "likes" : t <= -40 ? "rival" : t <= -15 ? "needles him" : "knows");
+
+/** What each agent carries today: his mood, his hours, what he believes, his last memories and his ties. */
+function Minds({ roster, clubs }: { roster: Map<string, AgentInfo>; clubs: Map<string, string> }) {
+  const { data } = useData(() => agentSelves(), []);
+  if (data === null) return <p className="note">…</p>;
+  const list = (data ?? []).filter((s) => s.memories.length || s.beliefs.length);
+  if (!list.length) return <p className="note">They have not lived a match day yet. Come back after the next one.</p>;
+  return (
+    <ol className="agent-feed">
+      {list.map((s) => {
+        const a = roster.get(s.agent);
+        return (
+          <li className="agent-line" key={s.agent}>
+            <div className="agent-who">
+              {a?.kind === "coach" ? <CoachFace id={s.agent} size={40} /> : <span className="ai-tag">AI</span>}
+              <b>{a?.name ?? s.agent.split(".")[0]}</b>
+              <span className="note">
+                {a ? `${a.kind === "coach" ? "Coach" : "Footballer"} · ${roleOf(a)}` : ""}
+                {a?.kind === "coach" && clubs.get(s.agent) ? ` · ${clubs.get(s.agent)}` : ""}
+              </span>
+              <span className="note when">{s.awake ? "Up" : `Asleep until ${String(s.wakes_at).padStart(2, "0")}:00 UTC`}</span>
+            </div>
+            <p className="agent-acts">
+              Mood: {s.mood}. Writes: {s.style}.
+            </p>
+            {s.beliefs.map((b) => (
+              <q key={b}>{b}</q>
+            ))}
+            {s.memories.length > 0 && <p className="note">Remembers: {s.memories.join(" · ")}</p>}
+            {s.ties.length > 0 && <p className="note">Ties: {s.ties.map((t) => `${tieWord(t.tie)} ${t.name}`).join(" · ")}</p>}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
