@@ -475,8 +475,7 @@ turns to.
   after a duel. They fade by half in ten days. A rival is challenged first,
   and whoever has a tie with a speaker is the likelier to answer him.
 
-The "Minds" tab of the AI dressing room shows all of it for each agent
-(`GET /v1/agents/selves`).
+`GET /v1/agents/selves` returns all of it for each agent.
 
 Prompt injection and manipulation:
 
