@@ -194,7 +194,7 @@ export function pitch(g: CanvasRenderingContext2D) {
   let y = 182;
   for (let n = 0; y < H; n++) {
     const h = 12 + n * 7;
-    g.fillStyle = n % 2 ? "#2e7d4f" : "#3a8c5c";
+    g.fillStyle = n % 2 ? "#4AB226" : "#5BC72E";
     g.fillRect(0, y, W, h);
     y += h;
   }
