@@ -59,6 +59,11 @@ export function Highlight({ m, onEnd }: { m: HighlightMoment; onEnd: () => void 
   return (
     <button type="button" className="highlight" onClick={onEnd} aria-label={`${TITLE[m.kind]} ${m.name}, ${m.team}. Tap to skip.`}>
       <canvas ref={canvas} width={W * 2} height={H * 2} />
+      {m.kind.endsWith("goal") && (
+        <span className="goal-flash" aria-hidden="true">
+          GOAL!
+        </span>
+      )}
     </button>
   );
 }
