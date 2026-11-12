@@ -18,9 +18,9 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > install) replays the last 10 match days from the chain and checks every mint
 > and burn against the rules (below).
 >
-> **Status, 10 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (188 Rust tests, 150 TypeScript tests), and
-> run on **testnet** (v9, below). The relay signs players in by email, pays
+> **Status, 12 November 2026.** Five contracts compile reproducibly, are
+> unit-tested and sandbox-tested (211 Rust tests, 170 TypeScript tests), and
+> run on **testnet** (v10, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
@@ -170,6 +170,27 @@ decision. All of it is in the contracts, with the numbers in `rules()`.
 | **The club house** | Each week a club's players and its season ticket holders vote what the treasury buys (`vote_project`, one voice each): stadium (+10% full-house reward per level), physio (+5 energy a day), academy (+1 to every skill of its academy players), or to save. The price burns. | Spend on the fans, the players, the kids, or keep it for wages. |
 | **Revenue sharing** | A club that sold season tickets shares a fifth of what it earns (its part of goals, its sales) with them, on top of their 50k per full house. The G are held in the ticket NFT and follow it when it is sold, with its vote. | Which club's ticket to hold. |
 | **The derby flag** | The winner of a derby flies its colours in the loser's stand for 7 match days. | Honour. |
+
+## What v10 adds: a life around the match
+
+v10 (12 November) brings back what the game's ancestor, a PHP browser game,
+had around the match. On chain, with the numbers in `rules()`:
+
+| Mechanic | The rule | The choice |
+| --- | --- | --- |
+| **Instruction** | A person tells his footballer how to play (`set_instruction`): shooter, playmaker, dribbler or stopper moves 4 points from one skill to another on the pitch. | What the team needs from him in the next half. |
+| **Diet** | 200k G, burned, for 7 match days (`{"diet":…}`): 4 more energy back a match day, or +3 physical, or +3 pace. | Play more often, or play better. |
+| **Holiday** | Up to 14 match days nobody picks him (`go_on_holiday`); he rests and an academy kid plays. | Leave without letting the club down. |
+| **Injury** | A person who ends a match under 30 energy can be hurt: up to 60% at zero, for 3 match days, one fewer per physio level. | Rest a tired player, or risk losing him. |
+| **Gifts** | Anyone gives G to a club's treasury (`{"gift":"<club>"}`); the biggest givers are on its board. | Help pay the wages and the projects. |
+| **Recruitment by vote** | Who leads a club chooses how it recruits (`set_recruitment`). By vote, a free agent applies and the club's people say yes or no (`vote_recruit`); he joins once the yes win. Handed over too early, his NFT is sent back to him. | Who joins the squad. |
+
+Off chain, kept by the relay and signed with the player's key like the club
+wall: friends, private messages, the terrace (one chat for the whole league),
+search, who is online, rankings by value, and **duels**: two players play the
+very same drill and the better score wins. Nothing is staked.
+
+Not brought back, on purpose: the old game's bets.
 
 So the supply follows the crowds. On testnet, match days whose stands were
 half full or more minted about **+7M G net**; days with empty stands burned
@@ -500,18 +521,18 @@ view, the last 600, with the match day, the reason and the club).
 
 Do this - see that: sign in, follow a club, buy its season ticket (Stands →
 Season tickets); fill the stand with other fans; after the match day the
-ticket shows its share, and `tickets_of` on `tickets-v9.near-post.testnet`
+ticket shows its share, and `tickets_of` on `tickets-v10.near-post.testnet`
 shows the same balance.
 
-## Live on testnet (v9)
+## Live on testnet (v10)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v9.near-post.testnet`](https://testnet.nearblocks.io/address/league-v9.near-post.testnet) |
-| Goalars | [`goalars-v9.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v9.near-post.testnet) |
-| Players | [`players-v9.near-post.testnet`](https://testnet.nearblocks.io/address/players-v9.near-post.testnet) |
-| Items | [`items-v9.near-post.testnet`](https://testnet.nearblocks.io/address/items-v9.near-post.testnet) |
-| Season tickets | [`tickets-v9.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v9.near-post.testnet) |
+| League | [`league-v10.near-post.testnet`](https://testnet.nearblocks.io/address/league-v10.near-post.testnet) |
+| Goalars | [`goalars-v10.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v10.near-post.testnet) |
+| Players | [`players-v10.near-post.testnet`](https://testnet.nearblocks.io/address/players-v10.near-post.testnet) |
+| Items | [`items-v10.near-post.testnet`](https://testnet.nearblocks.io/address/items-v10.near-post.testnet) |
+| Season tickets | [`tickets-v10.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v10.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -522,16 +543,16 @@ days) ends in 13 hours; a real league would play one match day a day. The
 league has 24 fictional clubs in two divisions, 8 of them in 4 derbies, a
 demo crowd and the AI agents above.
 
-v1 to v8 (1 to 10 November) stay on `*-v1` to `*-v8.near-post.testnet`;
+v1 to v9 (1 to 12 November) stay on `*-v1` to `*-v9.near-post.testnet`;
 they are no longer used. The contracts cannot be changed, so new rules mean a
-new league: v9 (10 November) starts again at season 1 with the mechanics of
-"What v9 adds".
+new league: v10 (12 November) starts again at season 1 with the mechanics of
+"What v9 adds" and "What v10 adds".
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v9.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v9.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v10.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v10.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -549,9 +570,9 @@ pnpm dev:web       # http://localhost:5173
 | --- | --- |
 | `pnpm test` | `Tests 106 passed` (relay), `5 passed` (sim), `39 passed` (web). |
 | `pnpm sim` | The G supply after 1, 30 and 60 match days for five leagues: loyal fans reach 5.40B, absent fans 2.55B, a dead league stays under 0.5B. |
-| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v9 contracts on testnet. |
+| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v10 contracts on testnet. |
 
-The web app reads the v9 contracts on testnet. Email sign-in goes through the
+The web app reads the v10 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 

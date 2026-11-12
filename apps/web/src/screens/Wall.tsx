@@ -66,7 +66,7 @@ export function Wall({ clubId, compact = false }: { clubId: string; compact?: bo
       {here.length > 0 && (
         <ul className="here" aria-label="Online now">
           {here.map((p) => (
-            <li key={p.token_id} title={p.name}>
+            <li key={p.token_id} title={p.name} className={p.token_id === me?.token_id ? "is-me" : undefined}>
               <Head look={p.look} n={faceNumber(p.token_id)} size={34} title={p.name} />
               <span>{p.name.split(" ").slice(-1)[0]}</span>
             </li>

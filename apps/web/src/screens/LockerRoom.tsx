@@ -14,6 +14,9 @@ import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.j
 import { Sticker } from "./Sticker.js";
 import { Training } from "./Training.js";
 import { Wardrobe } from "./Wardrobe.js";
+import { FaceEditor } from "./FaceEditor.js";
+import { Life } from "./Life.js";
+import type { Applicant, Recruitment } from "../lib/types.js";
 
 
 export function LockerRoom() {
@@ -66,15 +69,27 @@ function PickClub({ me }: { me: Player }) {
   const { data } = useData(async () => {
     const table = await league<Club[]>("table");
     const squads = await Promise.all(table.map((c) => league<Player[]>("squad", { account_id: c.manager })));
+    const modes = await Promise.all(table.map((c) => league<Recruitment>("recruitment_of", { club_id: c.manager }).catch(() => "open" as Recruitment)));
     // Clubs that pay come first; the league table breaks the ties.
     return table
-      .map((c, i) => ({ c, people: squads[i]!.filter((p) => p.controller).length }))
+      .map((c, i) => ({ c, people: squads[i]!.filter((p) => p.controller).length, votes: modes[i] === "vote" }))
       .sort((a, b) => Number(BigInt(b.c.wage ?? "0") - BigInt(a.c.wage ?? "0")));
   }, []);
   const table = data?.map((d) => d.c);
   const { data: rules } = useData(() => league<Rules>("rules"), []);
   const lengths = rules?.contract_days ?? [7, 13, 26, 52, 78];
   const [days, setDays] = useState(26);
+  // The club he gave his word to, when it votes on its recruits: how the vote stands.
+  const { data: word, reload: reloadWord } = useData(async () => {
+    const signing = await league<{ club: string; days: number } | null>("signing_of", { token_id: me.token_id }).catch(() => null);
+    if (!signing) return null;
+    const list = await league<Applicant[]>("applicants", { club_id: signing.club }).catch(() => [] as Applicant[]);
+    return { club: signing.club, mine: list.find((a) => a.token_id === me.token_id) ?? null };
+  }, [me.token_id]);
+  useEffect(() => {
+    const t = setInterval(reloadWord, 20_000);
+    return () => clearInterval(t);
+  }, [reloadWord]);
   return (
     <section className="paper panel signing" aria-labelledby="pick-title">
       <h2 id="pick-title">Sign for a club</h2>
@@ -99,8 +114,9 @@ function PickClub({ me }: { me: Player }) {
         </ul>
       </div>
       <div className="clubs">
-        {(data ?? []).map(({ c, people }) => {
+        {(data ?? []).map(({ c, people, votes }) => {
           const wage = BigInt(c.wage ?? "0");
+          const applied = votes && word?.club === c.manager ? word.mine : null;
           return (
             <div className="club-row" key={c.manager}>
               <Crest clubId={c.manager} name={c.name} size={40} />
@@ -108,6 +124,7 @@ function PickClub({ me }: { me: Player }) {
                 <strong>{c.name}</strong>
                 <span className="note">
                   Division {c.division}, {c.points} pts, {c.fans} fans, {people} of 12 people
+                  {votes ? (applied?.approved ? ", voted you in" : ", votes on its recruits") : ""}
                 </span>
               </span>
               <span className="club-pay">
@@ -116,6 +133,21 @@ function PickClub({ me }: { me: Player }) {
               </span>
               {people >= 12 ? (
                 <span className="chip">FULL</span>
+              ) : votes && !applied?.approved ? (
+                applied ? (
+                  <span className="chip applied" title="Its players vote on each recruit">
+                    APPLIED · {applied.yes} YES, {applied.no} NO
+                  </span>
+                ) : (
+                  <Action
+                    label={`APPLY, ${days} DAYS`}
+                    aria={`Apply to ${c.name} for ${days} days: its players vote`}
+                    className="cta small"
+                    run={() => leagueCall(session!, "sign_for", { club_id: c.manager, days }, 30)}
+                    done={() => soon(reloadWord)}
+                    success={`Applied to ${c.name}: its players vote`}
+                  />
+                )
               ) : (
                 <Action
                   label={`SIGN ${days} DAYS`}
@@ -338,6 +370,8 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
       </a>
       <div className="locker-work">
         <Training me={me} />
+        <Life me={me} />
+        <FaceEditor me={me} shirt={crestOf(club.manager).main} />
         <Wardrobe me={me} />
       </div>
     </div>

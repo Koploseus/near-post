@@ -514,3 +514,51 @@ describe("fan zone", () => {
     expect(feed.entries.every((e) => !("briefing" in e))).toBe(true);
   });
 });
+
+describe("faces", () => {
+  it("saves the face a player picks for his own footballer, signed with his key, and shows them all", async () => {
+    const { faceMessage } = await import("./vault-message.js");
+    const { FACE_MAX } = await import("./faces.js");
+    const chain = new FakeChain();
+    const kp = KeyPair.fromRandom("ed25519");
+    const me = "u0123456789abcdef.near-post.testnet";
+    chain.accounts.set(me, { balance: 1n, keys: [kp.getPublicKey().toString()] });
+    let t = 1_000_000;
+    const app = createApp(loadConfig({ LEAGUE_ID: "league-v7.near-post.testnet" }), chain, { mailer: mailbox().mailer, now: () => t });
+    const sign = (token: string, face: number, ts: number, key = kp) => Buffer.from(key.sign(new TextEncoder().encode(faceMessage(me, token, face, ts))).signature).toString("base64");
+    const save = (face: number, body: Record<string, unknown> = {}) => post(app, "/v1/faces", { account_id: me, public_key: kp.getPublicKey().toString(), ts: t, signature: sign("p42", face, t), face, ...body });
+    const all = async () => ((await (await app.request("/v1/faces")).json()) as { faces: Record<string, number> }).faces;
+
+    expect(await all()).toEqual({});
+    // No footballer yet: nothing to save.
+    expect((await save(123)).status).toBe(404);
+    // His footballer: saved under his token, whatever token the request could name.
+    chain.state.footballer_of = { token_id: "p42" };
+    const ok = await save(123);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ token_id: "p42", face: 123 });
+    expect(await all()).toEqual({ p42: 123 });
+    // He changes it.
+    expect((await save(77)).status).toBe(200);
+    expect(await all()).toEqual({ p42: 77 });
+    // Not a face, somebody else's key, a signature for another face, an old signature: refused, nothing changes.
+    expect((await save(FACE_MAX)).status).toBe(400);
+    expect((await save(-1)).status).toBe(400);
+    const stranger = KeyPair.fromRandom("ed25519");
+    expect((await save(5, { public_key: stranger.getPublicKey().toString(), signature: sign("p42", 5, t, stranger) })).status).toBe(401);
+    expect((await save(5, { signature: sign("p42", 6, t) })).status).toBe(401);
+    const old = t;
+    t += 6 * 60_000;
+    expect((await save(5, { ts: old, signature: sign("p42", 5, old) })).status).toBe(401);
+    expect(await all()).toEqual({ p42: 77 });
+  });
+
+  it("keeps the faces in a file", async () => {
+    const { Faces } = await import("./faces.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const file = `${mkdtempSync(`${tmpdir()}/faces-`)}/faces.json`;
+    new Faces(file).put("p1", 9);
+    expect(new Faces(file).all()).toEqual({ p1: 9 });
+  });
+});

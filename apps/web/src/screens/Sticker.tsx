@@ -1,7 +1,7 @@
 import { SKILLS, positionLabel, tier } from "../lib/format.js";
 import type { Player } from "../lib/types.js";
 import { useAgents } from "../lib/agents.js";
-import { PixelAvatar } from "../floodlight/PixelPlayer.js";
+import { Head } from "./Look.js";
 
 /**
  * A player card: rating out of 100 and position, a portrait, the name, and
@@ -15,7 +15,9 @@ export function Sticker({ p, onClick, selected, badge }: { p: Player; onClick?: 
     <>
       <span className="sticker-face">
         {t === "gold" && <span className="foil" aria-hidden="true" />}
-        <PixelAvatar look={p.look} n={n} shirt="#2F5DA8" size={92} className="sticker-body" />
+        <span className="sticker-head">
+          <Head look={p.look} n={n} shirt="#2F5DA8" size={78} />
+        </span>
         <span className="rating">{p.overall}</span>
         <span className="pos">{positionLabel[p.position]}</span>
         {badge && <span className="badge">{badge}</span>}

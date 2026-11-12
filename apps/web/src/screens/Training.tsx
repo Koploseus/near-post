@@ -94,7 +94,7 @@ export function Training({ me }: { me: Player }) {
         setError(e instanceof Error ? e.message : String(e));
       }
     };
-    return game(run.drill, finish, club ? crestOf(club.manager).main : undefined);
+    return drillGame(run.drill, finish, club ? crestOf(club.manager).main : undefined);
   }
 
   return (
@@ -258,7 +258,7 @@ function webgl(): boolean {
 }
 
 /** The canvas game for a drill. */
-function game(d: DrillT, onDone: (trace: Click[]) => void, shirt?: string): ReactNode {
+export function drillGame(d: DrillT, onDone: (trace: Click[]) => void, shirt?: string): ReactNode {
   switch (d.game) {
     case "penalties":
       return webgl() ? (

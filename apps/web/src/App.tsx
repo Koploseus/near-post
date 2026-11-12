@@ -19,6 +19,9 @@ import { Match } from "./screens/Match.js";
 import { Seasons } from "./screens/Seasons.js";
 import { Stands } from "./screens/Stands.js";
 import { Try } from "./screens/Try.js";
+import { People } from "./screens/People.js";
+import { Rankings } from "./screens/Rankings.js";
+import { About, Faq, Footer, Privacy, Terms } from "./screens/Pages.js";
 
 /** Every screen, by hash. `tab` is the section of the nav it belongs to. */
 const ROUTES = {
@@ -38,6 +41,12 @@ const ROUTES = {
   locker: { tab: "me", view: LockerRoom },
   account: { tab: "me", view: AccountPage },
   try: { tab: "home", view: Try },
+  people: { tab: "club", view: People },
+  ranks: { tab: "club", view: Rankings },
+  about: { tab: "home", view: About },
+  faq: { tab: "home", view: Faq },
+  terms: { tab: "home", view: Terms },
+  privacy: { tab: "home", view: Privacy },
 } as const;
 type Route = keyof typeof ROUTES;
 type Tab = (typeof ROUTES)[Route]["tab"];
@@ -178,14 +187,16 @@ function Header({ tab }: { tab: Tab }) {
   );
 }
 
-/** Results, seasons, album, market, club house and the AI agents: the club's pages. */
-export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "house" | "ai" }) {
+/** Results, seasons, album, market, club house, people, rankings and the AI agents: the club's pages. */
+export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "house" | "ai" | "people" | "ranks" }) {
   const tabs = [
     ["match", "Results"],
     ["seasons", "Seasons"],
     ["album", "Album"],
     ["market", "Market"],
     ["house", "Club house"],
+    ["people", "People"],
+    ["ranks", "Rankings"],
     ["ai", "AI agents"],
   ] as const;
   return (
@@ -225,9 +236,10 @@ export function App() {
     <GameProvider>
       <Header tab={tab} />
       <main className="wrap page">
-        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "house" || r === "ai") && <ClubTabs current={r} />}
+        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "house" || r === "ai" || r === "people" || r === "ranks") && <ClubTabs current={r} />}
         {(r === "stands" || r === "g" || r === "tickets") && <StandsTabs current={r} />}
         <View />
+        <Footer />
       </main>
       <TabLinks current={tab} className="tabbar" />
       <Toasts />

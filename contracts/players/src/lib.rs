@@ -40,6 +40,10 @@ pub trait League {
 }
 
 const NOTIFY_GAS: Gas = Gas::from_tgas(10);
+/// What a plain `nft_transfer` keeps for the league: enough for it to send a
+/// free agent back when the club he went to votes on its recruits and has
+/// not said yes (v10).
+const NOTIFY_OWNER_GAS: Gas = Gas::from_tgas(60);
 
 /// One player to mint, for `nft_mint_batch`.
 #[near(serializers = [json])]
@@ -194,8 +198,18 @@ impl Players {
     }
 
     fn notify_league(&self, token_id: &TokenId, old_owner: AccountId, new_owner: AccountId) {
+        self.notify_league_with(NOTIFY_GAS, token_id, old_owner, new_owner);
+    }
+
+    fn notify_league_with(
+        &self,
+        gas: Gas,
+        token_id: &TokenId,
+        old_owner: AccountId,
+        new_owner: AccountId,
+    ) {
         ext_league::ext(self.league_id.clone())
-            .with_static_gas(NOTIFY_GAS)
+            .with_static_gas(gas)
             .on_player_transferred(token_id.clone(), old_owner, new_owner)
             .detach();
     }
@@ -336,7 +350,8 @@ impl NonFungibleTokenCore for Players {
         let previous = self.owner_of(&token_id);
         self.tokens
             .nft_transfer(receiver_id.clone(), token_id.clone(), approval_id, memo);
-        self.after_transfer(&token_id, previous, receiver_id);
+        self.record_past_club(&token_id, previous.clone());
+        self.notify_league_with(NOTIFY_OWNER_GAS, &token_id, previous, receiver_id);
     }
 
     #[payable]
