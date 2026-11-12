@@ -72,6 +72,8 @@ export function Training({ me }: { me: Player }) {
   const [skill, setSkill] = useState<Skill>(me.position === "Fw" ? "shooting" : me.position === "Mf" ? "passing" : "defending");
   const [run, setRun] = useState<{ drill: DrillT } | null>(null);
   const [attested, setAttested] = useState<Attested | null>(null);
+  /** The result opens over the page; "Later" puts it back in the training card. */
+  const [shut, setShut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setAttested(ticket ? loadAttested(ticket.id) : null), [ticket]);
@@ -99,7 +101,8 @@ export function Training({ me }: { me: Player }) {
       <h3>Training</h3>
       {ticket ? (
         attested ? (
-          <>
+          <div className={shut ? "drill-done" : "reveal-modal"} role={shut ? undefined : "dialog"} aria-modal={shut ? undefined : true} aria-label="Drill result">
+          <div className="reveal-card">
             <div className={`drill-result${attested.points ? " passed" : ""}`}>
               <HeroArt className="drill-hero" pose={attested.points ? "cheer" : "idle"} />
               <span className="drill-title">{attested.points ? "DRILL PASSED!" : "NOT THIS TIME"}</span>
@@ -120,7 +123,13 @@ export function Training({ me }: { me: Player }) {
                 soon(refresh);
               }}
             />
-          </>
+            {!shut && (
+              <button type="button" className="link" onClick={() => setShut(true)}>
+                Later
+              </button>
+            )}
+          </div>
+          </div>
         ) : (
           <>
             <p className="note">

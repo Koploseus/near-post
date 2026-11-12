@@ -99,7 +99,7 @@ export function Dashboard() {
   const { data: champs } = useData(() => (season > 1 ? league<Champion[]>("champions", { before: null, limit: 1 }) : Promise.resolve([])), [season]);
 
   const nextCard = (
-    <a className={`next-card${session ? "" : " landing"}`} href={next.href}>
+    <a className={`next-card${session ? "" : " landing"}${!me ? " with-art" : ""}`} href={next.href}>
       <span className="k">{next.eyebrow}</span>
       <strong>{next.title}</strong>
       <span className="next-text">{next.text}</span>
@@ -108,7 +108,7 @@ export function Dashboard() {
   );
 
   return (
-    <div className={`today${session ? " signed" : ""}`}>
+    <div className={`today${session ? " signed" : ""}${me ? " has-player" : ""}`}>
       {session && <PlayerColumn />}
       <section className="today-main">
         {/* Logged out, what the game is comes first; logged in, the match does. */}
@@ -216,7 +216,7 @@ export function Dashboard() {
             <span className="k">SEASON {champs[0]!.season} CHAMPIONS</span>
             {champs.map((c) => (
               <span key={c.division} className={c.club_id === clubId ? "mine" : ""}>
-                🏆 <b>{c.name}</b> · Division {c.division} · {c.points} pts
+                <b>{c.name}</b> · Division {c.division} · {c.points} pts
               </span>
             ))}
             <span className="link">All seasons →</span>
@@ -234,18 +234,8 @@ export function Dashboard() {
 function PlayerColumn() {
   const { me, club, clubId, balance, schedule } = useGame();
   const { data: champs } = useData(() => league<Champion[]>("champions", { before: null, limit: 50 }).catch(() => []), [clubId]);
-  if (!me)
-    return (
-      <aside className="today-player paper panel">
-        <span className="k">YOUR PLAYER</span>
-        <div className="avatar-stage empty">
-          <Avatar n={7} size={170} shirt="#cfc6b0" />
-        </div>
-        <a className="cta small" href="#/locker">
-          CREATE HIM
-        </a>
-      </aside>
-    );
+  // No footballer yet: the yellow "Create your footballer" card says it, with the art.
+  if (!me) return null;
   const won = (champs ?? []).filter((c) => c.club_id === clubId);
   return (
     <aside className="today-player paper panel">

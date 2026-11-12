@@ -1,3 +1,4 @@
+import { CoachFace } from "../floodlight/art.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
 import { serverNow } from "../lib/time.js";
@@ -238,7 +239,8 @@ export function MatchView({
     full_time: "Full time",
   }[c.phase];
   return (
-    <div className="live">
+    <div className="live live-split">
+      <div className="live-left">
       <section className="scoreboard" aria-live="polite">
         <span className="eyebrow">
           MATCH DAY {day} · {phaseLabel.toUpperCase()}
@@ -267,8 +269,9 @@ export function MatchView({
       </section>
 
       <CoachTalk day={day} m={m} names={names} c={c} />
+      </div>
 
-      <div className="live-grid">
+      <div className="live-grid live-right">
         <section className="paper panel feed" aria-label="Match events">
           <h3>{final ? "Every action" : "Live"}</h3>
           <ol>
@@ -457,8 +460,11 @@ function CoachTalk({ day, m, names, c }: { day: number; m: MatchResult; names: M
     <section className="paper panel coach-talk" aria-label="The coaches">
       {lines.map(({ club, e }) => (
         <p key={club}>
-          <span className="ai-tag">AI</span> <b>{roster.get(club)?.name}</b> <span className="note">{clubName(names.get(club) ?? "")}</span>
-          <q>{e.quote}</q>
+          <CoachFace id={club} size={56} />
+          <span>
+            <b>{roster.get(club)?.name}</b> <span className="ai-tag">AI COACH</span> <span className="note">{clubName(names.get(club) ?? "")}</span>
+            <q>{e.quote}</q>
+          </span>
         </p>
       ))}
     </section>

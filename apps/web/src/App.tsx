@@ -100,10 +100,29 @@ function Me({ current }: { current: Tab }) {
     <a className="me-chip" href="#/locker" aria-current={current === "me" ? "page" : undefined} aria-label={me ? `${me.name}, your footballer` : "Create your footballer"}>
       <Head look={me?.look} n={faceNumber(me?.token_id)} size={34} />
       <span className="me-text">
-        <b>{me ? me.name.split(" ")[0] : "Your player"}</b>
+        <b>
+          <span className="me-first">{me ? me.name.split(" ")[0] : "Your player"}</span>
+          <span className="me-full">{me ? me.name : "Your player"}</span>
+        </b>
         <em>{g(balance)}</em>
+        {me && (
+          <i className="me-sub">
+            {me.position} · {me.overall}
+          </i>
+        )}
       </span>
     </a>
+  );
+}
+
+/** Your G, with the coin: its own pill on a wide screen (the phone keeps it in the player chip). */
+function Balance() {
+  const { session, balance } = useGame();
+  if (!session) return null;
+  return (
+    <span className="bal-pill" title="Your goalars">
+      {g(balance)}
+    </span>
   );
 }
 
@@ -150,6 +169,7 @@ function Header({ tab }: { tab: Tab }) {
         <TabLinks current={tab} className="nav" />
         <div className="top-right">
           <Online />
+          <Balance />
           <Me current={tab} />
           <AccountLink />
         </div>
