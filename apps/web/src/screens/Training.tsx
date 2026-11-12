@@ -162,12 +162,26 @@ export function Training({ me }: { me: Player }) {
             {me.free_trainings > 0 ? "Your first session is free. " : "400k G, burned. "}Pick a skill, then play the drill. A session costs 15 energy (you have{" "}
             {me.energy}).
           </p>
-          <Cabinet skill={skill} className="training-cabinet" />
-          <div className="skill-pick" role="radiogroup" aria-label="Skill to train">
+          {/* The arcade: the picked drill's cabinet, big, then one cabinet per skill to pick from. */}
+          <div className="arcade-pick">
+            <Cabinet skill={skill} className="arcade-cabinet" />
+            <div>
+              <span className="arcade-tag">{skillName(skill).toUpperCase()} DRILL</span>
+              <b className="arcade-title">{DRILL_NAME[skill]}</b>
+              <span className="arcade-skill">
+                {skillName(skill)} {me.skills[skill]}
+              </span>
+            </div>
+          </div>
+          <div className="skill-pick arcade-grid" role="radiogroup" aria-label="Skill to train">
             {SKILLS.map(([k, label, name]) => (
               <button key={k} type="button" role="radio" aria-checked={skill === k} onClick={() => setSkill(k)} title={name}>
-                <b>{me.skills[k]}</b>
-                {label}
+                <Cabinet skill={k} className="arcade-mini" />
+                <span>
+                  <i>{DRILL_NAME[k]}</i>
+                  <b>{me.skills[k]}</b>
+                  {label}
+                </span>
               </button>
             ))}
           </div>
@@ -210,6 +224,16 @@ export function Training({ me }: { me: Player }) {
     </div>
   );
 }
+
+/** The game each skill trains (shooting and physical share the penalties). */
+const DRILL_NAME: Record<Skill, string> = {
+  shooting: "Penalties",
+  physical: "Penalties",
+  passing: "Through balls",
+  dribbling: "Dribble",
+  pace: "Sprint",
+  defending: "Tackles",
+};
 
 const PENALTIES = "five penalties. Press on the ball, drag to where you aim in the goal, release. A firm swipe beats the keeper; a flick drifts, a slow shot gives him time.";
 const HOW: Record<string, string> = {

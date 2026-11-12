@@ -41,7 +41,7 @@ function pitchTexture(): THREE.CanvasTexture {
   const X = (x: number) => (x + 40) * sx;
   const Z = (z: number) => (z + 10) * sz;
   for (let i = 0; i < 16; i++) {
-    g.fillStyle = i % 2 ? "#2e7d4f" : "#38895a";
+    g.fillStyle = i % 2 ? "#4AB226" : "#5BC72E";
     g.fillRect(0, i * (c.height / 16), c.width, c.height / 16 + 1);
   }
   g.strokeStyle = "rgba(255,255,255,.92)";
@@ -107,10 +107,10 @@ function boardsTexture(): THREE.CanvasTexture {
   c.height = 64;
   const g = c.getContext("2d")!;
   for (let i = 0; i < 8; i++) {
-    g.fillStyle = i % 2 ? "#1B2340" : "#2F5DA8";
+    g.fillStyle = i % 2 ? "#251A57" : "#C8202F";
     g.fillRect(i * 256, 0, 256, 64);
     g.fillStyle = i % 2 ? "#F2B705" : "#F3EAD7";
-    g.font = "900 34px 'Archivo Black', system-ui";
+    g.font = "700 36px 'Pixelify Sans', system-ui";
     g.textAlign = "center";
     g.textBaseline = "middle";
     g.fillText(i % 2 ? "$G" : "NEAR POST", i * 256 + 128, 34);
@@ -215,14 +215,14 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
     renderer.domElement.style.width = "100%";
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0e1428);
-    scene.fog = new THREE.Fog(0x0e1428, 30, 70);
+    scene.background = new THREE.Color(0x1a1240);
+    scene.fog = new THREE.Fog(0x1a1240, 30, 70);
     const camera = new THREE.PerspectiveCamera(30, 5 / 3, 0.1, 200);
     const camHome = new THREE.Vector3(0.3, 2.0, SPOT + 7.5);
     camera.position.copy(camHome);
     camera.lookAt(0, LOOK_Y, 0);
 
-    scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2e7d4f, 1.1));
+    scene.add(new THREE.HemisphereLight(0xd9d2f0, 0x4ab226, 1.1));
     const sun = new THREE.DirectionalLight(0xffffff, 2.2);
     sun.position.set(6, 18, 22);
     sun.target.position.set(0, 0, 4);

@@ -208,10 +208,7 @@ export function PassesGame({ setup, onDone }: { setup: PassRound[]; onDone: (tra
       g.stroke();
       g.restore();
       const left = 1 - ms / PASS_ROUND_MS;
-      g.fillStyle = "rgba(18,25,51,.6)";
-      g.fillRect(350, 584, 300, 8);
-      g.fillStyle = left > 0.3 ? YELLOW : RED;
-      g.fillRect(350, 584, 300 * Math.max(0, left), 8);
+      cells(g, 350, 580, 300, 12, Math.max(0, left), left > 0.3 ? YELLOW : RED);
       hint(g, i === 0 && ms < 3_500 ? "Drag from the ball to where he will be, release" : `Pass ${i + 1} of ${plays.length}`, 470);
     }
     if (p.pass && t >= resolveAt(p)) {
@@ -223,10 +220,23 @@ export function PassesGame({ setup, onDone }: { setup: PassRound[]; onDone: (tra
   return <CanvasGame title="Through balls" help="Drag from the ball to where your teammate will be and release, away from the defenders. A quick swipe plays it harder: harder to cut out, harder to control." rounds={setup.length} frame={frame} onDone={onDone} />;
 }
 
+/** A meter in square cells (the kit never draws a smooth bar): `p` 0..1 of them lit. */
+function cells(g: G, x: number, y: number, w: number, h: number, p: number, on: string) {
+  const n = 10;
+  const gap = 3;
+  const cw = (w - gap * (n - 1)) / n;
+  g.fillStyle = "#0B0820";
+  g.fillRect(x - 3, y - 3, w + 6, h + 6);
+  for (let k = 0; k < n; k++) {
+    g.fillStyle = k < Math.round(p * n) ? on : "#251A57";
+    g.fillRect(x + k * (cw + gap), y, cw, h);
+  }
+}
+
 /** The final third seen from above: you attack upwards. */
 function topPitch(g: G, t: number) {
   for (let y = 0, n = 0; y < H; y += 60, n++) {
-    g.fillStyle = n % 2 ? "#2e7d4f" : "#3a8c5c";
+    g.fillStyle = n % 2 ? "#4AB226" : "#5BC72E";
     g.fillRect(0, y, W, 60);
   }
   g.strokeStyle = "rgba(243,234,215,.9)";
@@ -357,10 +367,10 @@ export function SprintGame({ setup, onDone }: { setup: Race[]; onDone: (trace: P
 
     stands(g, t, r.won && t >= over ? t - over : -1);
     // The pitch from the side: a touchline, the stripes and the lanes.
-    g.fillStyle = "#3a8c5c";
+    g.fillStyle = "#5BC72E";
     g.fillRect(0, 182, W, H - 182);
     for (let x = 0, n = 0; x < W; x += 90, n++) {
-      g.fillStyle = n % 2 ? "#2e7d4f" : "#3a8c5c";
+      g.fillStyle = n % 2 ? "#4AB226" : "#5BC72E";
       g.beginPath();
       g.moveTo(x, 182);
       g.lineTo(x + 90, 182);
@@ -400,16 +410,13 @@ export function SprintGame({ setup, onDone }: { setup: Race[]; onDone: (trace: P
       g.roundRect(x, 196, 200, 46, 10);
       g.fill();
       g.fillStyle = pressed ? INK : PAPER;
-      g.font = "900 20px 'Archivo Black', system-ui";
+      g.font = "700 22px 'Pixelify Sans', system-ui";
       g.textAlign = "center";
       g.textBaseline = "middle";
       g.fillText(side < 0 ? "◀  LEFT" : "RIGHT  ▶", x + 100, 220);
     }
     // Speed.
-    g.fillStyle = "rgba(18,25,51,.55)";
-    g.fillRect(380, 210, 240, 14);
-    g.fillStyle = me.v > 8 ? YELLOW : PAPER;
-    g.fillRect(380, 210, 24 * me.v, 14);
+    cells(g, 380, 206, 240, 18, me.v / 10, me.v > 8 ? YELLOW : PAPER);
 
     if (ms < 0) {
       const early = trace.some((p) => !p.up && p.t >= r.start && p.t < r.go && t - p.t < 700);
