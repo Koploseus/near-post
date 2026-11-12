@@ -158,6 +158,6 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .paper [aria-pressed="true"], .paper [aria-checked="true"], .skill-pick button[aria-checked="true"] { background: var(--np-yellow) !important; color: var(--np-outline) !important; }
 /* Club house plates: night cards, the art on a deep panel. */
 .plate { --ink: var(--np-text); --paper: var(--np-panel); background: var(--np-panel); color: var(--np-text); box-shadow: var(--px); }
-.plate-art { background: var(--np-night-deep); }
+.plate-art { background: #6E5FC2; }
 .plate h3 { font-weight: 700; color: var(--np-text); }
 .plate-foot b, .plate-foot .price { color: var(--np-yellow); }
