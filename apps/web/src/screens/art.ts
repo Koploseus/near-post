@@ -192,8 +192,10 @@ const SHEETS = {
   top: "/art/players/top.webp",
   /** Seen from behind: hands on hips (frame 0). */
   shooter: "/art/penalty/shooter.webp",
+  /** The keeper: ready, dive low, dive high, ball held, beaten, fist pump (his kit is not repainted). */
+  keeper: "/art/penalty/keeper.webp",
 } as const;
-type Sheet = keyof typeof SHEETS;
+export type Sheet = keyof typeof SHEETS;
 
 const IMAGES = new Map<Sheet, HTMLImageElement>();
 const PAINTED = new Map<string, HTMLCanvasElement>();
@@ -254,6 +256,11 @@ function art(g: G, sheet: Sheet, look: Look, n: number, h: number, flip: boolean
   g.drawImage(c, n * cw, 0, cw, c.height, -w / 2, -h, w, h);
   g.restore();
   return true;
+}
+
+/** Frame `n` of a strip in a shirt colour, `h` px tall, feet at the origin (the live match draws its 22 players with it). False until loaded. */
+export function sprite(g: G, sheet: Sheet, shirt: string, n: number, h: number, flip = false): boolean {
+  return art(g, sheet, { shirt }, n, h, flip);
 }
 
 /** Which of two frames, alternating with a running cycle (radians). */
