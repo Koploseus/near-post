@@ -404,3 +404,5 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 @keyframes reveal-in { from { transform: scale(.85); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .reveal-card { animation: none; } }
 @media (max-width: 720px) { .reveal-card .unbox { width: 30%; } }
+/* The centre circle stays a circle (the no-rounded-corners rule is for boxes). */
+.mp-circle, .pitch-line.circle { border-radius: 50% !important; }

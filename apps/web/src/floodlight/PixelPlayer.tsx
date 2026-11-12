@@ -137,7 +137,8 @@ export function pixelGrid(o: PixelOpts): (string | null)[][] {
 
 function draw(o: PixelOpts): Grid {
   const look = o.look ?? undefined;
-  const n = o.n || 0;
+  // Token numbers can be huge (past 2^31): keep a small non-negative integer, or `n >> 1` goes negative.
+  const n = Math.abs(Math.trunc(o.n || 0)) % 1_000_003;
   const pose: Pose = o.pose ?? "idle";
   const skin = o.colors?.skin ?? SKIN[n % SKIN.length]!;
   const skinS = mix(skin, "#7A2430", 0.28);
