@@ -489,6 +489,36 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .pen-power span { order: -1; margin-top: 4px; padding: 2px 4px; background: var(--np-text); color: var(--np-outline); font-family: var(--np-display); font-weight: 700; font-size: 10px; writing-mode: horizontal-tb; }
 @media (max-width: 720px) { .pen-power i { width: 12px; height: 7px; } }
 
+/* The face editor (FaceEditor.tsx). */
+.face-editor .face-body { display: grid; grid-template-columns: 170px 1fr; gap: 20px; align-items: start; margin-top: 12px; }
+.face-preview { display: grid; justify-items: center; gap: 8px; padding: 14px 8px; background: #120C30; border: 3px solid #0B0820; }
+.face-turn { display: flex; gap: 10px; }
+.face-controls { display: grid; gap: 10px; }
+.face-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; }
+.face-label { font-family: "Pixelify Sans", system-ui; font-weight: 700; color: #F3EAD7; }
+.face-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.face-swatch { width: 36px; height: 36px; padding: 0; border: 3px solid #0B0820; border-radius: 0; background: #0B0820; cursor: pointer; }
+.face-swatch span { display: block; width: 100%; height: 100%; }
+.face-actions .face-save { background: #F2B705; }
+.face-swatch.on { outline: 3px solid #F2B705; outline-offset: 1px; }
+.face-step { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; text-align: center; background: #120C30; border: 3px solid #0B0820; min-height: 44px; }
+.face-step button { height: 100%; min-height: 40px; padding: 0; background: #251A57; color: #F2B705; border: 0; border-radius: 0; font-size: 16px; cursor: pointer; }
+.face-step button:hover { background: #2F5DA8; color: #F3EAD7; }
+.face-heads { display: flex; flex-wrap: wrap; gap: 6px; }
+.face-head { padding: 2px 2px 0; background: #120C30; border: 3px solid #0B0820; border-radius: 0; cursor: pointer; line-height: 0; }
+.face-head:hover { background: #251A57; }
+.face-head.on, .face-head[aria-checked="true"] { background: #251A57 !important; outline: 3px solid #F2B705; outline-offset: 1px; }
+.face-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+@media (max-width: 640px) {
+  .face-editor .face-body { grid-template-columns: 1fr; }
+  .face-row { grid-template-columns: 96px 1fr; }
+}
+.sticker-face .sticker-head { display: grid; place-items: end center; height: 86%; }
+/* Yours: a gold frame around your own footballer in the lists. */
+.is-me { outline: 3px solid #F2B705; outline-offset: -3px; }
+.spot-disc.is-me { outline-offset: 2px; }
+.squad-list li.is-me b::after { content: " · YOU"; color: #F2B705; font-size: .8em; }
+
 /* The live match as a TV broadcast (TvPitch.tsx). */
 .tv-pitch { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; margin-top: 14px; background: #120C30; border: 3px solid #0B0820; box-shadow: var(--px, 4px 4px 0 #0B0820); }
 

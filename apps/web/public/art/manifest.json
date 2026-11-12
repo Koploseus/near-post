@@ -495,5 +495,26 @@
    200
   ],
   "use": "Through balls, players from above: 6 frames of 128x200 (standing, run x2, pass, control, arms up). Key-blue kit (hue 205-260), repainted to the shirt colour at load (art.ts)."
+ },
+ "art/faces/face-0.webp \u2026 face-7.webp": {
+  "size": [
+   384,
+   128
+  ],
+  "use": "The eight bald faces of the face editor: three views of 128x128 (front, side facing right, back). Head 64 px wide, centred, jaw at y=106. The skin is repainted (lib/face.ts)."
+ },
+ "art/faces/hair-*.webp": {
+  "size": [
+   384,
+   128
+  ],
+  "use": "Haircuts drawn on a green mannequin, cut out and fitted to the faces: short, side, curly, buzz, spiky, long, quiff (free) and afro, mohawk, ponytail, bun, dreads, flattop, fire (wardrobe items). Chestnut, tinted to the hair colour."
+ },
+ "art/faces/beard-1.webp \u2026 beard-4.webp": {
+  "size": [
+   384,
+   128
+  ],
+  "use": "Beards, same frame: moustache, goatee, full beard, short beard. Tinted to the hair colour."
  }
 }

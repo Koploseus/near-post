@@ -14,6 +14,8 @@ import type { Agent } from "./agents/roster.js";
 import type { Kickoffs } from "./schedule.js";
 import { Stats } from "./stats.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
+import { FACE_MAX, Faces } from "./faces.js";
+import { faceMessage } from "./vault-message.js";
 import { fanzoneMessage, presenceMessage, wallMessage, wallReadMessage } from "./vault-message.js";
 import { botDocs, makeToken, readToken } from "./bot.js";
 import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
@@ -45,6 +47,7 @@ const Verify = z.object({
 export interface Deps {
   /** Passkey backups of players' keys (encrypted in the browser). */
   vaults?: Vaults;
+  faces?: Faces;
   /** When each half really kicked off (the scheduler records it). */
   kickoffs?: Kickoffs;
   /** Where the drill scores already signed are kept (a restart must not reopen them). */
@@ -73,6 +76,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   const app = new Hono();
   const now = deps.now ?? Date.now;
   const vaults = deps.vaults ?? new Vaults(null);
+  const faces = deps.faces ?? new Faces(null);
   const codes = deps.codes ?? new Codes(config.CODE_TTL_SECONDS * 1000, 5, now);
   const startByIp = new Limiter(10, 60 * 60_000, now);
   const startByEmail = new Limiter(3, 15 * 60_000, now);
@@ -170,6 +174,33 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const id = AccountId.safeParse(c.req.param("accountId"));
     if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
     return c.json({ passkeys: vaults.get(id.data).length });
+  });
+
+  // ---- Faces: how each footballer looks (a drawing choice, not a rule) ----
+
+  app.get("/v1/faces", (c) => c.json({ faces: faces.all() }));
+
+  const facesByIp = new Limiter(30, 60 * 60_000, now);
+  app.post("/v1/faces", async (c) => {
+    const body = z
+      .object({ account_id: AccountId, public_key: z.string().startsWith("ed25519:"), ts: z.number().int(), signature: z.string().min(40).max(200), face: z.number().int().min(0).max(FACE_MAX - 1) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    if (!facesByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    const { account_id, public_key, ts, signature, face } = body.data;
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    // The footballer this account plays: only he can change his face.
+    const me = await chain.view<{ token_id: string } | null>(config.LEAGUE_ID!, "footballer_of", { account_id }).catch(() => null);
+    if (!me) return c.json({ error: "no_footballer" }, 404);
+    let ok = false;
+    try {
+      ok = PublicKey.fromString(public_key).verify(new TextEncoder().encode(faceMessage(account_id, me.token_id, face, ts)), Buffer.from(signature, "base64"));
+    } catch {
+      ok = false;
+    }
+    if (!ok || !(await chain.hasKey(account_id, public_key))) return c.json({ error: "bad_signature" }, 401);
+    faces.put(me.token_id, face);
+    return c.json({ token_id: me.token_id, face });
   });
 
   /** The AI agents: who they are, and their journal (decisions, quotes, transactions, model evidence). */

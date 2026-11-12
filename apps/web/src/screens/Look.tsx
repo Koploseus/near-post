@@ -1,6 +1,8 @@
 import { ItemArt, itemArt } from "../floodlight/item-art.js";
-import { PixelAvatar, PixelHead } from "../floodlight/PixelPlayer.js";
-import type { ReactNode } from "react";
+import { PixelAvatar } from "../floodlight/PixelPlayer.js";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { avatarCanvas } from "./art.js";
+import { type Face, HEAD, type View, artReady, faceOf, facesVersion, headGrid, headURL, packFace, subscribeFaces } from "../lib/face.js";
 import type { CatalogItem, ItemKind, Look, Skill } from "../lib/types.js";
 
 export const SKIN = ["#C68B5E", "#E9B98F", "#B37650", "#F0C6A0", "#8A5A3B", "#DDA77C"];
@@ -258,14 +260,83 @@ export function Face({ n, skin }: { n: number; skin: string }) {
 /** A number for a footballer's face, from his token id ("p42" → 42). */
 export const faceNumber = (tokenId: string | null | undefined) => (tokenId ? Number(tokenId.replace(/\D/g, "")) || 0 : 0);
 
-/** Just the head and the collar of his shirt: for the pitch, the squad and the wall. Pixel rig (floodlight/PixelPlayer). */
-export function Head({ look, n, shirt = "#2F5DA8", size = 36, title }: { look?: Look; n: number; shirt?: string; size?: number; title?: string }) {
-  return <PixelHead look={look} n={n} shirt={shirt} size={size} title={title} />;
+/** His head, drawn (art/faces), with the collar of his shirt. `size` is the width; it is a quarter taller. */
+export function FaceHead({ face, hair, shirt = "#2F5DA8", size = 36, title, view = "front", className }: { face: Face; hair?: string | null; shirt?: string; size?: number; title?: string; view?: View; className?: string }) {
+  useSyncExternalStore(subscribeFaces, facesVersion);
+  const url = headURL(face, view, hair);
+  // Until the art has loaded: the same face on a grid of big pixels.
+  const paths = useMemo(() => {
+    if (url) return [];
+    const by = new Map<string, string>();
+    headGrid(face, view, hair).forEach((row, y) => {
+      for (let x = 0; x < row.length; ) {
+        const c = row[x];
+        let w = 1;
+        while (x + w < row.length && row[x + w] === c) w++;
+        if (c) by.set(c, `${by.get(c) ?? ""}M${x} ${y}h${w}v1h-${w}z`);
+        x += w;
+      }
+    });
+    return [...by];
+  }, [packFace(face), view, hair, url]);
+  const label = { role: title ? "img" : undefined, "aria-label": title, "aria-hidden": title ? undefined : true } as const;
+  if (url)
+    return (
+      <svg className={className} width={size} height={size * 1.25} viewBox="16 8 96 120" {...label}>
+        {/* Shoulders behind the head. */}
+        <path d="M30 128v-10l8-6h52l8 6v10z" fill={shirt} stroke="#1B1030" strokeWidth="3" strokeLinejoin="round" />
+        <image href={url} x="0" y="0" width="128" height="128" style={{ imageRendering: "pixelated" }} />
+      </svg>
+    );
+  return (
+    <svg className={className} width={size} height={size * 1.25} viewBox={`0 -2 ${HEAD} 37.5`} shapeRendering="crispEdges" {...label}>
+      <path d="M4 36v-7h3v-1h16v1h3v7z" fill="#1B1030" />
+      <path d="M5 36v-6h3v-1h14v1h3v6z" fill={shirt} />
+      {paths.map(([c, d]) => (
+        <path key={c} d={d} fill={c} />
+      ))}
+    </svg>
+  );
 }
 
-/** A footballer head to toe, wearing his look: for the wardrobe. Pixel rig (floodlight/PixelPlayer); size is the height. */
+/** Just the head and the collar of his shirt: for the pitch, the squad and the wall. His own face (lib/face.ts). */
+export function Head({ look, n, shirt = "#2F5DA8", size = 36, title }: { look?: Look; n: number; shirt?: string; size?: number; title?: string }) {
+  useSyncExternalStore(subscribeFaces, facesVersion);
+  return <FaceHead face={faceOf(n)} hair={look?.hair} shirt={shirt} size={size} title={title} />;
+}
+
+/** A footballer head to toe, with his own face and wearing his look: for the wardrobe. `size` is the height. */
 export function Avatar({ look, n, shirt = "#2F5DA8", size = 180 }: { look?: Look; n: number; shirt?: string; size?: number }) {
-  return <PixelAvatar look={look} n={n} shirt={shirt} size={size} />;
+  const version = useSyncExternalStore(subscribeFaces, facesVersion);
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [ready, setReady] = useState(false);
+  const worn = JSON.stringify(look ?? {});
+  useEffect(() => {
+    let stop = false;
+    const paint = () => {
+      if (stop) return;
+      const src = artReady() ? avatarCanvas(shirt, n, look, version) : null;
+      const el = ref.current;
+      if (!src || !el) {
+        setTimeout(paint, 200); // the art is still loading: the pixel footballer shows meanwhile
+        return;
+      }
+      const g = el.getContext("2d")!;
+      g.clearRect(0, 0, el.width, el.height);
+      g.drawImage(src, 0, 0);
+      setReady(true);
+    };
+    paint();
+    return () => {
+      stop = true;
+    };
+  }, [worn, n, shirt, version]);
+  return (
+    <span className="avatar-art" style={{ display: "inline-block", position: "relative", height: size, width: (size * 314) / 320 }}>
+      {!ready && <PixelAvatar look={look} n={n} shirt={shirt} size={size} />}
+      <canvas ref={ref} width={314} height={320} aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", imageRendering: "pixelated", visibility: ready ? "visible" : "hidden" }} />
+    </span>
+  );
 }
 
 /** A small picture of an item, for the wardrobe grid. */

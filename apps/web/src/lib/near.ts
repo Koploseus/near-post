@@ -1,5 +1,5 @@
 import { Account, FailoverRpcProvider, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
-import { fanzoneMessage } from "../../../relay/src/vault-message.js";
+import { faceMessage, fanzoneMessage } from "../../../relay/src/vault-message.js";
 import { GOALARS, ITEMS, LEAGUE, PLAYERS, READ_RPCS, RELAY, RPC, TICKETS } from "./config.js";
 
 /**
@@ -284,4 +284,24 @@ export interface LedgerEntry {
   who: string | null;
   amount: string;
   mint: boolean;
+}
+
+/** Every face players picked, by token id. */
+export async function loadFaces(): Promise<Record<string, number>> {
+  const r = await fetch(`${RELAY}/v1/faces`);
+  return r.ok ? ((await r.json()) as { faces: Record<string, number> }).faces : {};
+}
+
+/** Saves your footballer's face (signed with your key; the relay checks he is yours). */
+export async function saveFace(s: Session, tokenId: string, face: number): Promise<void> {
+  const kp = KeyPair.fromString(s.privateKey as `ed25519:${string}`);
+  const { serverNow } = await import("./time.js");
+  const ts = Math.round(serverNow());
+  const signature = btoa(String.fromCharCode(...kp.sign(new TextEncoder().encode(faceMessage(s.accountId, tokenId, face, ts))).signature));
+  const r = await fetch(`${RELAY}/v1/faces`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ account_id: s.accountId, public_key: kp.getPublicKey().toString(), ts, signature, face }),
+  });
+  if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? "could_not_save");
 }

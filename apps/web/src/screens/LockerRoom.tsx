@@ -14,6 +14,7 @@ import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.j
 import { Sticker } from "./Sticker.js";
 import { Training } from "./Training.js";
 import { Wardrobe } from "./Wardrobe.js";
+import { FaceEditor } from "./FaceEditor.js";
 
 
 export function LockerRoom() {
@@ -338,6 +339,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
       </a>
       <div className="locker-work">
         <Training me={me} />
+        <FaceEditor me={me} shirt={crestOf(club.manager).main} />
         <Wardrobe me={me} />
       </div>
     </div>
