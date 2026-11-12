@@ -478,3 +478,13 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .stand-tag { font-size: 9px; letter-spacing: .5px; white-space: normal; }
 }
 .tabbar a[aria-current="page"] .tile { outline: 0 !important; transform: none !important; }
+
+/* Penalty: the power of the swipe as it is drawn, in ten square cells (the relay's own rule). */
+.pen3d-stage { position: relative; }
+.pen-power { position: absolute; right: 12px; bottom: 16%; z-index: 3; display: flex; flex-direction: column-reverse; gap: 3px; padding: 4px; background: var(--np-outline); opacity: .35; transition: opacity .2s; pointer-events: none; }
+.pen-power.on { opacity: 1; }
+.pen-power i { display: block; width: 18px; height: 10px; background: #251A57; }
+.pen-power i.lit { background: var(--np-yellow); }
+.pen-power i.hot { background: var(--np-green); }
+.pen-power span { order: -1; margin-top: 4px; padding: 2px 4px; background: var(--np-text); color: var(--np-outline); font-family: var(--np-display); font-weight: 700; font-size: 10px; writing-mode: horizontal-tb; }
+@media (max-width: 720px) { .pen-power i { width: 12px; height: 7px; } }

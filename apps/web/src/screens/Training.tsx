@@ -1,4 +1,5 @@
 import { Cabinet, HeroArt } from "../floodlight/art.js";
+import { crestOf } from "./Crest.js";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { type Click, type Drill as DrillT, drill } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
@@ -56,7 +57,7 @@ const saveAttested = (a: Attested | null) => {
  * score adds 0 to 3 points on chain.
  */
 export function Training({ me }: { me: Player }) {
-  const { session, schedule, balance, refresh } = useGame();
+  const { session, schedule, balance, refresh, club } = useGame();
   const [now, setNow] = useState(serverNow());
   useEffect(() => {
     const t = setInterval(() => setNow(serverNow()), 5_000);
@@ -93,7 +94,7 @@ export function Training({ me }: { me: Player }) {
         setError(e instanceof Error ? e.message : String(e));
       }
     };
-    return game(run.drill, finish);
+    return game(run.drill, finish, club ? crestOf(club.manager).main : undefined);
   }
 
   return (
@@ -257,12 +258,12 @@ function webgl(): boolean {
 }
 
 /** The canvas game for a drill. */
-function game(d: DrillT, onDone: (trace: Click[]) => void): ReactNode {
+function game(d: DrillT, onDone: (trace: Click[]) => void, shirt?: string): ReactNode {
   switch (d.game) {
     case "penalties":
       return webgl() ? (
         <Suspense fallback={<div className="pen3d-loading">Warming up…</div>}>
-          <PenaltyGame3D setup={d.setup} onDone={onDone} />
+          <PenaltyGame3D setup={d.setup} onDone={onDone} shirt={shirt} />
         </Suspense>
       ) : (
         <PenaltyGame setup={d.setup} onDone={onDone} />
