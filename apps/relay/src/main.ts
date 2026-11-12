@@ -35,8 +35,14 @@ const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : n
 const faces = new Faces(config.DATA_DIR ? `${config.DATA_DIR}/faces-${config.LEAGUE_ID}.json` : null);
 const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
 // One journal per league: a new league's match days start again at 1.
+const brain = config.NEAR_AI_API_KEY ? { url: config.NEAR_AI_URL, key: config.NEAR_AI_API_KEY, model: config.NEAR_AI_MODEL } : null;
 const agents = agentsOn
-  ? { roster: roster(config.PARENT_ACCOUNT_ID), journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null) }
+  ? {
+      roster: roster(config.PARENT_ACCOUNT_ID),
+      journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null),
+      // What they say to people (agents/voices.ts): the same model, a separate call that signs nothing.
+      ask: askWith(brain),
+    }
   : undefined;
 const app = createApp(config, chain, {
   mailer,
@@ -84,7 +90,6 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
 
 if (agents && config.AGENTS_SEED) {
   const seed = config.AGENTS_SEED;
-  const brain = config.NEAR_AI_API_KEY ? { url: config.NEAR_AI_URL, key: config.NEAR_AI_API_KEY, model: config.NEAR_AI_MODEL } : null;
   // One budget of RPC requests for all agents, so the scheduler keeps its share.
   const limiter = new Limiter(config.AGENTS_RPS);
   const runner = new Agents(

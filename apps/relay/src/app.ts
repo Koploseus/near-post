@@ -17,6 +17,8 @@ import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
 import { FACE_MAX, Faces } from "./faces.js";
 import { faceMessage, fanzoneMessage, presenceMessage, socialMessage, wallMessage, wallReadMessage } from "./vault-message.js";
 import { DUEL_LEVEL, People, duelWinner, valueOf } from "./people.js";
+import type { Ask } from "./agents/minds.js";
+import { type Facts, Voices, afterMatchLine, duelHits, welcomeLine } from "./agents/voices.js";
 import { botDocs, makeToken, readToken } from "./bot.js";
 import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
 
@@ -55,7 +57,7 @@ export interface Deps {
   /** Keep the season stats counted in the background (the first count reads every stand of the season). */
   warmStats?: boolean;
   /** The AI agents and what they did. */
-  agents?: { roster: Agent[]; journal: Journal };
+  agents?: { roster: Agent[]; journal: Journal; /** The model the agents speak with (their own lines without one). */ ask?: Ask | null };
   /** The clubs' walls (who is online lives in memory). */
   walls?: Walls;
   /** Friends, private messages, the terrace and duels. */
@@ -318,7 +320,8 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
 
   // The AI agents are in the dressing room too: online when they acted in the
   // last two minutes, and what they said (their journal's quotes) on their
-  // club's wall. Never the other way round: no wall text reaches a prompt.
+  // club's wall. Never the other way round: no wall text reaches a decision
+  // (what they answer to people is in agents/voices.ts, further down).
   const agentsActive = () => {
     const t = now();
     return new Set((deps.agents?.journal.feed(300) ?? []).filter((e) => t - e.at < ONLINE_MS).map((e) => e.agent));
@@ -380,6 +383,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!p || p.owner !== club.data) return c.json({ error: "not_in_this_club" }, 403);
     presence.here(account_id);
     const posted = walls.add(club.data, { account: account_id, token_id: p.token_id, name: p.name, text: clean, at: now() });
+    answerOnWall(club.data, clean);
     return c.json({ post: posted });
   });
 
@@ -448,7 +452,137 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   };
   const withOnline = (ps: Person[]) => {
     const on = onlineSet()(ps.map((p) => p.account));
-    return ps.map((p) => ({ ...p, online: on.has(p.account) }));
+    return ps.map((p) => ({ ...p, online: on.has(p.account), ...(deps.agents?.roster.some((a) => a.account === p.account) ? { ai: true } : {}) }));
+  };
+
+  // ---- The agents among people (agents/voices.ts) ----
+  //
+  // They accept friends, play duels, answer private messages and speak on
+  // the terrace and on their club's wall. Nothing a person wrote reaches a
+  // decision; in public an agent only says one of his own lines.
+
+  const voices = deps.agents ? new Voices(deps.agents.roster, deps.agents.ask ?? null) : null;
+  const coachCard = (account: string): Person | null => {
+    const a = voices?.agent(account);
+    if (!a || a.kind !== "coach") return null;
+    return { account, token_id: "", name: `${a.name}, coach`, position: "", overall: 0, goals: 0, value: 0, club: account, club_name: a.clubName };
+  };
+  const dayNow = new Memo<number>(30_000, now);
+  const lastResults = new Memo<{ home: string; away: string; home_goals: number; away_goals: number; full_time?: boolean }[]>(60_000, now);
+  /** The last match day fully played, and its results. */
+  const lastDay = async () => {
+    const day = await dayNow.get("day", () => chain.view<number>(config.LEAGUE_ID!, "match_day").catch(() => 0), (d) => d > 0);
+    const last = day - 1;
+    if (last < 1) return { day: 0, results: [] };
+    const results = await lastResults.get(String(last), () => chain.view<{ home: string; away: string; home_goals: number; away_goals: number }[]>(config.LEAGUE_ID!, "results", { match_day: last }).catch(() => []), (r) => r.length > 0);
+    return { day: last, results };
+  };
+  const scoreOf = (results: Awaited<ReturnType<typeof lastDay>>["results"], club: string): [number, number] | null => {
+    const m = results.find((r) => r.home === club || r.away === club);
+    return !m ? null : m.home === club ? [m.home_goals, m.away_goals] : [m.away_goals, m.home_goals];
+  };
+  /** What an agent knows when he speaks. */
+  const factsOf = async (a: Agent): Promise<Facts> => {
+    const clubs = await allClubs();
+    const p = a.kind === "footballer" ? await personOf(a.account) : null;
+    const clubId = a.kind === "coach" ? a.account : (p?.club ?? null);
+    const club = clubs.find((k) => k.manager === clubId) ?? null;
+    const division = club ? clubs.filter((k) => k.division === club.division) : [];
+    const { results } = await lastDay();
+    return {
+      club: club?.name ?? null,
+      rank: club ? division.findIndex((k) => k.manager === club.manager) + 1 : null,
+      clubs: club ? division.length : null,
+      last: club ? scoreOf(results, club.manager) : null,
+      ...(p ? { overall: p.overall, goals: p.goals } : {}),
+    };
+  };
+  const quiet = (what: string) => (e: unknown) => console.warn(`agents' voices: ${what}: ${e instanceof Error ? e.message : e}`);
+  /** Replies still being written (the tests wait for them). */
+  const speaking = new Set<Promise<unknown>>();
+  const later = (what: string, run: () => Promise<unknown>) => {
+    const p = run().catch(quiet(what));
+    speaking.add(p);
+    void p.finally(() => speaking.delete(p));
+  };
+  const repliesTo = new Limiter(20, 60 * 60_000, now);
+  /** An agent answers a private message, in the same thread. */
+  const answerInPrivate = (from: string, to: string, text: string) => {
+    const a = voices?.agent(to);
+    if (!a || !repliesTo.allow(from)) return;
+    later("reply", async () => {
+      const reply = await voices!.reply(a, await factsOf(a), text);
+      people.send(to, from, reply);
+    });
+  };
+  const terraceReplies = new Limiter(1, 90_000, now);
+  /** After someone spoke on the terrace, one of the AI footballers may answer with one of his own lines. */
+  const answerOnTerrace = (said: string) => {
+    if (!voices || !deps.agents || !terraceReplies.allow("all")) return;
+    later("terrace", async () => {
+      const all = await directory();
+      const mine = all.filter((p) => voices.agent(p.account));
+      const p = mine[Math.floor(Math.random() * mine.length)];
+      const a = p && voices.agent(p.account);
+      if (!p || !a) return;
+      const text = await voices.publicLine(a, await factsOf(a), said);
+      if (text) people.say({ account: p.account, token_id: p.token_id, name: p.name, text });
+    });
+  };
+  const wallReplies = new Limiter(1, 2 * 60_000, now);
+  /** After a person posted on a club's wall, its coach or one of its AI footballers may answer with one of his own lines. */
+  const answerOnWall = (club: string, said: string) => {
+    if (!voices || !wallReplies.allow(club)) return;
+    later("wall", async () => {
+      const all = await directory();
+      const mates = all.filter((p) => p.club === club && voices.agent(p.account));
+      const pick = Math.floor(Math.random() * (mates.length + (voices.agent(club) ? 1 : 0)));
+      const p = mates[pick];
+      const a = p ? voices.agent(p.account) : voices.agent(club);
+      if (!a) return;
+      const text = await voices.publicLine(a, await factsOf(a), said);
+      if (!text) return;
+      walls.add(club, { account: a.account, token_id: p?.token_id ?? "", name: a.name, text, at: now(), ai: a.kind });
+    });
+  };
+  /** After a match day, two AI footballers say a word on the terrace about their club's result. */
+  let spokeOfDay = 0;
+  const openers = () => {
+    if (!voices) return;
+    later("openers", async () => {
+      const { day, results } = await lastDay();
+      if (!day || day <= spokeOfDay || !results.length) return;
+      spokeOfDay = day;
+      const mine = (await directory()).filter((p) => p.club && voices.agent(p.account)).sort(() => Math.random() - 0.5);
+      for (const p of mine.slice(0, 2)) {
+        const a = voices.agent(p.account)!;
+        const text = voices.opener(a, await factsOf(a));
+        if (text) people.say({ account: p.account, token_id: p.token_id, name: p.name, text });
+      }
+    });
+  };
+  /**
+   * A coach's word to one of his club's people: a welcome when he joined,
+   * then a word after a match, six hours apart at least.
+   */
+  const coachWord = async (me: Person) => {
+    const coach = me.club ? voices?.agent(me.club) : null;
+    if (!coach || coach.kind !== "coach" || voices?.agent(me.account)) return;
+    const welcomed = `welcome ${me.account} ${coach.account}`;
+    const said = `word ${me.account}`;
+    if (people.note(welcomed) === undefined) {
+      people.setNote(welcomed, now());
+      people.setNote(said, now());
+      people.send(coach.account, me.account, welcomeLine(coach.style, coach.clubName));
+      return;
+    }
+    if (now() - (people.note(said) ?? 0) < 6 * 60 * 60_000) return;
+    const { day, results } = await lastDay().catch(() => ({ day: 0, results: [] }));
+    const score = scoreOf(results, coach.account);
+    if (!day || !score || people.note(`after ${me.account}`) === day) return;
+    people.setNote(`after ${me.account}`, day);
+    people.setNote(said, now());
+    people.send(coach.account, me.account, afterMatchLine(coach.style, score));
   };
 
   app.use("/v1/people/*", async (c, next) => {
@@ -490,6 +624,7 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   /** The terrace: one chat for the whole league, anyone reads it. */
   app.get("/v1/people/chat", (c) => {
     c.header("cache-control", "no-store");
+    openers();
     return c.json({ lines: people.chat() });
   });
 
@@ -524,9 +659,14 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     if (!me) return c.json({ error: "no_footballer" }, 403);
     presence.here(account_id);
     const all = await directory();
-    const card = (a: string) => all.find((p) => p.account === a) ?? met.get(a) ?? { account: a, token_id: "", name: a.split(".")[0]!, position: "", overall: 0, goals: 0, value: 0, club: null, club_name: null };
+    const card = (a: string) => all.find((p) => p.account === a) ?? met.get(a) ?? coachCard(a) ?? { account: a, token_id: "", name: a.split(".")[0]!, position: "", overall: 0, goals: 0, value: 0, club: null, club_name: null };
     const cards = (as: string[]) => withOnline(as.map(card));
-    const other = async () => (to && to !== account_id ? await personOf(to) : null);
+    // People this call will name who are in no squad (free agents): looked up, so they keep their name after a restart.
+    const named = action === "inbox" ? [...people.friendsOf(account_id), ...people.requestsTo(account_id), ...people.threadsOf(account_id).slice(0, 40).map((t) => t.with), ...people.duelsOf(account_id).map((d) => (d.from === account_id ? d.to : d.from))] : to ? [to] : [];
+    await Promise.all([...new Set(named)].filter((a) => !all.some((p) => p.account === a) && !met.has(a) && !coachCard(a)).slice(0, 30).map((a) => personOf(a)));
+    // Whoever can be written to: a person with a footballer, or an AI coach.
+    const other = async () => (to && to !== account_id ? ((await personOf(to)) ?? coachCard(to)) : null);
+    await coachWord(me);
     const duelView = (d: NonNullable<ReturnType<People["duelById"]>>) => {
       const done = duelWinner(d);
       const rival = d.from === account_id ? d.to : d.from;
@@ -566,11 +706,16 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
         if (!clean) return c.json({ error: "bad_text", max: WALL_MAX }, 400);
         if (!(await other())) return c.json({ error: "no_such_player" }, 404);
         if (!people.mayWrite(account_id, to)) return c.json({ error: "friends_only" }, 403);
-        return c.json({ message: people.send(account_id, to, clean) });
+        const sent = people.send(account_id, to, clean);
+        answerInPrivate(account_id, to, clean);
+        return c.json({ message: sent });
       }
       case "friend_ask": {
         if (!(await other())) return c.json({ error: "no_such_player" }, 404);
-        return c.json({ state: people.ask(account_id, to) });
+        const state = people.ask(account_id, to);
+        // An agent says yes to anyone.
+        if (state === "asked" && voices?.agent(to) && people.accept(to, account_id)) return c.json({ state: "friends" });
+        return c.json({ state });
       }
       case "friend_accept":
         return c.json({ ok: people.accept(account_id, to) });
@@ -586,16 +731,21 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
       case "say": {
         const clean = cleanPost(text);
         if (!clean) return c.json({ error: "bad_text", max: WALL_MAX }, 400);
-        return c.json({ line: people.say({ account: account_id, token_id: me.token_id, name: me.name, text: clean }) });
+        const line = people.say({ account: account_id, token_id: me.token_id, name: me.name, text: clean });
+        answerOnTerrace(clean);
+        return c.json({ line });
       }
       case "duel_new": {
         const skill = DUEL_SKILLS.find((k) => k === text);
         if (!skill) return c.json({ error: "invalid_request" }, 400);
-        if (!(await other())) return c.json({ error: "no_such_player" }, 404);
+        const rival = to && to !== account_id ? await personOf(to) : null;
+        if (!rival) return c.json({ error: "no_such_player" }, 404);
         if (!people.mayWrite(account_id, to)) return c.json({ error: "friends_only" }, 403);
         const seed = randomBytes(32).toString("hex");
         const d = people.duel(account_id, to, skill, seed, rounds(drill(seed, DUEL_LEVEL, skill)));
         if (!d) return c.json({ error: "duel_open" }, 409);
+        // An agent plays at once: his score comes from his rating and a little luck, and stays hidden until you played.
+        if (voices?.agent(to)) people.score(d.id, to, duelHits(rival.overall, d.rounds, Math.random));
         return c.json({ duel: duelView(d) });
       }
       case "duel_start": {
@@ -988,5 +1138,9 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return c.json({ error: "chain_unavailable" }, 502);
   });
 
+  /** Resolves once the agents have said what they were writing (for the tests). */
+  (app as typeof app & { settled?: () => Promise<void> }).settled = async () => {
+    while (speaking.size) await Promise.all([...speaking]);
+  };
   return app;
 }

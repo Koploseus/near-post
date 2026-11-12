@@ -27,7 +27,11 @@ export type Act =
   | { what: "rested" }
   | { what: "signed"; club: string; days: number }
   | { what: "project_vote"; project: string }
-  | { what: "wage"; wage: number };
+  | { what: "wage"; wage: number }
+  | { what: "instruction"; instruction: string }
+  | { what: "diet"; diet: string; price: number }
+  | { what: "gift"; club: string; amount: number }
+  | { what: "recruit_vote"; token_id: string; yes: boolean };
 
 export interface Entry {
   at: number;
