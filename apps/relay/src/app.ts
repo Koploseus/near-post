@@ -661,6 +661,9 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     const all = await directory();
     const card = (a: string) => all.find((p) => p.account === a) ?? met.get(a) ?? coachCard(a) ?? { account: a, token_id: "", name: a.split(".")[0]!, position: "", overall: 0, goals: 0, value: 0, club: null, club_name: null };
     const cards = (as: string[]) => withOnline(as.map(card));
+    // People this call will name who are in no squad (free agents): looked up, so they keep their name after a restart.
+    const named = action === "inbox" ? [...people.friendsOf(account_id), ...people.requestsTo(account_id), ...people.threadsOf(account_id).slice(0, 40).map((t) => t.with), ...people.duelsOf(account_id).map((d) => (d.from === account_id ? d.to : d.from))] : to ? [to] : [];
+    await Promise.all([...new Set(named)].filter((a) => !all.some((p) => p.account === a) && !met.has(a) && !coachCard(a)).slice(0, 30).map((a) => personOf(a)));
     // Whoever can be written to: a person with a footballer, or an AI coach.
     const other = async () => (to && to !== account_id ? ((await personOf(to)) ?? coachCard(to)) : null);
     await coachWord(me);
