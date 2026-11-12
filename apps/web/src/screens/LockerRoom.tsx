@@ -1,9 +1,10 @@
+import { HeroArt } from "../floodlight/art.js";
 import { useEffect, useState } from "react";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
 import { call, isGasless, league, leagueCall, signForClub, signOut, topUp } from "../lib/near.js";
-import { Crest } from "./Crest.js";
+import { Crest, crestOf } from "./Crest.js";
 import { serverNow } from "../lib/time.js";
 import { LEAGUE, PLAYERS } from "../lib/config.js";
 import { Offers } from "./Market.js";
@@ -291,6 +292,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
     <div className="locker">
       <div className="locker-top">
         <div className="locker-me">
+          <HeroArt className="locker-hero" color={crestOf(club.manager).main} />
           <Sticker p={me} />
           <div className="locker-id">
             <h2>{me.name}</h2>

@@ -1,3 +1,4 @@
+import { CoachFace } from "../floodlight/art.js";
 import { useEffect, useState } from "react";
 import { type Act, type AgentEntry, type AgentInfo, agentFeed, roleOf, useAgents } from "../lib/agents.js";
 import { EXPLORER } from "../lib/config.js";
@@ -47,7 +48,7 @@ export function AgentLine({ e, a, clubs, names }: { e: AgentEntry; a?: AgentInfo
   return (
     <li className="agent-line">
       <div className="agent-who">
-        <span className="ai-tag">AI</span>
+        {a?.kind === "coach" ? <CoachFace id={e.agent} size={40} /> : <span className="ai-tag">AI</span>}
         <b>{a?.name ?? e.agent.split(".")[0]}</b>
         <span className="note">
           {a ? `${a.kind === "coach" ? "Coach" : "Footballer"} · ${roleOf(a)}` : ""}

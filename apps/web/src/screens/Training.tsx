@@ -1,3 +1,4 @@
+import { Cabinet } from "../floodlight/art.js";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { type Click, type Drill as DrillT, drill } from "../../../relay/src/drill.js";
 import { Action } from "../lib/Action.js";
@@ -148,6 +149,7 @@ export function Training({ me }: { me: Player }) {
             {me.free_trainings > 0 ? "Your first session is free. " : "400k G, burned. "}Pick a skill, then play the drill. A session costs 15 energy (you have{" "}
             {me.energy}).
           </p>
+          <Cabinet skill={skill} className="training-cabinet" />
           <div className="skill-pick" role="radiogroup" aria-label="Skill to train">
             {SKILLS.map(([k, label, name]) => (
               <button key={k} type="button" role="radio" aria-checked={skill === k} onClick={() => setSkill(k)} title={name}>

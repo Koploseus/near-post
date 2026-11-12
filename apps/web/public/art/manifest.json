@@ -1,0 +1,443 @@
+{
+ "art/bg/bg-goal.webp": {
+  "size": [
+   1080,
+   1935
+  ],
+  "use": "Goal celebration scene (portrait)"
+ },
+ "art/bg/bg-locker.webp": {
+  "size": [
+   1600,
+   893
+  ],
+  "use": "Locker room"
+ },
+ "art/bg/bg-penalty.webp": {
+  "size": [
+   1080,
+   1935
+  ],
+  "use": "Penalty drill, shooter's view (portrait)"
+ },
+ "art/bg/bg-pitch-topdown.webp": {
+  "size": [
+   1080,
+   1935
+  ],
+  "use": "Through-balls drill pitch (portrait)"
+ },
+ "art/bg/bg-signin.webp": {
+  "size": [
+   1080,
+   1935
+  ],
+  "use": "Sign in key art (portrait)"
+ },
+ "art/bg/bg-stadium-empty.webp": {
+  "size": [
+   1600,
+   893
+  ],
+  "use": "Night stadium, empty stands (burn state)"
+ },
+ "art/bg/bg-stadium-full.webp": {
+  "size": [
+   1600,
+   893
+  ],
+  "use": "Night stadium, full stands"
+ },
+ "art/bg/pitch-full.webp": {
+  "size": [
+   724,
+   816
+  ],
+  "use": "Team sheet pitch, 2x of 362x408. Formation slots are positioned in % on top."
+ },
+ "art/brand/og.png": {
+  "size": [
+   1200,
+   630
+  ],
+  "use": "Replaces apps/web/public/og.png (og:image / twitter:image), 1200x630, official badge + ribbon."
+ },
+ "art/brand/share-card-logo.jpg": {
+  "size": [
+   1200,
+   630
+  ],
+  "use": "Same as og.png, JPEG."
+ },
+ "art/brand/share-card.jpg": {
+  "size": [
+   1200,
+   630
+  ],
+  "use": "Share card background without logo (to compose other share images: goal, legendary pack...)."
+ },
+ "art/cabinets/cabinet-dribble.png": {
+  "size": [
+   382,
+   640
+  ],
+  "use": "Arcade cabinet; screen is transparent (put the drill preview behind)"
+ },
+ "art/cabinets/cabinet-penalties.png": {
+  "size": [
+   382,
+   640
+  ],
+  "use": "Arcade cabinet; screen is transparent (put the drill preview behind)"
+ },
+ "art/cabinets/cabinet-sprint.png": {
+  "size": [
+   381,
+   640
+  ],
+  "use": "Arcade cabinet; screen is transparent (put the drill preview behind)"
+ },
+ "art/cabinets/cabinet-tackles.png": {
+  "size": [
+   382,
+   640
+  ],
+  "use": "Arcade cabinet; screen is transparent (put the drill preview behind)"
+ },
+ "art/cabinets/cabinet-throughballs.png": {
+  "size": [
+   381,
+   640
+  ],
+  "use": "Arcade cabinet; screen is transparent (put the drill preview behind)"
+ },
+ "art/coaches/coach-amara.webp": {
+  "size": [
+   512,
+   513
+  ],
+  "use": "AI coach portrait"
+ },
+ "art/coaches/coach-bruno.webp": {
+  "size": [
+   512,
+   525
+  ],
+  "use": "AI coach portrait"
+ },
+ "art/coaches/coach-edith.webp": {
+  "size": [
+   512,
+   512
+  ],
+  "use": "AI coach portrait"
+ },
+ "art/coaches/coach-theo.webp": {
+  "size": [
+   512,
+   513
+  ],
+  "use": "AI coach portrait"
+ },
+ "art/fx/fx-legendary-burst.webp": {
+  "size": [
+   1024,
+   1024
+  ],
+  "use": "Legendary pack burst"
+ },
+ "art/heroes/hero-back-keyblue.png": {
+  "size": [
+   552,
+   1000
+  ],
+  "use": "Hero master: kit in key blue #1F3BFF, recolour per club in code"
+ },
+ "art/heroes/hero-back.png": {
+  "size": [
+   552,
+   1000
+  ],
+  "use": "Hero in the default club red (mock-ups)"
+ },
+ "art/heroes/hero-cheer-keyblue.png": {
+  "size": [
+   728,
+   1000
+  ],
+  "use": "Hero master: kit in key blue #1F3BFF, recolour per club in code"
+ },
+ "art/heroes/hero-cheer.png": {
+  "size": [
+   728,
+   1000
+  ],
+  "use": "Hero in the default club red (mock-ups)"
+ },
+ "art/heroes/hero-idle-keyblue.png": {
+  "size": [
+   498,
+   1000
+  ],
+  "use": "Hero master: kit in key blue #1F3BFF, recolour per club in code"
+ },
+ "art/heroes/hero-idle.png": {
+  "size": [
+   498,
+   1000
+  ],
+  "use": "Hero in the default club red (mock-ups)"
+ },
+ "art/heroes/hero-kick-keyblue.png": {
+  "size": [
+   812,
+   1000
+  ],
+  "use": "Hero master: kit in key blue #1F3BFF, recolour per club in code"
+ },
+ "art/heroes/hero-kick.png": {
+  "size": [
+   812,
+   1000
+  ],
+  "use": "Hero in the default club red (mock-ups)"
+ },
+ "art/items/item-band-bandana.png": {
+  "size": [
+   589,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-band-laurel.png": {
+  "size": [
+   573,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-band-star.png": {
+  "size": [
+   694,
+   322
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-band-tails.png": {
+  "size": [
+   615,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-band-terry.png": {
+  "size": [
+   568,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-band-thin.png": {
+  "size": [
+   693,
+   322
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-band-zigzag.png": {
+  "size": [
+   696,
+   321
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-boots-classic.png": {
+  "size": [
+   600,
+   332
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-boots-flame.png": {
+  "size": [
+   600,
+   335
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-boots-lightning.png": {
+  "size": [
+   600,
+   334
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-boots-retro.png": {
+  "size": [
+   590,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-boots-sock.png": {
+  "size": [
+   534,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-boots-wings.png": {
+  "size": [
+   598,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-gloves.png": {
+  "size": [
+   529,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-afro.png": {
+  "size": [
+   389,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-bun.png": {
+  "size": [
+   309,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-buzz.png": {
+  "size": [
+   442,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-curls.png": {
+  "size": [
+   465,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-dreads.png": {
+  "size": [
+   402,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-fire.png": {
+  "size": [
+   331,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-flattop.png": {
+  "size": [
+   333,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-mohawk.png": {
+  "size": [
+   305,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-ponytail.png": {
+  "size": [
+   347,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-short.png": {
+  "size": [
+   498,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-spiky.png": {
+  "size": [
+   398,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-hair-undercut.png": {
+  "size": [
+   408,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-pads.png": {
+  "size": [
+   508,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-socks.png": {
+  "size": [
+   345,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-tape.png": {
+  "size": [
+   345,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/items/item-wrist.png": {
+  "size": [
+   369,
+   360
+  ],
+  "use": "Item base art. Painted per catalog style in code: see code/item-art.tsx (catalog id -> file + paint)."
+ },
+ "art/objects/ball.png": {
+  "size": [
+   512,
+   512
+  ],
+  "use": "Object: plain ball, no face"
+ },
+ "art/objects/coin.png": {
+  "size": [
+   511,
+   512
+  ],
+  "use": "Object"
+ },
+ "art/objects/pack.png": {
+  "size": [
+   379,
+   512
+  ],
+  "use": "Object: sticker pack, plain ball, no face"
+ },
+ "art/objects/trophy.png": {
+  "size": [
+   525,
+   512
+  ],
+  "use": "Object"
+ }
+}
