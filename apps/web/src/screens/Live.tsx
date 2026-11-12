@@ -9,6 +9,7 @@ import { BOT, type Club, type MatchEvent, type MatchResult, type Player, type St
 import { clubName } from "../lib/format.js";
 import { type AgentEntry, agentFeed, useAgents } from "../lib/agents.js";
 import { Highlight, type HighlightKind, type HighlightMoment } from "./Highlight.js";
+import { TvPitch } from "./TvPitch.js";
 import { faceNumber } from "./Look.js";
 import { Crest, crestOf } from "./Crest.js";
 import { PixelAvatar } from "../floodlight/PixelPlayer.js";
@@ -419,6 +420,10 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
   const share = all ? mine / all : 0.5;
   return (
     <>
+    {/* The TV broadcast (camera on the ball); the small pitch of dots when motion is reduced. */}
+    {!REDUCED ? (
+      <TvPitch m={m} shown={shown} c={c} players={players} shirts={[shirts[0]!, shirts[1]!]} />
+    ) : (
     <div className="mini-pitch" aria-hidden="true">
       <span className="mp-line mp-half" />
       <span className="mp-line mp-circle" />
@@ -442,6 +447,7 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
       )}
       <span className="mp-ball" style={{ left: `${Math.min(99.5, Math.max(0.5, at.ball[0]))}%`, top: `${at.ball[1]}%` }} />
     </div>
+    )}
     {!stopped && (
       <div className="momentum" aria-label={`Momentum: ${Math.round(share * 100)}% of the ball to the home side over the last ten minutes`}>
         <span className="np-label">MOMENTUM</span>
