@@ -161,3 +161,42 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .plate-art { background: #6E5FC2; }
 .plate h3 { font-weight: 700; color: var(--np-text); }
 .plate-foot b, .plate-foot .price { color: var(--np-yellow); }
+
+/* ---- Rewards and games (kit §4, §6) ---- */
+.np-title, .goal-flash, .unbox-title, .drill-title {
+  font-family: var(--np-display); font-weight: 700; color: var(--np-title-yellow); letter-spacing: 1px;
+  text-shadow: -3px 0 0 var(--np-title-shadow), 3px 0 0 var(--np-title-shadow), 0 -3px 0 var(--np-title-shadow), 0 3px 0 var(--np-title-shadow), -2px -2px 0 var(--np-title-shadow), 2px -2px 0 var(--np-title-shadow), -2px 2px 0 var(--np-title-shadow), 2px 2px 0 var(--np-title-shadow), 0 7px 0 var(--np-title-shadow-deep);
+}
+/* The goal replay: GOAL! lands as the ball does. */
+.highlight { position: relative; }
+.goal-flash { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(.4); font-size: clamp(44px, 12vw, 96px); opacity: 0; pointer-events: none; animation: goal-in .45s cubic-bezier(.2, 1.5, .4, 1) 2.2s forwards; }
+@keyframes goal-in { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+/* Pack: the rarest item names the moment. */
+.unboxed { flex-wrap: wrap; }
+.unbox-title { display: block; flex-basis: 100%; font-size: 30px; }
+.unbox-title.common { color: var(--np-common); }
+.unbox-title.rare { color: var(--np-rare); }
+.unbox-title.epic { color: var(--np-epic); }
+.unbox-title.legendary { color: var(--np-legendary); }
+.unbox.legendary, .unbox.epic { color: var(--np-outline); }
+/* Drill result: a burst, the hero cheering, the score. */
+.drill-result { display: grid; grid-template-columns: minmax(0, 1fr) 112px; align-items: center; gap: 6px 10px; padding: 16px; background: var(--np-night-deep); box-shadow: var(--px); }
+.drill-result.passed { background: linear-gradient(90deg, var(--np-night-deep) 45%, rgba(18, 12, 48, .2)), url(/art/fx/fx-legendary-burst.webp) right center / auto 160% no-repeat, var(--np-night-deep); }
+.drill-hero { grid-row: 1 / span 2; grid-column: 2; width: 112px; height: auto; }
+.drill-title { font-size: 24px; line-height: 1.1; }
+.drill-result:not(.passed) .drill-title { color: var(--np-muted-2); }
+.drill-result .big-score { margin: 0; font-family: var(--np-led); font-size: 12px; line-height: 1.8; color: var(--np-text); }
+.drill-result .big-score strong { color: var(--np-green); }
+/* Game HUD around the engines (the canvas and its 1000x600 frame are untouched). */
+.drill-wrap { background: var(--np-night-deep); box-shadow: var(--px); padding: 0 0 10px; }
+.drill-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--np-red); color: var(--np-text); font-family: var(--np-display); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 3px 0 var(--np-outline); margin-bottom: 10px; }
+.pen-dots { display: inline-flex; gap: 3px; padding: 3px; background: var(--np-outline); }
+.pen-dots i { width: 16px; height: 16px; border-radius: 0 !important; background: var(--np-chip); border: 0 !important; }
+.pen-dots i.in { background: var(--np-green); }
+.pen-dots i.out { background: var(--np-miss); }
+.pen-help { margin: 10px 12px 0; padding: 10px 12px 10px 64px; min-height: 56px; background: var(--np-panel) url(/art/heroes/hero-kick.png) 8px center / 46px auto no-repeat; box-shadow: var(--px); color: var(--np-text); }
+.game-canvas, .pen3d-stage { box-shadow: 0 0 0 3px var(--np-outline); }
+.pen3d-verdict { font-family: var(--np-display); font-weight: 700; }
+.just-watch { align-self: center; font-family: var(--np-display); font-weight: 700; }
+.trophy { color: var(--np-text); }
+.trophy b { color: var(--np-yellow); }
