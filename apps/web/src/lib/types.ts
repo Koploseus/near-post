@@ -142,6 +142,45 @@ export interface Rules {
   physio_energy: number;
   academy_bonus: number;
   ticket_revenue_bps: number;
+  instruction_points: number;
+  diet_price: string;
+  diet_days: number;
+  diet_energy: number;
+  diet_skill: number;
+  holiday_max_days: number;
+  injury_below: number;
+  injury_chance_pct: number;
+  injury_days: number;
+}
+
+export type Instruction = "balanced" | "shooter" | "playmaker" | "dribbler" | "stopper";
+export type Diet = "energy" | "power" | "speed";
+
+/** A footballer's life around the match. Days are match days, the last one included; 0 means never. */
+export interface Condition {
+  instruction: Instruction;
+  diet: Diet | null;
+  diet_until: number;
+  holiday_until: number;
+  injured_until: number;
+}
+
+export type Recruitment = "open" | "vote";
+
+/** A person who signed for a club and is not there yet. */
+export interface Applicant {
+  token_id: string;
+  name: string;
+  overall: number;
+  days: number;
+  yes: number;
+  no: number;
+  approved: boolean;
+}
+
+export interface Gift {
+  from: string;
+  amount: string;
 }
 
 export interface Club {

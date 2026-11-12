@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Hono } from "hono";
@@ -15,8 +15,8 @@ import type { Kickoffs } from "./schedule.js";
 import { Stats } from "./stats.js";
 import { VaultEntry, Vaults, vaultMessage } from "./vault.js";
 import { FACE_MAX, Faces } from "./faces.js";
-import { faceMessage } from "./vault-message.js";
-import { fanzoneMessage, presenceMessage, wallMessage, wallReadMessage } from "./vault-message.js";
+import { faceMessage, fanzoneMessage, presenceMessage, socialMessage, wallMessage, wallReadMessage } from "./vault-message.js";
+import { DUEL_LEVEL, People, duelWinner, valueOf } from "./people.js";
 import { botDocs, makeToken, readToken } from "./bot.js";
 import { Memo, ONLINE_MS, Presence, WALL_MAX, type WallPost, Walls, cleanPost } from "./social.js";
 
@@ -58,6 +58,8 @@ export interface Deps {
   agents?: { roster: Agent[]; journal: Journal };
   /** The clubs' walls (who is online lives in memory). */
   walls?: Walls;
+  /** Friends, private messages, the terrace and duels. */
+  people?: People;
   mailer: Mailer;
   codes?: Codes;
   now?: () => number;
@@ -381,6 +383,241 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return c.json({ post: posted });
   });
 
+  // ---- People: search, friends, private messages, the terrace, duels ----
+  //
+  // Off chain and signed like the wall. Nothing here moves G or a rating.
+
+  const people = deps.people ?? new People(null, now);
+  interface Person {
+    account: string;
+    token_id: string;
+    name: string;
+    position: string;
+    overall: number;
+    goals: number;
+    value: number;
+    club: string | null;
+    club_name: string | null;
+  }
+  type ChainPlayer = { token_id: string; name: string; position: string; overall: number; goals: number; owner: string; controller: string | null };
+  type ChainClub = { name: string; manager: string; treasury: string; division: number; fans: number; best_streak: number };
+  const clubsNow = new Memo<ChainClub[]>(2 * 60_000, now);
+  const allClubs = () => clubsNow.get("all", () => chain.view<ChainClub[]>(config.LEAGUE_ID!, "table").catch(() => []), (v) => v.length > 0);
+  /** People met outside a squad (free agents), by account. */
+  const met = new Map<string, Person>();
+  const asPerson = (p: ChainPlayer, clubs: ChainClub[]): Person => {
+    const club = clubs.find((c) => c.manager === p.owner) ?? null;
+    return { account: p.controller!, token_id: p.token_id, name: p.name, position: p.position, overall: p.overall, goals: p.goals, value: valueOf(p), club: club?.manager ?? null, club_name: club?.name ?? null };
+  };
+  const directoryNow = new Memo<Person[]>(2 * 60_000, now);
+  /** Every person who plays a footballer: the squads of all clubs, and the free agents met here. */
+  const directory = () =>
+    directoryNow.get(
+      "all",
+      async () => {
+        const clubs = await allClubs();
+        const out = new Map<string, Person>();
+        for (let i = 0; i < clubs.length; i += 6) {
+          const squads = await Promise.all(
+            clubs.slice(i, i + 6).map((c) => chain.view<ChainPlayer[]>(config.LEAGUE_ID!, "squad", { account_id: c.manager }).catch(() => [] as ChainPlayer[])),
+          );
+          for (const p of squads.flat()) if (p.controller) out.set(p.controller, asPerson(p, clubs));
+        }
+        for (const [a, p] of met) if (!out.has(a)) out.set(a, p);
+        return [...out.values()];
+      },
+      (v) => v.length > 0,
+    );
+  const personNow = new Memo<Person | null>(60_000, now);
+  const personOf = (account_id: string) =>
+    personNow.get(account_id, async () => {
+      const p = await chain.view<ChainPlayer | null>(config.LEAGUE_ID!, "footballer_of", { account_id }).catch(() => null);
+      if (!p) return null;
+      const person = asPerson({ ...p, controller: account_id }, await allClubs());
+      if (!person.club) met.set(account_id, person);
+      else met.delete(account_id);
+      if (met.size > 5_000) met.clear();
+      return person;
+    });
+  const onlineSet = () => {
+    const agents = agentsActive();
+    return (accounts: string[]) => new Set([...presence.online(accounts), ...accounts.filter((a) => agents.has(a))]);
+  };
+  const withOnline = (ps: Person[]) => {
+    const on = onlineSet()(ps.map((p) => p.account));
+    return ps.map((p) => ({ ...p, online: on.has(p.account) }));
+  };
+
+  app.use("/v1/people/*", async (c, next) => {
+    if (!config.LEAGUE_ID) return c.json({ error: "league_not_deployed" }, 503);
+    if (!socialByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    await next();
+  });
+
+  /** Footballers whose name holds `q` (2 characters at least), the best rated first. */
+  app.get("/v1/people/search", async (c) => {
+    const q = (c.req.query("q") ?? "").trim().toLowerCase().slice(0, 32);
+    if ([...q].length < 2) return c.json({ people: [] });
+    const found = (await directory()).filter((p) => p.name.toLowerCase().includes(q)).sort((a, b) => b.overall - a.overall).slice(0, 20);
+    return c.json({ people: withOnline(found) });
+  });
+
+  /** Who is online now (up to 60), the best rated first. */
+  app.get("/v1/people/online", async (c) => {
+    const all = withOnline(await directory()).filter((p) => p.online).sort((a, b) => b.overall - a.overall);
+    return c.json({ count: presence.count() + agentsActive().size, people: all.slice(0, 60) });
+  });
+
+  /** The league's rankings that are not a table: the footballers worth the most, the richest clubs, the best runs of full houses. */
+  app.get("/v1/people/rankings", async (c) => {
+    const [ps, clubs] = await Promise.all([directory(), allClubs()]);
+    return c.json({
+      valuable: [...ps].sort((a, b) => b.value - a.value || b.overall - a.overall).slice(0, 20),
+      scorers: [...ps].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 20),
+      richest: [...clubs].sort((a, b) => (BigInt(b.treasury) > BigInt(a.treasury) ? 1 : -1)).slice(0, 10).map((k) => ({ club: k.manager, name: k.name, treasury: k.treasury })),
+      streaks: [...clubs].filter((k) => k.best_streak > 0).sort((a, b) => b.best_streak - a.best_streak).slice(0, 10).map((k) => ({ club: k.manager, name: k.name, best_streak: k.best_streak })),
+    });
+  });
+
+  /** The terrace: one chat for the whole league, anyone reads it. */
+  app.get("/v1/people/chat", (c) => {
+    c.header("cache-control", "no-store");
+    return c.json({ lines: people.chat() });
+  });
+
+  const socialReads = new Limiter(60, 60_000, now);
+  const socialWrites = new Limiter(12, 60_000, now);
+  const duelStarts = new Map<string, number>();
+  const DUEL_SKILLS = ["pace", "shooting", "passing", "dribbling", "defending"] as const;
+  const Social = Signed.extend({
+    action: z.enum(["inbox", "thread", "message", "friend_ask", "friend_accept", "friend_decline", "friend_remove", "friends_only", "say", "duel_new", "duel_start", "duel_play"]),
+    to: AccountId.optional(),
+    id: z.number().int().min(0).optional(),
+    text: z.string().max(WALL_MAX * 4).optional(),
+    clicks: z.array(z.unknown()).max(MAX_CLICKS).optional(),
+  });
+  const READS = new Set(["inbox", "thread", "duel_start"]);
+
+  /**
+   * Everything a player does among people, in one signed call. The signature
+   * covers the action, who it is for, the id and the text as typed.
+   */
+  app.post("/v1/people/act", async (c) => {
+    const body = Social.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    const { account_id, public_key, ts, signature, action, clicks } = body.data;
+    const to = body.data.to ?? "";
+    const id = body.data.id ?? 0;
+    const text = body.data.text ?? "";
+    if (!(READS.has(action) ? socialReads : socialWrites).allow(account_id)) return c.json({ error: "too_many_requests" }, 429);
+    if (Math.abs(now() - ts) > 5 * 60_000) return c.json({ error: "stale_signature" }, 401);
+    if (!(await signedBy(account_id, public_key, signature, socialMessage(account_id, ts, action, to, id, text)))) return c.json({ error: "bad_signature" }, 401);
+    const me = await personOf(account_id);
+    if (!me) return c.json({ error: "no_footballer" }, 403);
+    presence.here(account_id);
+    const all = await directory();
+    const card = (a: string) => all.find((p) => p.account === a) ?? met.get(a) ?? { account: a, token_id: "", name: a.split(".")[0]!, position: "", overall: 0, goals: 0, value: 0, club: null, club_name: null };
+    const cards = (as: string[]) => withOnline(as.map(card));
+    const other = async () => (to && to !== account_id ? await personOf(to) : null);
+    const duelView = (d: NonNullable<ReturnType<People["duelById"]>>) => {
+      const done = duelWinner(d);
+      const rival = d.from === account_id ? d.to : d.from;
+      return {
+        id: d.id,
+        skill: d.skill,
+        at: d.at,
+        rounds: d.rounds,
+        rival: card(rival),
+        mine: d.hits[account_id] ?? null,
+        // His score stays hidden until you have played: no chasing a known target.
+        theirs: d.hits[account_id] === undefined ? null : (d.hits[rival] ?? null),
+        their_turn_done: d.hits[rival] !== undefined,
+        result: done === undefined ? null : done === null ? "draw" : done === account_id ? "won" : "lost",
+      };
+    };
+
+    switch (action) {
+      case "inbox": {
+        const threads = people.threadsOf(account_id).slice(0, 40);
+        return c.json({
+          me,
+          friends: cards(people.friendsOf(account_id)),
+          requests: cards(people.requestsTo(account_id)),
+          threads: threads.map((t) => ({ with: card(t.with), last: t.last, unread: t.unread })),
+          unread: threads.reduce((n, t) => n + t.unread, 0),
+          duels: people.duelsOf(account_id).map(duelView),
+          friends_only: people.friendsOnly(account_id),
+        });
+      }
+      case "thread": {
+        if (!to) return c.json({ error: "invalid_request" }, 400);
+        return c.json({ with: card(to), messages: people.thread(account_id, to), may_write: people.mayWrite(account_id, to) });
+      }
+      case "message": {
+        const clean = cleanPost(text);
+        if (!clean) return c.json({ error: "bad_text", max: WALL_MAX }, 400);
+        if (!(await other())) return c.json({ error: "no_such_player" }, 404);
+        if (!people.mayWrite(account_id, to)) return c.json({ error: "friends_only" }, 403);
+        return c.json({ message: people.send(account_id, to, clean) });
+      }
+      case "friend_ask": {
+        if (!(await other())) return c.json({ error: "no_such_player" }, 404);
+        return c.json({ state: people.ask(account_id, to) });
+      }
+      case "friend_accept":
+        return c.json({ ok: people.accept(account_id, to) });
+      case "friend_decline":
+        people.decline(account_id, to);
+        return c.json({ ok: true });
+      case "friend_remove":
+        people.unfriend(account_id, to);
+        return c.json({ ok: true });
+      case "friends_only":
+        people.setFriendsOnly(account_id, text === "on");
+        return c.json({ friends_only: people.friendsOnly(account_id) });
+      case "say": {
+        const clean = cleanPost(text);
+        if (!clean) return c.json({ error: "bad_text", max: WALL_MAX }, 400);
+        return c.json({ line: people.say({ account: account_id, token_id: me.token_id, name: me.name, text: clean }) });
+      }
+      case "duel_new": {
+        const skill = DUEL_SKILLS.find((k) => k === text);
+        if (!skill) return c.json({ error: "invalid_request" }, 400);
+        if (!(await other())) return c.json({ error: "no_such_player" }, 404);
+        if (!people.mayWrite(account_id, to)) return c.json({ error: "friends_only" }, 403);
+        const seed = randomBytes(32).toString("hex");
+        const d = people.duel(account_id, to, skill, seed, rounds(drill(seed, DUEL_LEVEL, skill)));
+        if (!d) return c.json({ error: "duel_open" }, 409);
+        return c.json({ duel: duelView(d) });
+      }
+      case "duel_start": {
+        const d = people.duelById(id);
+        if (!d || (d.from !== account_id && d.to !== account_id)) return c.json({ error: "no_such_duel" }, 404);
+        if (d.hits[account_id] !== undefined) return c.json({ error: "already_played" }, 409);
+        const k = `${d.id} ${account_id}`;
+        if (!duelStarts.has(k)) duelStarts.set(k, now());
+        if (duelStarts.size > 10_000) duelStarts.clear();
+        return c.json({ id: d.id, seed: d.seed, skill: d.skill, level: DUEL_LEVEL });
+      }
+      case "duel_play": {
+        const d = people.duelById(id);
+        if (!d || (d.from !== account_id && d.to !== account_id)) return c.json({ error: "no_such_duel" }, 404);
+        if (d.hits[account_id] !== undefined) return c.json({ error: "already_played" }, 409);
+        const bad = implausible(clicks ?? []);
+        if (bad) return c.json({ error: "implausible", reason: bad }, 422);
+        const game = drill(d.seed, DUEL_LEVEL, d.skill);
+        const trace = (clicks ?? []) as Parameters<typeof hits>[1];
+        const k = `${d.id} ${account_id}`;
+        const start = duelStarts.get(k);
+        if (start === undefined || now() - start < drillEnd(game, trace) - 500) return c.json({ error: "implausible", reason: "the drill did not last that long" }, 422);
+        duelStarts.delete(k);
+        const scored = people.score(d.id, account_id, hits(game, trace));
+        if (!scored) return c.json({ error: "duel_over" }, 409);
+        return c.json({ duel: duelView(scored) });
+      }
+    }
+  });
+
   /** Gas top-up for a player's account that is nearly empty, a few times a day. */
   app.post("/v1/accounts/:accountId/topup", async (c) => {
     const id = AccountId.safeParse(c.req.param("accountId"));
@@ -595,6 +832,13 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   botAction("/v1/bot/rest", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "rest_today", {}, 0n, 30));
   botAction("/v1/bot/project", z.object({ project: z.enum(["stadium", "physio", "academy", "save"]) }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_project", { project: b.project }, 0n, 30));
   botAction("/v1/bot/leave", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "leave_club", {}, 0n, 100));
+  botAction("/v1/bot/instruction", z.object({ instruction: z.enum(["balanced", "shooter", "playmaker", "dribbler", "stopper"]) }), (bot, b) =>
+    actAs(bot, config.LEAGUE_ID!, "set_instruction", { instruction: b.instruction }, 0n, 30),
+  );
+  botAction("/v1/bot/holiday", z.object({ days: z.number().int().min(0).max(14) }), (bot, b) =>
+    b.days === 0 ? actAs(bot, config.LEAGUE_ID!, "end_holiday", {}, 0n, 30) : actAs(bot, config.LEAGUE_ID!, "go_on_holiday", { days: b.days }, 0n, 30),
+  );
+  botAction("/v1/bot/recruit", z.object({ token_id: TokenId, yes: z.boolean() }), (bot, b) => actAs(bot, config.LEAGUE_ID!, "vote_recruit", { token_id: b.token_id, yes: b.yes }, 0n, 30));
   botAction("/v1/bot/claim", z.object({}).passthrough(), (bot) => actAs(bot, config.LEAGUE_ID!, "claim", {}, 0n, 60));
 
   // ---- Training drill ----

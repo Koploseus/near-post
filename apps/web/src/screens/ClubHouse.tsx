@@ -5,6 +5,7 @@ import { soon, useData, useGame } from "../lib/game.js";
 import { type SeasonTicket, league, leagueCall, ticketsOf, voteWithTicket } from "../lib/near.js";
 import type { Captain, Club, Player, Project, Rules } from "../lib/types.js";
 import { Crest } from "./Crest.js";
+import { GiftBoard, Recruits } from "./ClubLife.js";
 
 const ONE_G = 1_000_000n;
 
@@ -155,6 +156,10 @@ export function ClubHouse({ clubId }: { clubId: string }) {
             />
           </div>
         )}
+      </div>
+      <div className="house-more">
+        <Recruits clubId={clubId} leads={leads} plays={plays} />
+        <GiftBoard clubId={clubId} name={club.name} />
       </div>
     </section>
   );

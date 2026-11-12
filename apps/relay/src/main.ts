@@ -15,6 +15,7 @@ import { Kickoffs, startScheduler } from "./schedule.js";
 import { Vaults } from "./vault.js";
 import { Faces } from "./faces.js";
 import { Walls } from "./social.js";
+import { People } from "./people.js";
 
 const config = loadConfig();
 const signer = config.PARENT_PRIVATE_KEY
@@ -30,7 +31,8 @@ const chain = rpcChain(rpcs, signer, [config.AGENTS_RPC_URL]);
 const mailer = config.EMAIL_MODE === "resend" ? resendMailer(config.RESEND_API_KEY!, config.EMAIL_FROM) : consoleMailer;
 const kickoffs = new Kickoffs();
 const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
-const faces = new Faces(config.DATA_DIR ? `${config.DATA_DIR}/faces.json` : null);
+// Faces are kept by token id, and token ids start again with each league.
+const faces = new Faces(config.DATA_DIR ? `${config.DATA_DIR}/faces-${config.LEAGUE_ID}.json` : null);
 const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
 // One journal per league: a new league's match days start again at 1.
 const agents = agentsOn
@@ -42,6 +44,7 @@ const app = createApp(config, chain, {
   vaults,
   faces,
   walls: new Walls(config.DATA_DIR ? `${config.DATA_DIR}/walls-${config.LEAGUE_ID}.json` : null),
+  people: new People(config.DATA_DIR ? `${config.DATA_DIR}/people.json` : null),
   drillsFile: config.DATA_DIR ? `${config.DATA_DIR}/drills-${config.LEAGUE_ID}.json` : null,
   warmStats: true,
   ...(agents ? { agents } : {}),

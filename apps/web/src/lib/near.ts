@@ -216,6 +216,14 @@ export const attestDrill = (tokenId: string, clicks: { t: number; x: number; y: 
 export const finishTraining = (s: Session, tokenId: string, points: number, signature: string) =>
   leagueCall<import("./types.js").Player>(s, "finish_training", { token_id: tokenId, points, signature }, 30);
 
+/** A diet for your footballer, paid in G (burned). */
+export const buyDiet = (s: Session, tokenId: string, diet: string, price: string) =>
+  call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount: price, msg: JSON.stringify({ diet: { token_id: tokenId, diet } }) }, { deposit: 1n, tgas: 150 });
+
+/** G given to a club's treasury. */
+export const giveToClub = (s: Session, club: string, amount: string) =>
+  call(s, GOALARS, "ft_transfer_call", { receiver_id: LEAGUE, amount, msg: JSON.stringify({ gift: club }) }, { deposit: 1n, tgas: 150 });
+
 export const goalars = (accountId: string) => view<string>(GOALARS, "ft_balance_of", { account_id: accountId });
 
 // ---- Wardrobe ----

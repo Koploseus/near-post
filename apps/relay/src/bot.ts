@@ -55,6 +55,9 @@ POST ${base}/v1/bot/slot {"slot": 0-10}            take a free slot of the eleve
 POST ${base}/v1/bot/strategy {"strategy": "defend" | "balanced" | "attack"}   vote (also at half-time)
 POST ${base}/v1/bot/captain {"candidate": "<token_id>"}   vote for your club's captain (once a week)
 POST ${base}/v1/bot/rest           sit this match day out (before kick-off)
+POST ${base}/v1/bot/instruction {"instruction": "balanced" | "shooter" | "playmaker" | "dribbler" | "stopper"}   how he plays: 4 points from one skill to another
+POST ${base}/v1/bot/holiday {"days": 1..14}   nobody picks him for that many match days (0 ends it)
+POST ${base}/v1/bot/recruit {"token_id": "p12", "yes": true}   your voice on someone who applied to your club
 POST ${base}/v1/bot/project {"project": "stadium" | "physio" | "academy" | "save"}   vote what the club's treasury buys (once a week)
 POST ${base}/v1/bot/claim          mint what you earned (your first match pays a debut bonus)
 

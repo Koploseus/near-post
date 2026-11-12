@@ -19,3 +19,7 @@ export const wallReadMessage = (accountId: string, clubId: string, ts: number) =
 
 /** What a player signs to save his footballer's face. */
 export const faceMessage = (accountId: string, tokenId: string, face: number, ts: number) => `near-post:face:${accountId}:${tokenId}:${face}:${ts}`;
+
+/** What a player signs for anything he does among people: friends, messages, the terrace, duels. */
+export const socialMessage = (accountId: string, ts: number, action: string, to: string, id: number, text: string) =>
+  `near-post:social:${action}:${accountId}:${ts}:${to}:${id}:${text}`;

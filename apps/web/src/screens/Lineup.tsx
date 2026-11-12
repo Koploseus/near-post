@@ -10,6 +10,7 @@ import { Crest } from "./Crest.js";
 import { SeasonStats } from "./SeasonStats.js";
 import { faceNumber, Head } from "./Look.js";
 import { Wall } from "./Wall.js";
+import { Scout, Treatment } from "./ClubLife.js";
 import { usePresence } from "../lib/social.js";
 
 const STRATEGIES: [Strategy, string][] = [
@@ -224,6 +225,10 @@ export function Lineup() {
           <p className="note">Now: {lineup.strategy}. Players in slots: {lineup.chosen.filter(Boolean).length} of 11</p>
           <SetPieces clubId={sheetId} leader={isCaptain} />
         </aside>
+      </div>
+      <div className="sheet-extra">
+        <Scout clubId={sheetId} />
+        <Treatment clubId={sheetId} />
       </div>
       <Wall clubId={sheetId} />
       <SeasonStats />
