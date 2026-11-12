@@ -6,7 +6,7 @@ import { soon, useData, useGame } from "../lib/game.js";
 import { call, isGasless, league, leagueCall, signForClub, signOut, topUp } from "../lib/near.js";
 import { Crest, crestOf } from "./Crest.js";
 import { serverNow } from "../lib/time.js";
-import { LEAGUE, PLAYERS } from "../lib/config.js";
+import { EXPLORER, LEAGUE, PLAYERS } from "../lib/config.js";
 import { Offers } from "./Market.js";
 import type { Club, Player, Position, Rules } from "../lib/types.js";
 import { PasskeyIcon, RecoveryKeySetup, SignIn } from "./SignIn.js";
@@ -351,18 +351,19 @@ export function AccountPage() {
   if (!session) return <SignIn />;
   return (
     <div className="account-page">
-      <h1>Your account</h1>
+      <a className="link" href="#/locker">
+        ← Back to the locker room
+      </a>
+      <div className="account-grid">
       <Account />
       {!isGasless(session.accountId) && (
         <div className="paper panel">
-          <h3>Gas</h3>
+          <span className="k">GAS</span>
           <p className="note">Low on NEAR for transactions? The relay tops you up, twice a day.</p>
           <Action className="cta small" label="Top up my gas" run={() => topUp(session.accountId)} />
         </div>
       )}
-      <a className="link" href="#/locker">
-        Back to the locker room
-      </a>
+      </div>
     </div>
   );
 }
@@ -372,8 +373,30 @@ function Account() {
   const { data: passkeys, reload } = useData(() => (session ? passkeysOf(session.accountId) : Promise.resolve(0)), [session?.accountId]);
   if (!session) return null;
   return (
+    <>
+    <div className="paper panel account account-id">
+      <span className="k">YOUR ACCOUNT</span>
+      <p className="account-field">
+        <small>ACCOUNT</small>
+        <span title={session.accountId}>{short(session.accountId)}</span>
+        <a className="link" href={`${EXPLORER}/address/${session.accountId}`} target="_blank" rel="noreferrer">
+          Explorer ↗
+        </a>
+      </p>
+      {isGasless(session.accountId) && <p className="note">Opened with your email: the game pays your gas.</p>}
+      <button
+        type="button"
+        className="cta small danger"
+        onClick={() => {
+          signOut();
+          setSession(null);
+        }}
+      >
+        SIGN OUT
+      </button>
+    </div>
     <div className="paper panel account">
-      <h3>Backup</h3>
+      <span className="k">BACKUP</span>
       {passkeys ? (
         <p className="ok">
           <PasskeyIcon /> Backed up: you can sign in on your other devices
@@ -393,21 +416,8 @@ function Account() {
           <RecoveryKeySetup session={session} username={session.accountId} onDone={reload} />
         </>
       )}
-      <p className="note">
-        {isGasless(session.accountId) ? "Opened with your email: the game pays your gas. " : ""}
-        <span title={session.accountId}>{short(session.accountId)}</span>
-      </p>
-      <button
-        type="button"
-        className="link"
-        onClick={() => {
-          signOut();
-          setSession(null);
-        }}
-      >
-        Sign out
-      </button>
     </div>
+    </>
   );
 }
 

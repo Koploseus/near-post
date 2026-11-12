@@ -1,3 +1,5 @@
+import { Cabinet } from "../floodlight/art.js";
+import { Crest } from "./Crest.js";
 import { useEffect, useState } from "react";
 import { clubName, g, minute } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
@@ -142,6 +144,38 @@ export function Dashboard() {
         )}
 
         {session && nextCard}
+
+        {/* Your stand: how full it is now, in cells, and the way in. */}
+        {clubId && club && data?.stand && data.stand.target > 0 && (
+          <a className="paper panel stand-card" href="#/stands">
+            <span className="k">YOUR STAND · {club.name.toUpperCase()}</span>
+            <span className="stand-count">
+              {data.stand.present} / {data.stand.target} fans
+            </span>
+            <span className="stand-cells" aria-label={`${data.stand.present} of ${data.stand.target} fans for a full house`}>
+              {Array.from({ length: Math.max(1, data.stand.target) }, (_, i) => (
+                <i key={i} className={i < data.stand!.present ? "in" : ""} />
+              ))}
+            </span>
+            <span className="note">{data.stand.full_house ? "Full house: every fan in is paid at the whistle." : `Full house at ${data.stand.target}: every fan in is paid at the whistle.`}</span>
+            <span className="cta small">{data.stand.full_house ? "THE STAND" : "TAKE YOUR SEAT"}</span>
+          </a>
+        )}
+
+        {/* The drill of the day, as its arcade cabinet. */}
+        {me && !trained && (
+          <a className="paper panel drill-card" href="#/locker">
+            <Cabinet skill={DRILL_SKILL[me.position]} className="drill-card-cab" />
+            <span>
+              <span className="arcade-tag">TODAY'S DRILL</span>
+              <b className="arcade-title">{DRILL_TITLE[me.position]}</b>
+              <span className="note">
+                Up to +3 {DRILL_SKILL[me.position]} · {me.free_trainings > 0 ? "free session" : "400k G"}
+              </span>
+            </span>
+            <span className="cta small">TRAIN</span>
+          </a>
+        )}
         {!session && (
           <ul className="pitch-points">
             <li>
@@ -280,18 +314,29 @@ function PlayerColumn() {
   );
 }
 
+/** The drill Training picks first for each position. */
+const DRILL_SKILL = { Fw: "shooting", Mf: "passing", Df: "defending", Gk: "defending" } as const;
+const DRILL_TITLE = { Fw: "Penalties", Mf: "Through balls", Df: "Tackles", Gk: "Tackles" } as const;
+
 function LiveScore({ m, kickoff, day, now, names }: { m: MatchResult; kickoff: number; day: number; now: number; names: Map<string, string> }) {
   const { schedule, kickoffs } = useGame();
   const c = clock(m, kickoff, schedule!, now, kickoffs[day]);
   const [h, a] = scoreOf(visible(m, c));
   return (
     <span className="hero-score">
-      <span>{clubName(names.get(m.home) ?? "")}</span>
+      <span className="hs-team">
+        <Crest clubId={m.home} name={names.get(m.home) ?? ""} size={48} />
+        {clubName(names.get(m.home) ?? "")}
+      </span>
       <b>
-        {h} - {a}
+        {h}-{a}
       </b>
-      <span>{clubName(names.get(m.away) ?? "")}</span>
+      <span className="hs-team">
+        <Crest clubId={m.away} name={names.get(m.away) ?? ""} size={48} />
+        {clubName(names.get(m.away) ?? "")}
+      </span>
       <em>{c.label}</em>
+      <span className="cta small hs-watch">WATCH LIVE</span>
     </span>
   );
 }

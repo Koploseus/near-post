@@ -488,3 +488,108 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .pen-power i.hot { background: var(--np-green); }
 .pen-power span { order: -1; margin-top: 4px; padding: 2px 4px; background: var(--np-text); color: var(--np-outline); font-family: var(--np-display); font-weight: 700; font-size: 10px; writing-mode: horizontal-tb; }
 @media (max-width: 720px) { .pen-power i { width: 12px; height: 7px; } }
+
+/* The live match as a TV broadcast (TvPitch.tsx). */
+.tv-pitch { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; margin-top: 14px; background: #120C30; border: 3px solid #0B0820; box-shadow: var(--px, 4px 4px 0 #0B0820); }
+
+/* Club house per the kit board: art on each project, a LV tag, the vote as a full-width yellow button. */
+.plate-art { position: relative; height: 110px; padding: 0; overflow: hidden; background: #6E5FC2; }
+.plate-art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+.plate-art img.contain { object-fit: contain; padding: 14px; }
+.plate-art .lv { position: absolute; top: 8px; left: 8px; padding: 2px 6px; background: var(--np-outline); color: var(--np-yellow); font-family: var(--np-display); font-weight: 700; font-size: 11px; letter-spacing: 1px; }
+.plate-foot { flex-wrap: wrap; }
+.plate-foot .cta { flex: 1 1 100%; justify-content: center; background: var(--np-yellow); color: var(--np-outline); }
+.plate-foot .price { font-family: var(--np-led); font-size: 11px; color: var(--np-yellow); }
+.plate-art { padding: 0 !important; }
+
+/* Stands per the kit board: the tifo and the votes on the left, your seat and the rules on the right. */
+@media (min-width: 1100px) {
+  .stands-page { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px 28px; align-items: start; }
+  .stands-page > .stand { grid-column: 1; grid-row: 1; margin: 0; }
+  .stands-page > .stand-floor { display: contents; }
+  .stands-page .fan-votes { grid-column: 1; grid-row: 2; margin: 0; }
+  .stands-page .my-seat { grid-column: 2; grid-row: 1; margin: 0; align-self: stretch; }
+  .stands-page > .stand-rules { grid-column: 2; grid-row: 2; margin: 0; }
+}
+
+/* Stickers per the kit board: the whole pixel footballer on a dark striped card, framed in his tier. */
+.sticker { --tier: #C98A52; background: var(--np-panel); color: var(--np-text); box-shadow: 0 0 0 3px var(--tier), 0 6px 0 var(--np-outline); transform: none !important; }
+.sticker.silver { --tier: #E3E6EA; }
+.sticker.gold { --tier: #F2B705; }
+.sticker.bronze .sticker-face, .sticker.silver .sticker-face, .sticker.gold .sticker-face { background: repeating-linear-gradient(135deg, #2A1E66 0 7px, #221855 7px 14px); }
+.sticker-face { display: flex; align-items: flex-end; justify-content: center; }
+.sticker-face .sticker-body, .sticker-face svg.sticker-body { position: relative; inset: auto; width: auto; height: 86%; image-rendering: pixelated; }
+.sticker .rating { font-family: var(--np-led); color: var(--tier); text-shadow: 0 2px 0 var(--np-outline); }
+.sticker .pos { color: var(--np-text); }
+.sticker .strip { background: var(--np-text); color: var(--np-outline); font-family: var(--np-display); font-weight: 700; }
+.sticker .card-stats { color: var(--np-muted-2); }
+.sticker .card-stats b { color: var(--np-text); font-family: var(--np-led); font-size: 9px; }
+.sticker.on { outline: 4px solid var(--np-yellow); }
+
+/* Results per the kit board: one row per match, home name, crest, LED score, crest, away name. */
+.game-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 0; background: var(--np-chip); color: var(--np-text); box-shadow: var(--px); }
+.game-card.mine { background: #3a2d80; box-shadow: inset 4px 0 0 var(--np-yellow), var(--px); }
+.game-card .side { display: flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--np-display); font-weight: 700; font-size: 13px; }
+.game-card .side:first-child { grid-column: 1; justify-content: flex-end; text-align: right; }
+.game-card .side:first-child .side-name { order: 1; }
+.game-card .side:first-child .crest { order: 2; }
+.game-card .side:first-child b { order: 3; }
+.game-card .side:nth-child(2) { grid-column: 2; grid-row: 1; }
+.game-card .side:first-child { grid-row: 1; }
+.game-card .side:nth-child(2) b { order: -2; }
+.game-card .side:nth-child(2) .crest { order: -1; }
+.game-card .side b { margin: 0; padding: 2px 6px; border-radius: 0; background: var(--np-outline); color: var(--np-yellow); font-family: var(--np-led); font-size: 13px; }
+.game-card .side:first-child b { margin-right: -8px; }
+.game-card .side:nth-child(2) b::before { content: "-"; margin-right: 4px; color: var(--np-yellow); }
+.game-card .side.won { font-weight: 700; }
+.game-foot { grid-column: 3; grid-row: 1; margin: 0; }
+.game-foot > span:not(.tag):not(.more) { display: none; }
+.game-foot .more { font-size: 0; }
+.game-foot .more::after { content: "›"; font-size: 18px; color: var(--np-muted-2); }
+
+/* Account per the kit board: three panels, account, gas, backup. */
+.account-page { display: grid; gap: 18px; }
+.account-page > .link { justify-self: start; }
+.account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; align-items: start; }
+.account-grid > * { margin: 0 !important; }
+.account-field { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 10px 12px; background: var(--np-night-deep); }
+.account-field small { flex-basis: 100%; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: var(--np-muted-2); }
+.account-field span { font-family: var(--np-display); font-weight: 700; }
+.account-field .link { margin-left: auto; font-size: 13px; }
+.cta.danger { background: var(--np-red); color: var(--np-text); }
+
+/* Market per the kit board: the club picker top right of the scouting panel; stickers in a tight grid. */
+@media (min-width: 1100px) {
+  .market > section:first-child { display: grid; grid-template-columns: minmax(0, 1fr) 320px; column-gap: 28px; align-items: start; }
+  .market > section:first-child > * { grid-column: 1 / -1; }
+  .market > section:first-child > .k, .market > section:first-child > h2, .market > section:first-child > .note:first-of-type { grid-column: 1; }
+  .market > section:first-child > label.field:first-of-type { grid-column: 2; grid-row: 1 / span 3; align-self: start; }
+  .market .stickers { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+}
+
+/* Today per the kit board: the live card with crests and an LED score, your stand in cells, the drill of the day. */
+.hero-score { display: grid !important; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "h s a" "w m b"; align-items: end; justify-items: center; gap: 8px 14px; width: 100%; }
+.hero-score .hs-team { display: grid; justify-items: center; gap: 6px; font-family: var(--np-display); font-weight: 700; font-size: clamp(13px, 1.8vw, 20px); line-height: 1.1; text-align: center; color: var(--np-text); text-shadow: 0 2px 0 var(--np-outline); }
+.hero-score .hs-team:first-child { grid-area: h; }
+.hero-score .hs-team:nth-of-type(2) { grid-area: a; }
+.hero-score > b { grid-area: s; align-self: center; padding: 6px 14px; background: var(--np-outline); color: var(--np-yellow); font-family: var(--np-led); font-weight: 400; font-size: clamp(28px, 5vw, 52px); line-height: 1; }
+.hero-score > em { grid-area: m; padding: 3px 10px; background: var(--np-outline); color: var(--np-red-hi); font-family: var(--np-led); font-style: normal; font-size: 12px; }
+.hero-score .hs-watch { grid-area: b; justify-self: end; background: var(--np-red); color: var(--np-text); }
+.stand-card, .drill-card { display: grid; gap: 8px; text-decoration: none; color: var(--np-text); }
+.stand-card { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.stand-card .k { color: var(--np-blue-hi); }
+.stand-count { justify-self: end; font-family: var(--np-led); font-size: 13px; color: var(--np-text); }
+.stand-cells { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; background: var(--np-outline); }
+.stand-cells i { height: 16px; background: #2A3A7A; }
+.stand-cells i.in { background: var(--np-green); }
+.stand-card .note { margin: 0; }
+.stand-card .cta { justify-self: end; background: var(--np-blue); color: var(--np-text); }
+.drill-card { grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.drill-card-cab { width: 84px; margin: 0; }
+.drill-card > span:nth-child(2) { display: grid; gap: 4px; justify-items: start; }
+.drill-card .arcade-title { font-size: 24px; }
+.drill-card .note { margin: 0; }
+.drill-card .cta { background: var(--np-yellow); color: var(--np-outline); }
+@media (max-width: 720px) { .drill-card { grid-template-columns: 64px minmax(0, 1fr); } .drill-card-cab { width: 64px; } .drill-card .cta { grid-column: 1 / -1; justify-self: stretch; text-align: center; } .hero-score .hs-watch { justify-self: center; } }
+.hero-score .hs-watch { white-space: nowrap; }
+@media (max-width: 720px) { .today-player .avatar-stage { background: url(/art/bg/bg-locker.webp) center 40% / cover; border: 0; } }
