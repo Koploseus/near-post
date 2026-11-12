@@ -750,3 +750,13 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .locker .life { grid-row: 5 / span 2; }
 }
 .life-row .contract-days small { margin-left: 4px; }
+
+/* The drawn avatar in the wardrobe keeps to its column on a phone. */
+.wardrobe-grid > :first-child { min-width: 0; overflow: hidden; }
+.wardrobe-me { grid-template-columns: minmax(0, 1fr); padding: 8px; width: 100%; max-width: 196px; box-sizing: border-box; }
+.wardrobe-grid .avatar-art { width: 100% !important; max-width: 176px; height: auto !important; aspect-ratio: 314 / 320; }
+/* Face editor on a phone: each label above its row of choices. */
+@media (max-width: 700px) {
+  .face-row { grid-template-columns: 1fr !important; gap: 6px; align-items: start; }
+  .face-heads, .face-swatches { gap: 6px; }
+}

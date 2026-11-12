@@ -264,9 +264,57 @@ const HEADS: Record<Sheet, { view: View; at: [number, number, number][] }> = {
   keeper: { view: "front", at: [[0.491, 0.314, 0.35], [0.26, 0.49, 0.33], [0.329, 0.289, 0.35], [0.5, 0.2, 0.35], [0.17, 0.71, 0.33], [0.454, 0.224, 0.35]] },
 };
 
+const HAIRLESS = new Map<string, HTMLCanvasElement>();
+/**
+ * A strip without the hair its heads were drawn with: a footballer's own head
+ * goes over each of them, and a bald or short-haired one must not show the
+ * picture's hair around it. Around each head, what is not skin goes (above
+ * the chin only, so collars and shoulders stay).
+ */
+function hairless(sheet: Sheet, shirt: string): HTMLCanvasElement | null {
+  const src = sheetFor(sheet, shirt);
+  if (!src) return null;
+  const key = `${sheet}|${shirt}`;
+  let c = HAIRLESS.get(key);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = src.width;
+    c.height = src.height;
+    const x = c.getContext("2d", { willReadFrequently: true })!;
+    x.drawImage(src, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height);
+    const p = d.data;
+    const cw = c.width / 6;
+    HEADS[sheet].at.forEach(([hx, hy, hs], n) => {
+      const size = hs * c!.height;
+      const cx = n * cw + hx * cw;
+      const cy = hy * c!.height - size * 0.06;
+      const rx = size * 0.54;
+      const ry = size * 0.6;
+      const y1 = Math.min(c!.height, Math.round(cy + size * 0.24));
+      for (let y = Math.max(0, Math.floor(cy - ry)); y < y1; y++)
+        for (let px = Math.max(Math.floor(n * cw), Math.floor(cx - rx)); px < Math.min(Math.ceil((n + 1) * cw), Math.ceil(cx + rx)); px++) {
+          if (((px - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 > 1) continue;
+          const i = (y * c!.width + px) * 4;
+          if (p[i + 3]! < 8) continue;
+          const r = p[i]! / 255;
+          const gg = p[i + 1]! / 255;
+          const b = p[i + 2]! / 255;
+          const v = Math.max(r, gg, b);
+          const sat = v ? (v - Math.min(r, gg, b)) / v : 0;
+          if (r > gg && gg > b && sat > 0.18 && sat < 0.62 && v > 0.6) continue; // skin: his own head covers it
+          p[i + 3] = 0;
+        }
+    });
+    x.putImageData(d, 0, 0);
+    HAIRLESS.set(key, c);
+  }
+  return c;
+}
+
 /** Frame `n` of a strip, `h` px tall, feet at the origin. False until the strip has loaded. */
 function art(g: G, sheet: Sheet, look: Look, n: number, h: number, flip: boolean): boolean {
-  const c = sheetFor(sheet, look.shirt);
+  const c = look.face !== undefined ? hairless(sheet, look.shirt) : sheetFor(sheet, look.shirt);
   if (!c) return false;
   const cw = c.width / 6;
   const w = (h * cw) / c.height;
