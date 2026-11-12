@@ -227,16 +227,24 @@ export class Agents {
         continue;
       }
       try {
-        if (a.kind === "footballer" && (await this.d.chain.balance(a.account)) === null) {
-          await this.d.chain.createAccount(a.account, this.d.publicKeyOf(a), near("0.25"));
+        // An implicit account (a wallet in custody, agents/custody.ts) exists from its first NEAR; a named one is created with its key.
+        const implicit = /^[0-9a-f]{64}$/.test(a.account);
+        if ((implicit || a.kind === "footballer") && (await this.d.chain.balance(a.account)) === null) {
+          if (implicit) await this.d.chain.transfer(a.account, near("0.5"));
+          else await this.d.chain.createAccount(a.account, this.d.publicKeyOf(a), near("0.25"));
         }
-        if (!(await this.d.chain.hasKey(a.account, this.d.publicKeyOf(a)))) {
+        // An implicit account's key is the account itself: nothing to check.
+        if (!implicit && !(await this.d.chain.hasKey(a.account, this.d.publicKeyOf(a)))) {
           this.cantSign.add(a.account);
           console.error(`agents: ${a.account} has no agent key (run scripts/agents-keys.mjs); it sits out`);
           continue;
         }
         if (a.kind === "coach") {
           const club = await this.league<Club | null>("get_club", { club_id: a.account });
+          if (!club && implicit) {
+            const tx = await this.d.as(a).callChecked!(this.d.leagueId, "create_club", { name: a.clubName }, 300);
+            this.log(a, 0, "setup", { acts: [{ what: "created" }], txs: [tx], quote: "" });
+          }
           if (club && club.name !== a.clubName) {
             const tx = await this.d.as(a).call(this.d.leagueId, "rename_club", { name: a.clubName }, 30);
             this.log(a, 0, "setup", { acts: [{ what: "renamed", name: a.clubName }], txs: [tx], quote: "" });

@@ -11,8 +11,8 @@ export interface CrowdClub {
   fans: string[];
 }
 
-/** "rive-nord:5,port-lune:4" → clubs `<name>.<parent>`, fans `<name>-f<n>.<parent>`. */
-export function parseCrowd(spec: string | undefined, parent: string): CrowdClub[] {
+/** "rive-nord:5,port-lune:4" → clubs `<name>.<parent>` (or the account `clubs` gives for the name), fans `<name>-f<n>.<parent>`. */
+export function parseCrowd(spec: string | undefined, parent: string, clubs?: Record<string, string>): CrowdClub[] {
   if (!spec) return [];
   return spec.split(",").map((part) => {
     const [name, n] = part.trim().split(":");
@@ -20,7 +20,7 @@ export function parseCrowd(spec: string | undefined, parent: string): CrowdClub[
     if (!name || !/^[a-z\d-]+$/.test(name) || !Number.isInteger(size) || size < 1 || size > 50) {
       throw new Error(`CROWD: bad entry "${part}"`);
     }
-    return { club: `${name}.${parent}`, fans: Array.from({ length: size }, (_, i) => `${name}-f${i + 1}.${parent}`) };
+    return { club: clubs?.[name] ?? `${name}.${parent}`, fans: Array.from({ length: size }, (_, i) => `${name}-f${i + 1}.${parent}`) };
   });
 }
 

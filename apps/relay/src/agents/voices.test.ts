@@ -16,8 +16,8 @@ import { type Facts, Voices, afterMatchLine, cleanReply, fallbackReply, linesFor
 
 const PARENT = "near-post.testnet";
 const CLUB = `rive-nord.${PARENT}`;
-const coach: Agent = { kind: "coach", account: CLUB, name: "Arthur Penhale", style: "gambler", clubName: "Northbank Rovers" };
-const striker: Agent = { kind: "footballer", account: `ai-1.${PARENT}`, name: "Jack Rowntree", position: "Fw", character: "showman", startsAt: CLUB };
+const coach: Agent = { kind: "coach", slug: "rive-nord", account: CLUB, name: "Arthur Penhale", style: "gambler", clubName: "Northbank Rovers" };
+const striker: Agent = { kind: "footballer", slug: "ai-1", account: `ai-1.${PARENT}`, name: "Jack Rowntree", position: "Fw", character: "showman", startsAt: CLUB };
 const facts: Facts = { club: "Northbank Rovers", rank: 2, clubs: 14, last: [3, 1], overall: 61, goals: 4 };
 const skills = (o: Partial<Record<"pace" | "shooting" | "passing" | "dribbling" | "defending" | "physical", number>> = {}) => ({ pace: 50, shooting: 50, passing: 50, dribbling: 50, defending: 50, physical: 50, ...o });
 

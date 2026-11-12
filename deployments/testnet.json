@@ -1,37 +1,37 @@
 {
   "network": "testnet",
-  "version": "v10",
-  "deployed_at": "2026-11-12T19:11:58.928Z",
+  "version": "v11",
+  "deployed_at": "2026-11-12T21:50:05.026Z",
   "contracts": {
     "league": {
-      "account_id": "league-v10.near-post.testnet",
+      "account_id": "league-v11.near-post.testnet",
       "wasm_sha256": "659543e7a92f12fb4d540d07ca5bc652716b806c31514f2fe0843e038af1f111",
-      "deploy_tx": "EnN3LcbGQVsurauX4oPe4woDmwp4tFwmNByKsvTbv63C",
-      "init_tx": "9eUVjfV6QvFFHzTn4z7HcSFgDh4weUr76DzWfNAUZCm9"
+      "deploy_tx": "DG4LKN3BTHmiRwf4nLut6uY7DB5Q8QDkvtUWxfScsr69",
+      "init_tx": "93ppaD4X8BGP8pUXM6QDiRMHR2EZCRjdyUoSjq1eukzP"
     },
     "goalars": {
-      "account_id": "goalars-v10.near-post.testnet",
+      "account_id": "goalars-v11.near-post.testnet",
       "wasm_sha256": "203f01a4c70b626ef034a697a1e0c611fa37c68f5cee0313ca8ad267b3099ba7",
-      "deploy_tx": "EQL5ozoWswAapUAoNhcaCKwD1vDxKWRry7vgybwTtZ6i",
-      "init_tx": "5BrcQQoYPMBVRWPuR7fEoeyRhtFJ7sMFPVmZoK4m2MsH"
+      "deploy_tx": "Ht6YRP972vvLVMsMdgYJ2gaNF949T3UM3Nb6tFgKksz",
+      "init_tx": "7NfsB51MwUz2r56VBcw6jeBES8SH3MQMUsXMamYts2YN"
     },
     "players": {
-      "account_id": "players-v10.near-post.testnet",
+      "account_id": "players-v11.near-post.testnet",
       "wasm_sha256": "33d405921724217ab528ed7b4e2c1c83b49dea6c9153f868985a682bd43a1e7a",
-      "deploy_tx": "Ep7vKXXBQfXGBuX7dgTgmA2B4jgox1CUatVcG4P7wFbF",
-      "init_tx": "8fP5kGSVqo69N6NfVy8gDiM4QMyXhzHnRyJJjGoFHaoa"
+      "deploy_tx": "9JoHeRqgLeBCD8jmxMMznfnKahF1bvXdjuv351oCAve7",
+      "init_tx": "71LMymsPvm3eGqYmmmCscSkNFkxe7UzSxjM48qJC61EC"
     },
     "items": {
-      "account_id": "items-v10.near-post.testnet",
+      "account_id": "items-v11.near-post.testnet",
       "wasm_sha256": "87c567ba64fce0aa45f45d663a831dd28b6bff106b044e8069b09dab91bd4bbc",
-      "deploy_tx": "Ctyp9sdmPra5s8pVajuYo9zWMtkS1k1rX64nT4AKawUM",
-      "init_tx": "HjsaKYxbrqvr3aPzn6o2tLDtZWfmtkHR8FxYXWGfmieq"
+      "deploy_tx": "hre5hFsjKwpeDy1PdW4FfuyXcKe3cYtunRA8x3KmXkq",
+      "init_tx": "JCUJL6Z3xfoQBdAGyN1wdqQ4FRfr3G159n6aFdMhsWQs"
     },
     "tickets": {
-      "account_id": "tickets-v10.near-post.testnet",
+      "account_id": "tickets-v11.near-post.testnet",
       "wasm_sha256": "8d60896a16508636fc154864d2a368c16c7b47e60cddb24a32f1221806b3d5b4",
-      "deploy_tx": "AtKWGsvSXDNCxEroNeZ3gbKZcM1HtterAMSvBgjCWSo3",
-      "init_tx": "8sCHvmgKfyBvEPRmparsdMiB5zVqtTca7sdxRjeCQFZj"
+      "deploy_tx": "7q9xrHRdkKKFPR9QvmU1qK2NqNZpzGFjiVDDdfTdaCps",
+      "init_tx": "6mrgN1ZrXGWR2ifVeLBByK3LiY3Sq2o6tqkhyHMidb4R"
     }
   },
   "attester": "ed25519:4cqYajyLcamJ9VPFLbNff3hqdwedoTQwkenqWEqsJLpc"
