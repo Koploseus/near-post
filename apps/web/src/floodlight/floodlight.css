@@ -369,3 +369,38 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 }
 @media (min-width: 1100px) { .locker-me .locker-id { flex: 0 0 auto !important; width: min(540px, 48%) !important; } }
 .locker-id .cta { background: var(--np-green); color: var(--np-outline); }
+
+/* Club and stands pages on a wide screen (kit v3 desktop boards). */
+.champions-banner:not(.mini) { background: var(--np-panel); color: var(--np-text); border: 0; box-shadow: var(--px); }
+.champions-banner:not(.mini) .k { color: var(--np-yellow); }
+.champions-banner .trophy { background: var(--np-chip); box-shadow: none; border: 0; }
+.finishes li.won, .final-table tr.mine, .finishes li.mine { background: var(--np-chip); }
+.agent-line { background: var(--np-chip); padding: 14px 16px; box-shadow: none; border: 0; }
+@media (min-width: 1100px) {
+  .seasons { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px 28px; align-items: start; }
+  .seasons > * { margin: 0 !important; grid-column: 1; }
+  .seasons > section:last-child { grid-column: 2; grid-row: 1 / span 6; }
+  .goalars { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px 28px; align-items: start; }
+  .goalars > * { margin: 0 !important; grid-column: 1; }
+  .goalars > .row2 { grid-column: 2; grid-row: 2 / span 3; display: grid; grid-template-columns: 1fr; gap: 24px; }
+  .goalars > :first-child { grid-column: 1 / -1; }
+  .agent-feed { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .agent-feed .agent-line { margin: 0; border: 0; }
+  .tickets { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px 28px; align-items: start; }
+  .tickets > * { margin: 0 !important; }
+  .tickets > .season-ticket { grid-row: 1 / span 4; }
+}
+
+/* Pack opening and drill result: a 760px modal over a darkened page. */
+.reveal-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(11, 8, 32, .82); overflow-y: auto; }
+.reveal-card { width: min(760px, 100%); display: grid; gap: 16px; justify-items: center; text-align: center; padding: 28px 24px; background: var(--np-panel) url(/art/fx/fx-legendary-burst.webp) center / cover; box-shadow: var(--px); animation: reveal-in .35s cubic-bezier(.2, 1.4, .4, 1) both; }
+.reveal-card > * { position: relative; }
+.reveal-card .unboxed { justify-content: center; background: none; box-shadow: none; margin: 0; }
+.reveal-card .unbox { width: 160px; padding: 14px 8px 10px; }
+.reveal-card .unbox-title { font-size: clamp(34px, 7vw, 56px); }
+.reveal-card .drill-result { width: 100%; background: rgba(18, 12, 48, .85); text-align: left; }
+.reveal-card .note, .reveal-card .err { background: rgba(18, 12, 48, .85); padding: 6px 10px; }
+.drill-done .reveal-card { width: auto; padding: 0; background: none; box-shadow: none; justify-items: start; text-align: left; animation: none; }
+@keyframes reveal-in { from { transform: scale(.85); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .reveal-card { animation: none; } }
+@media (max-width: 720px) { .reveal-card .unbox { width: 30%; } }
