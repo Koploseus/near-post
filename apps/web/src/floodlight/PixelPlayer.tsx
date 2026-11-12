@@ -21,7 +21,28 @@ const W = 34;
 const H = 46;
 const TOP = 4; // rows above the head, for buns, mohawks, flat-tops and fire
 
-export type Pose = "idle" | "run" | "kick" | "cheer" | "back";
+export type Pose =
+  | "idle"
+  | "idle2" // breathing frame: head down one row
+  | "run" // run cycle, contact (near leg forward)
+  | "stride" // run cycle, passing (feet together, body up one row)
+  | "run2" // run cycle, contact (far leg forward)
+  | "kick"
+  | "cheer"
+  | "back" // seen from behind (shooter)
+  | "backRun"
+  | "backRun2"
+  | "backKick" // wind-up seen from behind: kicking leg drawn back, arms wide
+  | "backHands" // seen from behind, hands on the head: a miss
+  | "slide" // sliding tackle, low
+  | "keeper" // ready crouch, arms wide, gloves up
+  | "stretch" // arms straight up, legs together: rotate it for a dive
+  | "catch"; // ball held at the chest
+
+/** Frame sequences. Play at ~8 fps (run) or ~2 fps (idle). */
+export const RUN_CYCLE: Pose[] = ["run", "stride", "run2", "stride"];
+export const BACK_RUN_CYCLE: Pose[] = ["backRun", "back", "backRun2", "back"];
+export const IDLE_CYCLE: Pose[] = ["idle", "idle", "idle2", "idle2"];
 
 export interface PixelOpts {
   look?: Look | null;
@@ -139,7 +160,9 @@ function draw(o: PixelOpts): Grid {
   const look = o.look ?? undefined;
   // Token numbers can be huge (past 2^31): keep a small non-negative integer, or `n >> 1` goes negative.
   const n = Math.abs(Math.trunc(o.n || 0)) % 1_000_003;
-  const pose: Pose = o.pose ?? "idle";
+  const back = o.pose === "back" || o.pose === "backRun" || o.pose === "backRun2" || o.pose === "backKick" || o.pose === "backHands";
+  // The body motion, with the back view folded onto its front-view twin.
+  const pose: Pose = o.pose === "back" ? "idle" : o.pose === "backRun" ? "run" : o.pose === "backRun2" ? "run2" : (o.pose ?? "idle");
   const skin = o.colors?.skin ?? SKIN[n % SKIN.length]!;
   const skinS = mix(skin, "#7A2430", 0.28);
   const hairStyle = styleOf(look?.hair) ?? "short";
@@ -150,26 +173,29 @@ function draw(o: PixelOpts): Grid {
   const socks = styleOf(look?.socks);
   const pads = styleOf(look?.pads);
   const tape = styleOf(look?.tape);
-  const gloves = styleOf(look?.gloves);
+  const pose0: Pose = o.pose ?? "idle";
+  // Keepers wear white gloves unless the look says otherwise.
+  const gloves = styleOf(look?.gloves) ?? (pose0 === "keeper" || pose0 === "stretch" || pose0 === "catch" ? "white" : null);
   const wrist = styleOf(look?.wrist);
   const band = o.colors?.band ? "__band" : styleOf(look?.band);
   const [boot, bootL] = o.colors?.boots ? [o.colors.boots, light(o.colors.boots)] : (BOOTS[styleOf(look?.boots) ?? ""] ?? ["#1B2340", "#3B4A7A"]);
 
   forcedBand = o.colors?.band ?? "";
   const G: Grid = Array.from({ length: H }, () => Array<string | null>(W).fill(null));
-  const px = (x: number, y: number, c: string) => {
+  const px = (x: number, y: number, c: string | null) => {
     const gx = x + 1;
     const gy = y + 1 + TOP;
     if (gx >= 0 && gx < W && gy >= 0 && gy < H) G[gy]![gx] = c;
   };
-  const rect = (x: number, y: number, w: number, h: number, c: string | ((x: number, y: number) => string)) => {
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) px(x + i, y + j, typeof c === "string" ? c : c(x + i, y + j));
+  const rect = (x: number, y: number, w: number, h: number, c: string | null | ((x: number, y: number) => string)) => {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) px(x + i, y + j, typeof c === "function" ? c(x + i, y + j) : c);
   };
 
   const jump = pose === "cheer" ? -2 : 0;
-  const hx = pose === "run" ? 1 : 0;
-  const hy = jump;
-  const by = jump;
+  // Body offset (torso, shorts, arms) and head offset, per pose.
+  const by = pose === "cheer" ? -2 : pose === "stride" ? -1 : pose === "slide" ? 4 : pose === "keeper" ? 2 : 0;
+  const hx = pose === "run" || pose === "run2" || pose === "stride" ? 1 : pose === "slide" ? -2 : 0;
+  const hy = by + (pose === "idle2" ? 1 : 0);
   const inHead = (x: number, y: number, dx = 0, dy = 0) => ((x - 15.5 - hx - dx) / 9.2) ** 2 + ((y - 10.5 - hy - dy) / 8.7) ** 2 <= 1;
 
   // Hands (gloves) and the row above them (wristband).
@@ -200,7 +226,7 @@ function draw(o: PixelOpts): Grid {
   }
 
   // ---------------------------------------------------------------- arms behind the body
-  if (pose === "idle" || pose === "back") {
+  if (pose === "idle" || pose === "idle2" || pose === "stride") {
     rect(6, 21, 3, 5, kit);
     wristRow(6, 25, 3);
     hand(6, 26, 3, 3, false);
@@ -209,6 +235,62 @@ function draw(o: PixelOpts): Grid {
     wristRow(23, 25, 3);
     hand(23, 26, 3, 3, true);
     rect(22, 21, 1, 8, INK);
+    if (pose === "stride") {
+      // Elbows bent: hands come up a row and in.
+      rect(6, 25 + by, 3, 4, null);
+      rect(23, 25 + by, 3, 4, null);
+      rect(6, 21 + by, 3, 3, kit);
+      wristRow(6, 24 + by, 3);
+      hand(6, 25 + by, 3, 3, false);
+      rect(23, 21 + by, 3, 3, shade(kit));
+      wristRow(23, 24 + by, 3);
+      hand(23, 25 + by, 3, 3, true);
+    }
+  } else if (pose === "run2") {
+    rect(6, 22, 4, 3, kit);
+    hand(5, 25, 3, 3, false);
+    rect(22, 21, 5, 3, shade(kit));
+    hand(26, 18, 4, 4, true);
+    px(26, 23, INK);
+  } else if (pose === "backKick") {
+    rect(3, 21, 7, 3, kit);
+    wristRow(1, 20, 2);
+    hand(0, 20, 3, 3, false);
+    rect(22, 21, 7, 3, shade(kit));
+    hand(29, 20, 3, 3, true);
+  } else if (pose === "slide") {
+    rect(5, 24 + 1, 5, 3, kit);
+    hand(2, 21, 4, 4, false);
+    rect(22, 26, 3, 6, shade(kit));
+    hand(23, 32, 4, 3, true);
+  } else if (pose === "keeper") {
+    rect(4, 23, 6, 3, kit);
+    rect(2, 19, 3, 5, skin);
+    wristRow(2, 19, 3);
+    hand(1, 14, 5, 5, false);
+    rect(22, 23, 6, 3, shade(kit));
+    rect(27, 19, 3, 5, skinS);
+    wristRow(27, 19, 3);
+    hand(26, 14, 5, 5, true);
+  } else if (pose === "stretch") {
+    rect(6, 17, 3, 4, kit);
+    rect(5, 4, 3, 13, skin);
+    wristRow(5, 4, 3);
+    hand(4, -1, 5, 5, false);
+    rect(23, 17, 3, 4, shade(kit));
+    rect(24, 4, 3, 13, skinS);
+    wristRow(24, 4, 3);
+    hand(23, -1, 5, 5, true);
+  } else if (pose === "backHands") {
+    rect(6, 19, 4, 3, kit);
+    rect(5, 7, 3, 12, skinS);
+    wristRow(5, 7, 3);
+    rect(22, 19, 4, 3, shade(kit));
+    rect(24, 7, 3, 12, skinS);
+    wristRow(24, 7, 3);
+  } else if (pose === "catch") {
+    rect(7, 21, 3, 4, kit);
+    rect(22, 21, 3, 4, shade(kit));
   } else if (pose === "run") {
     rect(5, 21, 5, 3, kit);
     hand(2, 19, 4, 4, false);
@@ -234,9 +316,9 @@ function draw(o: PixelOpts): Grid {
   // ---------------------------------------------------------------- torso and shorts
   rect(10, 20 + by, 12, 10, kit);
   rect(20, 20 + by, 2, 10, shade(kit));
-  if (pose === "back") {
-    rect(13, 22, 6, 5, kit2);
-    rect(15, 23, 2, 3, kit);
+  if (back) {
+    rect(13, 22 + by, 6, 5, kit2);
+    rect(15, 23 + by, 2, 3, kit);
   } else {
     rect(15, 20 + by, 2, 10, kit2);
     rect(11, 20 + by, 4, 1, shade(kit));
@@ -246,6 +328,19 @@ function draw(o: PixelOpts): Grid {
   rect(10, 30 + by, 12, 4, shorts);
   rect(20, 30 + by, 2, 4, shade(shorts));
   rect(15, 33 + by, 2, 1, INK);
+  if (pose === "catch") {
+    for (let y = 20; y < 30; y++)
+      for (let x = 10; x < 22; x++) {
+        const d = ((x - 15.5) / 5) ** 2 + ((y - 24.5) / 4.6) ** 2;
+        if (d <= 1) px(x, y, d > 0.72 ? "#C9C4B6" : "#F7F4EC");
+      }
+    rect(14, 23, 3, 2, INK);
+    px(11, 22, INK);
+    px(20, 26, INK);
+    px(12, 27, INK);
+    hand(8, 22, 3, 5, false);
+    hand(21, 22, 3, 5, true);
+  }
 
   // ---------------------------------------------------------------- legs: skin, socks (pads, tape), boots
   const sock = (gx: number, gy: number, back: boolean) => {
@@ -262,7 +357,43 @@ function draw(o: PixelOpts): Grid {
     rect(x, y, w, h, boot);
     rect(lx, y, lw, 1, bootL);
   };
-  if (pose === "run") {
+  if (pose === "run2") {
+    leg(10, 34, true);
+    bootAt(8, 38, 6, 2, 8, 2);
+    rect(14, 34, 4, 1, skin);
+    rect(17, 35, 4, 2, (gx, gy) => sock(gx, gy, false));
+    bootAt(20, 33, 4, 4, 20, 1);
+  } else if (pose === "stride") {
+    leg(11, 33, false);
+    bootAt(10, 37, 5, 2, 10, 2);
+    leg(16, 33, true, 2);
+    bootAt(17, 36, 4, 2, 19, 2);
+  } else if (pose === "backKick") {
+    leg(11, 34, false);
+    bootAt(10, 38, 5, 2, 10, 2);
+    rect(17, 34, 4, 1, skinS);
+    rect(18, 35, 4, 1, (gx, gy) => sock(gx, gy, true));
+    rect(20, 32, 4, 3, (gx, gy) => sock(gx, gy, true));
+    bootAt(22, 28, 4, 4, 22, 1);
+  } else if (pose === "slide") {
+    rect(6, 36, 5, 2, skin);
+    rect(1, 36, 5, 2, (gx, gy) => sock(gx, gy, false));
+    if (pads) rect(2, 36, 2, 1, (gx, gy) => paint(pads, gx, gy));
+    bootAt(-1, 35, 3, 3, -1, 1);
+    rect(17, 37, 4, 1, skinS);
+    rect(20, 38, 4, 2, (gx, gy) => sock(gx, gy, true));
+    bootAt(24, 38, 5, 2, 27, 2);
+  } else if (pose === "keeper") {
+    leg(8, 36, false, 1);
+    bootAt(6, 38, 6, 2, 6, 2);
+    leg(20, 36, true, 1);
+    bootAt(20, 38, 6, 2, 24, 2);
+  } else if (pose === "stretch") {
+    leg(12, 34, false, 4);
+    bootAt(12, 39, 4, 1, 12, 2);
+    leg(16, 34, true, 4);
+    bootAt(16, 39, 4, 1, 18, 2);
+  } else if (pose === "run") {
     leg(10, 34, false);
     bootAt(8, 38, 6, 2, 8, 2);
     rect(17, 34, 4, 1, skinS);
@@ -292,7 +423,6 @@ function draw(o: PixelOpts): Grid {
   rect(25 + hx, 11 + hy, 1, 3, skinS);
 
   // ---------------------------------------------------------------- hair on the head
-  const back = pose === "back";
   const sides = !["mohawk", "buzz"].includes(hairStyle);
   for (let y = 0; y < 22; y++)
     for (let x = 4; x < 29; x++) {
@@ -377,6 +507,10 @@ function draw(o: PixelOpts): Grid {
   }
 
   // ---------------------------------------------------------------- face: eyes and mouth from the number
+  if (pose === "backHands") {
+    hand(7, 3, 6, 4, true);
+    hand(19, 3, 6, 4, true);
+  }
   if (!back) {
     const round = (n >> 7) % 2 === 1;
     const mouth = pose === "cheer" || pose === "kick" ? 0 : (n >> 5) % 3; // 0 grin, 1 smile, 2 flat

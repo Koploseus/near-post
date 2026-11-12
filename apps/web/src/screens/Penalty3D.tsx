@@ -14,7 +14,6 @@ const PAPER = 0xf3ead7;
 const RED = 0xc8202f;
 const YELLOW = 0xf2b705;
 const BLUE = 0x2f5da8;
-const SKIN = 0xc68b5e;
 const HW = GOAL_M.halfWidth;
 const GH = GOAL_M.height;
 const SPOT = 11;
@@ -120,82 +119,91 @@ function boardsTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** The fans behind the goal: one box each, painting a tifo (a yellow star on blue, a red and white scarf). */
-function crowd(): { mesh: THREE.InstancedMesh; base: THREE.Matrix4[]; phase: number[] } {
-  const cols = 64;
-  const rows = 14;
-  const geo = new THREE.BoxGeometry(0.62, 0.62, 0.3);
-  const mat = new THREE.MeshLambertMaterial();
-  const mesh = new THREE.InstancedMesh(geo, mat, cols * rows);
-  const base: THREE.Matrix4[] = [];
-  const phase: number[] = [];
-  const color = new THREE.Color();
-  let n = 0;
-  for (let j = 0; j < rows; j++) {
-    for (let i = 0; i < cols; i++) {
-      const x = (i - cols / 2 + 0.5) * 0.72;
-      const y = 1.2 + j * 0.62;
-      const z = -9 - j * 0.75;
-      const m = new THREE.Matrix4().makeTranslation(x, y, z);
-      mesh.setMatrixAt(n, m);
-      base.push(m);
-      phase.push(Math.random() * Math.PI * 2);
-      const cx = i - cols / 2 + 0.5;
-      const cy = j - rows / 2 + 0.5;
-      const a = Math.atan2(cx, cy);
-      const d = Math.hypot(cx * 0.55, cy);
-      const k = (((a / (2 * Math.PI)) * 5 + 5) % 1);
-      const star = d < 2.2 + 3.2 * Math.abs(k - 0.5) * 2;
-      const scarf = j === 0 || j === rows - 1;
-      color.setHex(scarf ? ((i + j) % 2 ? RED : 0xffffff) : star ? YELLOW : BLUE);
-      mesh.setColorAt(n, color);
-      n++;
-    }
-  }
-  return { mesh, base, phase };
+/** The stand behind the goal (art/penalty/stand.webp): fans, tifo star and floodlights. */
+function stand(): THREE.Mesh {
+  const map = new THREE.TextureLoader().load("/art/penalty/stand.webp");
+  map.colorSpace = THREE.SRGBColorSpace;
+  const w = 36;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * 698) / 2048), new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, fog: false }));
+  mesh.position.set(0, (w * 698) / 2048 / 2 - 0.4, -10);
+  mesh.userData.y = mesh.position.y;
+  return mesh;
 }
 
-/** The keeper: a simple figure in yellow, built so he can sway, crouch and dive. */
-function keeperFigure() {
+/** Repaints the key-blue kit (hue 205-260) of a sprite sheet in the club's colour, keeping the shading. */
+function recolor(img: HTMLImageElement, to: string): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height);
+  const t = new THREE.Color(to);
+  const p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    if (p[i + 3]! < 8) continue;
+    const r = p[i]! / 255;
+    const gg = p[i + 1]! / 255;
+    const b = p[i + 2]! / 255;
+    const mx = Math.max(r, gg, b);
+    const mn = Math.min(r, gg, b);
+    if (mx !== b || mx - mn < 0.35 * mx) continue;
+    const h = 60 * ((r - gg) / (mx - mn) + 4);
+    if (h < 205 || h > 260) continue;
+    const k = Math.min(1.25, mx / 0.9); // the kit's light and shade
+    p[i] = Math.min(255, t.r * 255 * k);
+    p[i + 1] = Math.min(255, t.g * 255 * k);
+    p[i + 2] = Math.min(255, t.b * 255 * k);
+  }
+  g.putImageData(d, 0, 0);
+  return c;
+}
+
+/**
+ * A footballer drawn from a strip of six frames (art/penalty/*.webp): a
+ * billboard, feet at the root, one frame at a time, mirrored on demand,
+ * with a soft shadow on the grass.
+ */
+function spriteFigure(url: string, cellH: number, aspect: number, shirt?: string) {
   const root = new THREE.Group();
-  const body = new THREE.Group();
-  root.add(body);
-  const mat = (c: number) => new THREE.MeshLambertMaterial({ color: c });
-  const capsule = (r: number, l: number, c: number) => new THREE.Mesh(new THREE.CapsuleGeometry(r, l, 4, 10), mat(c));
-  const torso = capsule(0.24, 0.45, YELLOW);
-  torso.position.y = 1.22;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), mat(SKIN));
-  head.position.y = 1.72;
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.155, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x2a1a10));
-  hair.position.y = 1.74;
-  const shorts = capsule(0.22, 0.12, INK);
-  shorts.position.y = 0.88;
-  const legL = capsule(0.085, 0.62, INK);
-  const legR = capsule(0.085, 0.62, INK);
-  legL.position.set(-0.12, 0.42, 0);
-  legR.position.set(0.12, 0.42, 0);
-  const armL = new THREE.Group();
-  const armR = new THREE.Group();
-  for (const [arm, s] of [
-    [armL, -1],
-    [armR, 1],
-  ] as const) {
-    const a = capsule(0.07, 0.55, YELLOW);
-    a.position.y = -0.3;
-    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), mat(0xffffff));
-    glove.position.y = -0.64;
-    arm.add(a, glove);
-    arm.position.set(s * 0.3, 1.48, 0);
-  }
-  body.add(torso, head, hair, shorts, legL, legR, armL, armR);
-  root.traverse((o) => {
-    if ((o as THREE.Mesh).isMesh) o.castShadow = true;
-  });
-  return { root, body, armL, armR };
+  const tex = new THREE.Texture();
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.repeat.set(1 / 6, 1);
+  const img = new Image();
+  img.onload = () => {
+    tex.image = shirt ? recolor(img, shirt) : img;
+    tex.needsUpdate = true;
+  };
+  img.src = url;
+  const w = cellH * aspect;
+  const geo = new THREE.PlaneGeometry(w, cellH);
+  geo.translate(0, cellH / 2, 0);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4 });
+  root.add(new THREE.Mesh(geo, mat));
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  /** Frame 0..5, mirrored or not, feet at (x, y, z); `long` stretches the shadow for a dive. */
+  const show = (frame: number, flip: boolean, x: number, y: number, z: number, long = 1) => {
+    tex.offset.x = flip ? (frame + 1) / 6 : frame / 6;
+    tex.repeat.x = flip ? -1 / 6 : 1 / 6;
+    root.position.set(x, y, z);
+    shadow.position.set(x, 0.01, z);
+    shadow.scale.set(long, 0.42, 1);
+    (shadow.material as THREE.MeshBasicMaterial).opacity = 0.3 * Math.max(0.35, 1 - y / 1.2);
+  };
+  return { root, shadow, show, dispose: () => tex.dispose() };
 }
 
-export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: (trace: Press[]) => void }) {
+/** Keeper frames (keeper.webp). The dives go to the left of the picture: mirrored for the other side. */
+const K = { ready: 0, low: 1, high: 2, hold: 3, beaten: 4, joy: 5 };
+/** Shooter frames (shooter.webp), seen from behind. */
+const S = { wait: 0, run: 1, windup: 2, strike: 3, joy: 4, despair: 5 };
+
+export function PenaltyGame3D({ setup, onDone, shirt }: { setup: PenaltySetup; onDone: (trace: Press[]) => void; /** Your club's colour for the shooter's shirt (default: blue). */ shirt?: string }) {
   const host = useRef<HTMLDivElement>(null);
+  /** The power meter (ten square cells), lit straight from the pointer handlers: no re-render per move. */
+  const meter = useRef<HTMLDivElement>(null);
   const trace = useRef<Press[]>([]);
   const [score, setScore] = useState<(boolean | null)[]>(Array(setup.kicks.length).fill(null));
   const [verdict, setVerdict] = useState<{ text: string; goal: boolean; key: number } | null>(null);
@@ -278,17 +286,17 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
     const boards = new THREE.Mesh(new THREE.PlaneGeometry(46, 0.9), new THREE.MeshBasicMaterial({ map: boardsTexture() }));
     boards.position.set(0, 0.45, -5);
     scene.add(boards);
-    const fans = crowd();
-    scene.add(fans.mesh);
-    const roofStand = new THREE.Mesh(new THREE.BoxGeometry(60, 0.4, 14), new THREE.MeshLambertMaterial({ color: 0x121933 }));
-    roofStand.position.set(0, 11.2, -14);
-    scene.add(roofStand);
+    const fans = stand();
+    scene.add(fans);
 
     const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 24, 18), new THREE.MeshLambertMaterial({ map: ballTexture() }));
     ballMesh.castShadow = true;
     scene.add(ballMesh);
-    const kp = keeperFigure();
-    scene.add(kp.root);
+    // The keeper, and you seen from behind.
+    const kp = spriteFigure("/art/penalty/keeper.webp", 2.04, 384 / 360);
+    scene.add(kp.root, kp.shadow);
+    const me = spriteFigure("/art/penalty/shooter.webp", 1.84, 301 / 400, shirt);
+    scene.add(me.root, me.shadow);
 
     // Aiming: a ring on the goal plane and a dashed line from the ball.
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.23, 32), new THREE.MeshBasicMaterial({ color: YELLOW, transparent: true, opacity: 0.95, depthTest: false }));
@@ -319,6 +327,14 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
     const ray = new THREE.Raycaster();
     const goalPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     let aiming = false;
+    let aimFrom = 0;
+    // The same rule the relay applies on release: swipe speed in screen units per ms, 0.25 to 1.85.
+    const showPower = (p: number | null) => {
+      const cells = meter.current?.children;
+      if (!cells) return;
+      meter.current!.classList.toggle("on", p !== null);
+      for (let i = 0; i < cells.length; i++) cells[i]!.className = p !== null && i < Math.round(p * cells.length) ? (i >= 8 ? "hot" : "lit") : "";
+    };
     let aimAt: { x: number; y: number } | null = null;
     const ndc = (e: PointerEvent) => {
       const b = renderer.domElement.getBoundingClientRect();
@@ -349,11 +365,19 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
       renderer.domElement.setPointerCapture(e.pointerId);
       if (onBall(e)) {
         aiming = true;
-        trace.current.push({ t: now(), x: BALL.x, y: BALL.y });
+        aimFrom = now();
+        showPower(0);
+        trace.current.push({ t: aimFrom, x: BALL.x, y: BALL.y });
       } else trace.current.push({ t: now(), ...logical(e) });
     };
     const move = (e: PointerEvent) => {
-      if (aiming) aimAt = goalPoint(e);
+      if (!aiming) return;
+      aimAt = goalPoint(e);
+      if (aimAt) {
+        const sp = toScreen(aimAt.x, aimAt.y);
+        const swipe = Math.hypot(sp.x - BALL.x, sp.y - BALL.y) / Math.max(50, now() - aimFrom);
+        showPower(Math.min(1, Math.max(0, (swipe - 0.25) / 1.6)));
+      }
     };
     const up = (e: PointerEvent) => {
       const g = aiming ? goalPoint(e) : null;
@@ -363,6 +387,7 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
       } else trace.current.push({ t: now(), ...logical(e), up: true });
       aiming = false;
       aimAt = null;
+      setTimeout(() => showPower(null), 900);
     };
     renderer.domElement.addEventListener("pointerdown", down);
     renderer.domElement.addEventListener("pointermove", move);
@@ -385,24 +410,78 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
       // Keeper: sways on his line, then dives towards where he reads it.
       const p = setup.kicks[Math.min(i, setup.kicks.length - 1)]!;
       let kx = sway(p.phase, Math.max(0, (shot ? shot.up : t) - k.start));
-      let roll = 0;
       let lift = 0;
-      let reach = 0.25 + 0.08 * Math.sin(t / 180);
+      let hop = Math.abs(Math.sin(t / 190)) * 0.05; // light on his toes
+      let kf = K.ready;
+      let kFlip = Math.sin(t / 600) > 0;
+      let long = 1;
       if (shot) {
+        hop = 0;
         const d = Math.min(1, Math.max(0, (t - shot.keeper.reactAt) / Math.max(1, shot.keeper.reachAt - shot.keeper.reactAt)));
         const e = 1 - (1 - d) * (1 - d);
         kx = shot.keeper.from + (shot.keeper.to - shot.keeper.from) * e;
         const side = Math.sign(shot.keeper.to - shot.keeper.from || 0.01);
         const far = Math.min(1, Math.abs(shot.keeper.to - shot.keeper.from) / 1.2);
-        roll = -side * far * e * 1.25;
-        lift = Math.min(shot.target.y, 1.4) * e * (far > 0.3 ? 0.55 : 0.25);
-        reach = 0.25 + 2.6 * e;
-        if (after > 400) lift = Math.max(0, lift - (after - 400) / 600);
+        const high = shot.target.y > 1.1;
+        kFlip = side > 0;
+        if (t >= shot.keeper.reactAt) {
+          if (far > 0.3) {
+            kf = high ? K.high : K.low;
+            lift = high ? Math.min(shot.target.y - 1.1, 0.8) * e : 0.15 * Math.sin(e * Math.PI);
+            long = 2.2;
+          } else lift = high ? Math.min(shot.target.y - 1.2, 0.7) * e : 0;
+        }
+        if (after > 0) {
+          lift = Math.max(0, lift - after / 500);
+          if (shot.result === "goal" && after > 250) {
+            kf = K.beaten; // flat on the grass
+            long = 2.4;
+          } else if (shot.result === "saved" && after > 450) {
+            kf = far > 0.3 ? K.joy : K.hold;
+            long = 1;
+            hop = kf === K.joy ? Math.abs(Math.sin(after / 120)) * 0.12 : 0;
+          } else if (shot.result !== "goal" && after > 450) {
+            kf = K.joy;
+            long = 1;
+            hop = Math.abs(Math.sin(after / 120)) * 0.12;
+          }
+        }
       }
-      kp.root.position.set(kx, lift, 0.5);
-      kp.body.rotation.z = roll;
-      kp.armL.rotation.z = -reach;
-      kp.armR.rotation.z = reach;
+      kp.show(kf, kFlip, kx, lift + hop, 0.5, long);
+
+      // You: a jog to your mark, the wind-up while you aim, the strike, then joy or hands on the head.
+      const mark = { x: -1.45, z: SPOT + 1.35 };
+      const hit = { x: -0.34, z: SPOT + 0.45 };
+      const since = t - k.start;
+      let sf = S.wait;
+      let sFlip = false;
+      let sx = mark.x;
+      let sz = mark.z;
+      let sy = 0;
+      if (!shot) {
+        if (aiming) sf = S.windup;
+        else if (since < 900) {
+          const f = since / 900;
+          sx = mark.x - 0.6 * (1 - f);
+          sz = mark.z + 2.6 * (1 - f) * (1 - f);
+          sf = S.run;
+          sFlip = Math.floor(since / 120) % 2 === 1; // the other leg
+          sy = Math.abs(Math.sin(since / 76)) * 0.06;
+        }
+      } else {
+        const s = t - shot.up;
+        const f = Math.min(1, s / 180);
+        sx = mark.x + (hit.x - mark.x) * f;
+        sz = mark.z + (hit.z - mark.z) * f;
+        sf = s < 320 ? S.strike : S.wait;
+        if (after > 150) {
+          if (shot.result === "goal") {
+            sf = S.joy;
+            sy = Math.abs(Math.sin(after / 130)) * 0.2;
+          } else sf = S.despair;
+        }
+      }
+      me.show(sf, sFlip, sx, sy, sz);
 
       // Ball: on the spot, in flight, then where the result sends it.
       if (!shot) {
@@ -433,14 +512,8 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
       }
       pos.needsUpdate = true;
 
-      // Fans: a sway, and they jump after a goal.
-      const m = new THREE.Matrix4();
-      for (let n = 0; n < fans.base.length; n++) {
-        const jump = scored && after < 2600 ? Math.abs(Math.sin(after / 110 + fans.phase[n]!)) * 0.28 : Math.sin(t / 700 + fans.phase[n]!) * 0.02;
-        m.copy(fans.base[n]!).multiply(new THREE.Matrix4().makeTranslation(0, jump, 0));
-        fans.mesh.setMatrixAt(n, m);
-      }
-      fans.mesh.instanceMatrix.needsUpdate = true;
+      // The stand shakes after a goal.
+      fans.position.y = fans.userData.y + (scored && after < 2600 ? Math.abs(Math.sin(after / 95)) * 0.12 * (1 - after / 2600) : 0);
 
       // Aim marker.
       const showAim = aiming && aimAt && !k.shot;
@@ -486,6 +559,9 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
       renderer.domElement.removeEventListener("pointerdown", down);
       renderer.domElement.removeEventListener("pointermove", move);
       renderer.domElement.removeEventListener("pointerup", up);
+      kp.dispose();
+      me.dispose();
+      (fans.material as THREE.MeshBasicMaterial).map?.dispose();
       renderer.dispose();
       el.removeChild(renderer.domElement);
     };
@@ -507,6 +583,12 @@ export function PenaltyGame3D({ setup, onDone }: { setup: PenaltySetup; onDone: 
       </div>
       <div className="pen3d-stage">
         <div ref={host} role="application" aria-label="Penalty: press on the ball, drag to where you aim in the goal, release. A quick swipe shoots harder." />
+        <div ref={meter} className="pen-power" aria-hidden="true">
+          {Array.from({ length: 10 }, (_, i) => (
+            <i key={i} />
+          ))}
+          <span>POWER</span>
+        </div>
         {hint && <div className="pen3d-hint">{hint}</div>}
         {verdict && (
           <div key={verdict.key} className={`pen3d-verdict${verdict.goal ? " goal" : ""}`}>

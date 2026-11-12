@@ -19,7 +19,7 @@ import {
   sprints,
   tackles,
 } from "../../../relay/src/games.js";
-import { BLUE, H, INK, PAPER, RED, W, YELLOW, ball, banner, easeOut, figure, grass, hint, sideRunner, stands, topPlayer } from "./art.js";
+import { BLUE, H, INK, PAPER, RED, W, YELLOW, artReady, ball, banner, easeOut, figure, grass, hint, sideRunner, stands, topPlayer } from "./art.js";
 
 type G = CanvasRenderingContext2D;
 type Drag = { from: { x: number; y: number }; at: { x: number; y: number } };
@@ -178,7 +178,8 @@ export function PassesGame({ setup, onDone }: { setup: PassRound[]; onDone: (tra
       } else [bx, by] = [pass.up.x, pass.up.y];
     }
     // The teammate makes his run, defenders shift across (one carries the ball away if he cut it out).
-    topPlayer(g, mate.x, mate.y, MATE, Math.atan2(round.mate.vx, -round.mate.vy), t / 75);
+    const got = pass?.result === "received" && t >= pass.up.t + pass.flight;
+    topPlayer(g, mate.x, mate.y, MATE, Math.atan2(round.mate.vx, -round.mate.vy), got ? 0 : t / 75, 1, got ? "joy" : undefined);
     round.defenders.forEach((d, n) => {
       let at = defenderAt(d, ms);
       if (pass?.result === "cut" && pass.cutBy === n) {
@@ -189,9 +190,10 @@ export function PassesGame({ setup, onDone }: { setup: PassRound[]; onDone: (tra
           [bx, by] = [at.x, at.y + 20];
         }
       }
-      topPlayer(g, at.x, at.y, THEM, Math.PI, t / 110 + n);
+      const won = pass?.result === "cut" && pass.cutBy === n && t >= pass.up.t + pass.flight * pass.cutF;
+      topPlayer(g, at.x, at.y, THEM, Math.PI, t / 110 + n, 1, won ? "joy" : undefined);
     });
-    topPlayer(g, PASSER.x, PASSER.y + 26, YOU, 0, pass && t - pass.up.t < 300 ? 1.2 : 0);
+    topPlayer(g, PASSER.x, PASSER.y + 26, YOU, 0, 0, 1, pass && t - pass.up.t < 350 ? "pass" : undefined);
     ball(g, bx, by, 10, spin, false);
 
     if (drag && !p.pass && Math.hypot(drag.from.x - PASSER.x, drag.from.y - PASSER.y) <= PASSER.grab) aimLine(g, PASSER, drag.at);
@@ -331,8 +333,9 @@ export function DribbleGame({ setup, onDone }: { setup: Challenge[]; onDone: (tr
     // You, with the ball in front of you.
     const me = depth(1, you);
     const bx = lost ? me.x + lost.from * -400 * easeOut((t - lost.arriveAt) / 600) : me.x + 14;
-    ball(g, bx + 26, me.y - 22 - Math.abs(Math.sin(t / 170)) * 7, 13, t / 90, true);
-    figure(g, me.x, me.y + 10, 0.6, { ...YOU, number: "10" }, { back: true, stride: lost ? 0 : t / 80, lean: (lane(t + 60) - you) * 0.6 });
+    // The illustrated player already has the ball at his feet; the ball is drawn when it gets away.
+    if (lost || !artReady(true)) ball(g, bx + 26, me.y - 22 - Math.abs(Math.sin(t / 170)) * 7, 13, t / 90, true);
+    figure(g, me.x, me.y + 10, 0.6, { ...YOU, number: "10" }, { back: true, stride: lost ? 0 : t / 80, lean: lost ? lost.from : (lane(t + 60) - you) * 0.6, act: lost ? "down" : "ball" });
     shown.filter((d) => d.s >= 1).forEach(draw);
 
     const resolved = [...play.challenges].reverse().find((c) => t >= c.arriveAt && t < c.arriveAt + 900);
@@ -395,9 +398,10 @@ export function SprintGame({ setup, onDone }: { setup: Race[]; onDone: (trace: P
       bx = BALL_X + 30 * easeOut((t - over) / 500);
       by = win;
     }
-    sideRunner(g, START_X + 40 + dRival * PX_PER_M * 0.96, 440, 0.78, THEM, dRival * 1.15, ms < 0 ? 0 : rivalV);
+    const ended = t >= over ? (r.won ? "won" : "lost") : undefined;
+    sideRunner(g, START_X + 40 + dRival * PX_PER_M * 0.96, 440, 0.78, THEM, dRival * 1.15, ms < 0 ? 0 : rivalV, { rival: true, set: ms < 0, end: ended });
     ball(g, bx, by, 13, ms > 0 ? (bx - BALL_X) / 13 : 0, true);
-    sideRunner(g, START_X + dYou * PX_PER_M, 568, 1, YOU, dYou * 1.15, me.v / 10);
+    sideRunner(g, START_X + dYou * PX_PER_M, 568, 1, YOU, dYou * 1.15, me.v / 10, { set: ms < 0, end: ended });
 
     // Foot pads: the one to press next glows.
     const last = [...trace].reverse().find((p) => !p.up && p.t >= r.go && p.t <= t);
@@ -477,7 +481,7 @@ export function TacklesGame({ setup, onDone }: { setup: Duel[]; onDone: (trace: 
       figure(g, 500 + side * 150 * p, 600, 0.62, { ...YOU, number: "4" }, { back: true, stride: 0, lean: side, slide: p });
     };
     const attacker = () => {
-      figure(g, a.x, a.y, a.scale, THEM, { back: false, stride: won ? 0 : t / 75, lean: won ? -d.tackle!.side * 0.5 : lean });
+      figure(g, a.x, a.y, a.scale, THEM, { back: false, stride: won ? 0 : t / 75, lean: won ? -d.tackle!.side * 0.5 : lean, act: won ? "beaten" : "ball" });
       // The ball runs just ahead of his leading foot, on the side he goes.
       let bx = a.x + (t >= d.cutAt ? d.side : 0.4) * 34 * a.scale;
       let by = a.y - 6 * a.scale;
@@ -486,7 +490,8 @@ export function TacklesGame({ setup, onDone }: { setup: Duel[]; onDone: (trace: 
         bx += d.tackle!.side * 240 * k;
         by += 40 * k - Math.sin(Math.PI * k) * 90;
       }
-      ball(g, bx, by, Math.max(5, 22 * a.scale), t / 80, true);
+      // The illustrated attacker has the ball at his feet until you win it.
+      if (won || !artReady(false)) ball(g, bx, by, Math.max(5, 22 * a.scale), t / 80, true);
     };
     if (behind) {
       attacker();
