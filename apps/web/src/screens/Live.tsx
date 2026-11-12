@@ -389,7 +389,8 @@ function Pitch({ m, shown, c, players }: { m: MatchResult; shown: (MatchEvent & 
           const p = id ? players.get(id) : undefined;
           return (
             <span key={`${side}-${k}`} className={`mp-dot mp-face ${side ? "away" : "home"}`} style={{ left: `${x}%`, top: `${y}%` }}>
-              {p && <Head look={p.look} n={faceNumber(p.token_id)} shirt={side ? AWAY_SHIRT : HOME_SHIRT} size={22} />}
+              {/* An academy kid (no footballer in the slot) gets a face too, from his slot. */}
+              <Head look={p?.look} n={p ? faceNumber(p.token_id) : 7 + side * 11 + k} shirt={side ? AWAY_SHIRT : HOME_SHIRT} size={22} />
             </span>
           );
         }),
