@@ -566,3 +566,30 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .market > section:first-child > label.field:first-of-type { grid-column: 2; grid-row: 1 / span 3; align-self: start; }
   .market .stickers { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
 }
+
+/* Today per the kit board: the live card with crests and an LED score, your stand in cells, the drill of the day. */
+.hero-score { display: grid !important; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "h s a" "w m b"; align-items: end; justify-items: center; gap: 8px 14px; width: 100%; }
+.hero-score .hs-team { display: grid; justify-items: center; gap: 6px; font-family: var(--np-display); font-weight: 700; font-size: clamp(13px, 1.8vw, 20px); line-height: 1.1; text-align: center; color: var(--np-text); text-shadow: 0 2px 0 var(--np-outline); }
+.hero-score .hs-team:first-child { grid-area: h; }
+.hero-score .hs-team:nth-of-type(2) { grid-area: a; }
+.hero-score > b { grid-area: s; align-self: center; padding: 6px 14px; background: var(--np-outline); color: var(--np-yellow); font-family: var(--np-led); font-weight: 400; font-size: clamp(28px, 5vw, 52px); line-height: 1; }
+.hero-score > em { grid-area: m; padding: 3px 10px; background: var(--np-outline); color: var(--np-red-hi); font-family: var(--np-led); font-style: normal; font-size: 12px; }
+.hero-score .hs-watch { grid-area: b; justify-self: end; background: var(--np-red); color: var(--np-text); }
+.stand-card, .drill-card { display: grid; gap: 8px; text-decoration: none; color: var(--np-text); }
+.stand-card { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.stand-card .k { color: var(--np-blue-hi); }
+.stand-count { justify-self: end; font-family: var(--np-led); font-size: 13px; color: var(--np-text); }
+.stand-cells { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; background: var(--np-outline); }
+.stand-cells i { height: 16px; background: #2A3A7A; }
+.stand-cells i.in { background: var(--np-green); }
+.stand-card .note { margin: 0; }
+.stand-card .cta { justify-self: end; background: var(--np-blue); color: var(--np-text); }
+.drill-card { grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.drill-card-cab { width: 84px; margin: 0; }
+.drill-card > span:nth-child(2) { display: grid; gap: 4px; justify-items: start; }
+.drill-card .arcade-title { font-size: 24px; }
+.drill-card .note { margin: 0; }
+.drill-card .cta { background: var(--np-yellow); color: var(--np-outline); }
+@media (max-width: 720px) { .drill-card { grid-template-columns: 64px minmax(0, 1fr); } .drill-card-cab { width: 64px; } .drill-card .cta { grid-column: 1 / -1; justify-self: stretch; text-align: center; } .hero-score .hs-watch { justify-self: center; } }
+.hero-score .hs-watch { white-space: nowrap; }
+@media (max-width: 720px) { .today-player .avatar-stage { background: url(/art/bg/bg-locker.webp) center 40% / cover; border: 0; } }
