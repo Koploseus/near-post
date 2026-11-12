@@ -206,7 +206,7 @@ if (fuller.length && emptier.length) console.log(`  net G per match day: ${G(net
 // people sign in as u<hash>. Same contract methods, same rights.
 const who = (account) => (!account ? "transfers" : /^ai-\d+\./.test(account) ? "AI footballers" : /^u[0-9a-f]{8,}\./.test(account) ? "people" : "clubs (AI coaches and managers)");
 const spent = new Map();
-for (const e of ledger.filter((x) => !x.mint && ["pack", "training", "sale_tax", "project"].includes(x.kind))) {
+for (const e of ledger.filter((x) => !x.mint && ["pack", "training", "sale_tax", "project", "diet"].includes(x.kind))) {
   const k = `${who(e.who)}|${e.kind}`;
   const [n, total] = spent.get(k) ?? [0, 0n];
   spent.set(k, [n + 1, total + BigInt(e.amount)]);

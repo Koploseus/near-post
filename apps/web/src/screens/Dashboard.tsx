@@ -3,6 +3,8 @@ import { Crest } from "./Crest.js";
 import { useEffect, useState } from "react";
 import { clubName, g, minute } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
+import { inbox } from "../lib/people.js";
+import type { Applicant, Condition } from "../lib/types.js";
 import { serverNow } from "../lib/time.js";
 import { clock, liveDay, scoreOf, visible } from "../lib/live.js";
 import { league } from "../lib/near.js";
@@ -74,6 +76,25 @@ export function Dashboard() {
   else if (owed > 0n) next = { eyebrow: "YOUR WALLET", title: `Collect ${g(owed)}`, text: "Your goals and your salary are waiting.", href: "#/locker", cta: "COLLECT" };
   else next = { eyebrow: "ALL SET", title: "Fill the stand", text: "Bring your club's fans in: a full stand pays every fan.", href: "#/stands", cta: "THE STANDS" };
 
+  const today = schedule?.match_day ?? 0;
+  const { data: life } = useData(() => (me ? league<Condition>("condition_of", { token_id: me.token_id }).catch(() => null) : Promise.resolve(null)), [me?.token_id, today]);
+  const { data: box } = useData(() => (session && me ? inbox(session).catch(() => null) : Promise.resolve(null)), [session?.accountId, me?.token_id, today]);
+  const { data: waiting } = useData(() => (clubId ? league<Applicant[]>("applicants", { club_id: clubId }).catch(() => []) : Promise.resolve([])), [clubId, today]);
+  const injured = !!life && life.injured_until >= today;
+  const onHoliday = !!life && life.holiday_until >= today;
+  const duels = box?.duels.filter((d) => d.mine === null && !d.result).length ?? 0;
+  const applicants = waiting?.length ?? 0;
+  const SUGGESTIONS = [
+    { text: "Tell him how to play: pick an instruction", href: "#/locker", done: !!life && life.instruction !== "balanced" },
+    { text: "Challenge someone to a duel", href: "#/people/find", done: false },
+    { text: "Put him on a diet for the week", href: "#/locker", done: !!life?.diet && life.diet_until >= today },
+    { text: "Say hello on the terrace", href: "#/people", done: false },
+    { text: "See where you rank", href: "#/ranks", done: false },
+    { text: "Give a little to your club's treasury", href: "#/house", done: false },
+    { text: "Scout your next opponent", href: "#/team", done: false },
+  ];
+  const suggestion = today ? SUGGESTIONS[today % SUGGESTIONS.length] : null;
+
   const checklist = club && me
     ? [
         { text: chose ? `You start: ${role}` : "Take your slot", href: "#/team", done: chose },
@@ -89,6 +110,14 @@ export function Dashboard() {
         },
         { text: voted ? "Your voice is in at the club house" : "Vote what the club builds next", href: "#/house", done: voted },
         ...(owed > 0n ? [{ text: `Collect ${g(owed)}`, href: "#/locker", done: false }] : []),
+        ...(injured ? [{ text: `Injured: back on match day ${life!.injured_until + 1}`, href: "#/locker", done: false }] : []),
+        ...(onHoliday ? [{ text: `On holiday until match day ${life!.holiday_until}`, href: "#/locker", done: true }] : []),
+        ...(box?.unread ? [{ text: `${box.unread} new ${box.unread === 1 ? "message" : "messages"}`, href: "#/people/messages", done: false }] : []),
+        ...(box?.requests.length ? [{ text: `${box.requests.length} friend ${box.requests.length === 1 ? "request" : "requests"}`, href: "#/people/friends", done: false }] : []),
+        ...(duels ? [{ text: `${duels} ${duels === 1 ? "duel" : "duels"} to play`, href: "#/people/duels", done: false }] : []),
+        ...(applicants ? [{ text: `${applicants} ${applicants === 1 ? "applicant" : "applicants"} to vote on`, href: "#/house", done: false }] : []),
+        // One thing more, a different one each match day: the agenda's suggestion.
+        ...(suggestion ? [suggestion] : []),
       ]
     : [];
 

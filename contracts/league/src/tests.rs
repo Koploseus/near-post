@@ -2467,3 +2467,433 @@ fn a_club_with_season_tickets_shares_what_it_earns_with_them() {
         .sum();
     assert_eq!(tickets, r.season_ticket_share.0);
 }
+
+// ---- v10: instruction, diet, holiday, injury, gifts, recruitment by vote ----
+
+fn pay(l: &mut League, from: &str, amount: u128, msg: &str) {
+    as_caller("goalars.testnet");
+    let _ = l.ft_on_transfer(acc(from), U128(amount), msg.to_string());
+}
+
+/// Runs a scenario on its own mocked chain (its storage is per thread).
+fn alone<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::spawn(f).join().unwrap()
+}
+
+fn flat(v: u8) -> Skills {
+    Skills {
+        pace: v,
+        shooting: v,
+        passing: v,
+        dribbling: v,
+        defending: v,
+        physical: v,
+    }
+}
+
+#[test]
+fn an_instruction_moves_points_from_one_skill_to_another() {
+    let s = flat(50);
+    assert_eq!(life::instructed(s, Instruction::Balanced, 4), s);
+    let shooter = life::instructed(s, Instruction::Shooter, 4);
+    assert_eq!((shooter.shooting, shooter.passing), (54, 46));
+    let maker = life::instructed(s, Instruction::Playmaker, 4);
+    assert_eq!((maker.passing, maker.shooting), (54, 46));
+    let dribbler = life::instructed(s, Instruction::Dribbler, 4);
+    assert_eq!((dribbler.dribbling, dribbler.defending), (54, 46));
+    let stopper = life::instructed(s, Instruction::Stopper, 4);
+    assert_eq!((stopper.defending, stopper.dribbling), (54, 46));
+    // Never past 99, never under 1.
+    let top = life::instructed(flat(98), Instruction::Shooter, 4);
+    assert_eq!(top.shooting, 99);
+    assert_eq!(
+        life::instructed(flat(2), Instruction::Shooter, 4).passing,
+        1
+    );
+}
+
+#[test]
+fn a_person_instructs_his_footballer_and_the_pitch_sees_it() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().skills = flat(60);
+    as_caller("koplo.testnet");
+    l.take_slot(9);
+    l.set_instruction(Instruction::Shooter);
+    assert_eq!(
+        l.condition_of(token.clone()).instruction,
+        Instruction::Shooter
+    );
+    let (side, xi, _) = l.side_of(&acc("c0.testnet"), 1, None);
+    assert_eq!(xi[9], token);
+    let on_pitch = side.skills[9].unwrap();
+    assert_eq!((on_pitch.shooting, on_pitch.passing), (64, 56));
+}
+
+#[test]
+#[should_panic(expected = "create your footballer first")]
+fn no_instruction_without_a_footballer() {
+    let mut l = league_with(1, 0);
+    as_caller("nobody.testnet");
+    l.set_instruction(Instruction::Stopper);
+}
+
+#[test]
+fn a_diet_burns_its_price_and_lasts_seven_match_days() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().skills = flat(60);
+    let price = l.rules().diet_price.0;
+    pay(
+        &mut l,
+        "koplo.testnet",
+        price,
+        &format!("{{\"diet\":{{\"token_id\":\"{token}\",\"diet\":\"speed\"}}}}"),
+    );
+    let c = l.condition_of(token.clone());
+    assert_eq!((c.diet, c.diet_until), (Some(Diet::Speed), 7));
+    let burn = l.ledger(Some(1)).pop().unwrap();
+    assert_eq!(
+        (burn.kind.as_str(), burn.amount.0, burn.mint),
+        ("diet", price, false)
+    );
+    as_caller("koplo.testnet");
+    l.take_slot(9);
+    let (side, _, _) = l.side_of(&acc("c0.testnet"), 1, None);
+    assert_eq!(side.skills[9].unwrap().pace, 63);
+    // Past its last day it does nothing.
+    l.match_day = 8;
+    l.kickoff_ns = u64::MAX;
+    l.take_slot(9);
+    let (side, _, _) = l.side_of(&acc("c0.testnet"), 1, None);
+    assert_eq!(side.skills[9].unwrap().pace, 60);
+}
+
+#[test]
+fn an_energy_diet_gives_energy_back_faster() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.players.get_mut(&token).unwrap().energy = 40;
+    let price = l.rules().diet_price.0;
+    pay(
+        &mut l,
+        "koplo.testnet",
+        price,
+        &format!("{{\"diet\":{{\"token_id\":\"{token}\",\"diet\":\"energy\"}}}}"),
+    );
+    // Two match days later without playing: 2 * 8, one day of rest (17),
+    // and 2 * 4 from the diet.
+    l.match_day = 3;
+    assert_eq!(
+        l.get_player(token.clone()).unwrap().energy,
+        40 + 16 + 17 + 8
+    );
+    // The diet stops on its last day (7): seen on day 20, it fed 7 days.
+    l.players.get_mut(&token).unwrap().energy = 0;
+    l.match_day = 2;
+    l.players.get_mut(&token).unwrap().energy_day = 2;
+    l.match_day = 4;
+    assert_eq!(l.get_player(token).unwrap().energy, 16 + 17 + 8);
+}
+
+#[test]
+#[should_panic(expected = "a diet costs exactly diet_price")]
+fn a_diet_has_one_price() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    pay(
+        &mut l,
+        "koplo.testnet",
+        1,
+        &format!("{{\"diet\":{{\"token_id\":\"{token}\",\"diet\":\"power\"}}}}"),
+    );
+}
+
+#[test]
+#[should_panic(expected = "you do not play that footballer")]
+fn nobody_feeds_someone_elses_footballer() {
+    let mut l = league_with(1, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    let price = l.rules().diet_price.0;
+    pay(
+        &mut l,
+        "c0.testnet",
+        price,
+        &format!("{{\"diet\":{{\"token_id\":\"{token}\",\"diet\":\"power\"}}}}"),
+    );
+}
+
+#[test]
+fn on_holiday_nobody_picks_him_and_he_comes_back_by_himself() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.take_slot(9);
+    l.go_on_holiday(2);
+    assert_eq!(l.condition_of(token.clone()).holiday_until, 2);
+    for day in 1..=2 {
+        let m = kick_off(&mut l, day);
+        assert!(
+            m.iter()
+                .all(|m| m.elevens.iter().all(|xi| !xi.contains(&token)))
+        );
+    }
+    assert!(
+        kick_off(&mut l, 3)[0]
+            .elevens
+            .iter()
+            .any(|xi| xi.contains(&token))
+    );
+}
+
+#[test]
+fn a_holiday_ends_early_or_when_he_takes_a_slot() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.go_on_holiday(14);
+    l.end_holiday();
+    assert_eq!(l.condition_of(token.clone()).holiday_until, 0);
+    l.go_on_holiday(5);
+    l.take_slot(9);
+    assert_eq!(l.condition_of(token.clone()).holiday_until, 0);
+    assert!(kick_off(&mut l, 1)[0].elevens[0].contains(&token));
+}
+
+#[test]
+#[should_panic(expected = "a holiday lasts 1 to holiday_max_days match days")]
+fn a_holiday_is_two_weeks_at_most() {
+    let mut l = league_with(1, 0);
+    sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("koplo.testnet");
+    l.go_on_holiday(15);
+}
+
+#[test]
+fn an_exhausted_player_can_be_hurt_and_misses_the_next_match_days() {
+    let rules = the_rules();
+    // With no energy left the odds are injury_chance_pct: over many seeds
+    // some are hurt and some are not.
+    let mut hurt = 0;
+    for seed in 1..=40u8 {
+        let days = rules.injury_days;
+        hurt += alone(move || {
+            let mut l = league_with(2, 0);
+            let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+            l.players.get_mut(&token).unwrap().energy = 0;
+            kick_off(&mut l, seed);
+            let until = l.condition_of(token.clone()).injured_until;
+            if until == 0 {
+                return 0;
+            }
+            assert_eq!(until, 1 + days);
+            // He misses days 2 to 4 and is back on day 5.
+            for day in 2..=until {
+                assert_eq!(l.match_day, day);
+                let m = kick_off(&mut l, seed);
+                assert!(
+                    m.iter()
+                        .all(|m| m.elevens.iter().all(|xi| !xi.contains(&token)))
+                );
+            }
+            l.players.get_mut(&token).unwrap().energy = 100;
+            assert!(
+                kick_off(&mut l, seed)[0]
+                    .elevens
+                    .iter()
+                    .any(|xi| xi.contains(&token))
+            );
+            1
+        });
+    }
+    assert!((8..=36).contains(&hurt), "hurt {hurt} times out of 40");
+}
+
+#[test]
+fn a_rested_player_is_never_hurt() {
+    for seed in 1..=30u8 {
+        alone(move || {
+            let mut l = league_with(2, 0);
+            let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+            kick_off(&mut l, seed);
+            assert_eq!(l.condition_of(token).injured_until, 0);
+        });
+    }
+}
+
+#[test]
+fn a_physio_shortens_an_injury() {
+    for seed in 1..=40u8 {
+        alone(move || {
+            let mut l = league_with(2, 0);
+            let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+            l.clubs.get_mut(&acc("c0.testnet")).unwrap().physio = 3;
+            l.players.get_mut(&token).unwrap().energy = 0;
+            l.players.get_mut(&token).unwrap().energy_day = 1;
+            kick_off(&mut l, seed);
+            let until = l.condition_of(token).injured_until;
+            assert!(until == 0 || until == 2, "until {until}");
+        });
+    }
+}
+
+#[test]
+#[should_panic(expected = "you are injured")]
+fn an_injured_player_takes_no_slot() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    l.conditions.entry(token).or_default().injured_until = 3;
+    as_caller("koplo.testnet");
+    l.take_slot(9);
+}
+
+#[test]
+fn a_gift_goes_to_the_treasury_and_the_giver_to_the_board() {
+    let mut l = league_with(1, 0);
+    pay(
+        &mut l,
+        "fan.testnet",
+        300 * ONE_G,
+        "{\"gift\":\"c0.testnet\"}",
+    );
+    pay(
+        &mut l,
+        "rich.testnet",
+        900 * ONE_G,
+        "{\"gift\":\"c0.testnet\"}",
+    );
+    pay(
+        &mut l,
+        "fan.testnet",
+        100 * ONE_G,
+        "{\"gift\":\"c0.testnet\"}",
+    );
+    assert_eq!(
+        l.get_club(acc("c0.testnet")).unwrap().treasury,
+        U128(1_300 * ONE_G)
+    );
+    let board = l.gifts_of(acc("c0.testnet"));
+    assert_eq!(board.len(), 2);
+    assert_eq!(
+        (board[0].from.as_str(), board[0].amount.0),
+        ("rich.testnet", 900 * ONE_G)
+    );
+    assert_eq!(
+        (board[1].from.as_str(), board[1].amount.0),
+        ("fan.testnet", 400 * ONE_G)
+    );
+    // Nothing is minted or burned.
+    assert!(l.ledger(Some(10)).iter().all(|e| e.kind != "gift"));
+}
+
+#[test]
+#[should_panic(expected = "no such club")]
+fn no_gift_to_a_club_that_does_not_exist() {
+    let mut l = league_with(1, 0);
+    pay(&mut l, "fan.testnet", ONE_G, "{\"gift\":\"ghost.testnet\"}");
+}
+
+#[test]
+fn an_open_club_takes_anyone_who_signs() {
+    let mut l = league_with(1, 0);
+    assert_eq!(l.recruitment_of(acc("c0.testnet")), Recruitment::Open);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    assert_eq!(l.get_player(token).unwrap().owner, acc("c0.testnet"));
+}
+
+#[test]
+fn a_club_that_votes_takes_an_applicant_only_after_a_yes() {
+    let mut l = league_with(1, 0);
+    let mate = sign_person(&mut l, "mate.testnet", "c0.testnet");
+    as_caller("c0.testnet");
+    l.set_recruitment(acc("c0.testnet"), Recruitment::Vote);
+    as_caller("koplo.testnet");
+    let p = l.create_footballer("Koplo".into(), Position::Fw);
+    l.sign_for(acc("c0.testnet"), 26);
+    let list = l.applicants(acc("c0.testnet"));
+    assert_eq!(list.len(), 1);
+    assert_eq!(
+        (list[0].token_id.as_str(), list[0].yes, list[0].approved),
+        (p.token_id.as_str(), 0, false)
+    );
+    // He hands his registration too early: the league sends him back and he
+    // stays an applicant.
+    as_caller("players.testnet");
+    l.on_player_transferred(p.token_id.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    assert!(!ids(&l, "c0.testnet").contains(&p.token_id));
+    assert_eq!(l.get_player(p.token_id.clone()).unwrap().contract, None);
+    as_caller("players.testnet");
+    l.on_player_transferred(p.token_id.clone(), acc("c0.testnet"), acc("koplo.testnet"));
+    assert_eq!(
+        l.get_player(p.token_id.clone()).unwrap().owner,
+        acc("koplo.testnet")
+    );
+    assert_eq!(l.applicants(acc("c0.testnet")).len(), 1);
+    // A teammate says no, the manager says yes: a tie is not a yes.
+    as_caller("mate.testnet");
+    l.vote_recruit(p.token_id.clone(), false);
+    as_caller("c0.testnet");
+    l.vote_recruit(p.token_id.clone(), true);
+    assert!(!l.applicants(acc("c0.testnet"))[0].approved);
+    // The teammate changes his mind.
+    as_caller("mate.testnet");
+    l.vote_recruit(p.token_id.clone(), true);
+    let a = &l.applicants(acc("c0.testnet"))[0];
+    assert_eq!((a.yes, a.no, a.approved), (2, 0, true));
+    as_caller("players.testnet");
+    l.on_player_transferred(p.token_id.clone(), acc("koplo.testnet"), acc("c0.testnet"));
+    assert!(ids(&l, "c0.testnet").contains(&p.token_id));
+    assert_eq!(
+        l.get_player(p.token_id)
+            .unwrap()
+            .contract
+            .unwrap()
+            .until_day,
+        26
+    );
+    assert!(l.applicants(acc("c0.testnet")).is_empty());
+    let _ = mate;
+}
+
+#[test]
+#[should_panic(expected = "only that club's people vote on its applicants")]
+fn a_stranger_does_not_vote_on_an_applicant() {
+    let mut l = league_with(2, 0);
+    as_caller("koplo.testnet");
+    let p = l.create_footballer("Koplo".into(), Position::Fw);
+    l.sign_for(acc("c0.testnet"), 26);
+    as_caller("c1.testnet");
+    l.vote_recruit(p.token_id, true);
+}
+
+#[test]
+#[should_panic(expected = "only the captain (or the manager, without one) sets the recruitment")]
+fn only_who_leads_the_club_sets_its_recruitment() {
+    let mut l = league_with(1, 0);
+    as_caller("stranger.testnet");
+    l.set_recruitment(acc("c0.testnet"), Recruitment::Vote);
+}
+
+#[test]
+fn signing_elsewhere_leaves_the_first_clubs_list() {
+    let mut l = league_with(2, 0);
+    as_caller("koplo.testnet");
+    l.create_footballer("Koplo".into(), Position::Fw);
+    l.sign_for(acc("c0.testnet"), 26);
+    l.sign_for(acc("c1.testnet"), 13);
+    assert!(l.applicants(acc("c0.testnet")).is_empty());
+    assert_eq!(l.applicants(acc("c1.testnet"))[0].days, 13);
+}
+
+#[test]
+fn a_club_that_votes_still_buys_who_it_wants() {
+    // A player bought from another club (his release clause, an offer) is
+    // not a free agent: the vote does not apply.
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    as_caller("c1.testnet");
+    l.set_recruitment(acc("c1.testnet"), Recruitment::Vote);
+    as_caller("players.testnet");
+    l.on_player_transferred(token.clone(), acc("c0.testnet"), acc("c1.testnet"));
+    assert!(ids(&l, "c1.testnet").contains(&token));
+}

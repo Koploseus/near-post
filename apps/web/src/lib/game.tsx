@@ -2,6 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { goalars, league, loadSession, type Session } from "./near.js";
 import { liveDay } from "./live.js";
 import { type Kickoffs, kickoffsOf, serverNow, syncClock } from "./time.js";
+import { setFaces } from "./face.js";
+import { loadFaces } from "./near.js";
+import { setHero } from "../screens/art.js";
 import type { Club, Player, Schedule } from "./types.js";
 
 interface Game {
@@ -30,6 +33,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
+  // The faces players picked: once, then every few minutes (someone may have changed his).
+  useEffect(() => {
+    const load = () => loadFaces().then(setFaces).catch(() => {});
+    load();
+    const t = setInterval(load, 180_000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     let live = true;
     (async () => {
@@ -43,6 +54,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (!live) return;
       setSchedule(sched);
       setMe(player);
+      // His face goes on the player you control in the drills.
+      setHero(player ? Number(player.token_id.replace(/\D/g, "")) || 0 : null, player?.look?.hair);
       setClub(c);
       setBalance(bal);
       setLoading(false);

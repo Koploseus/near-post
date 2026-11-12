@@ -3,7 +3,8 @@
  * banners and the players seen from behind, from the front, from the side
  * and from above. Everything is drawn on a 1000 × 600 logical screen.
  */
-import { BACK_RUN_CYCLE, type Pose, RUN_CYCLE, pixelGrid } from "../floodlight/PixelPlayer.js";
+import { SKINS, type View, faceOf, headCanvas } from "../lib/face.js";
+import { BACK_RUN_CYCLE, itemPaint, type Pose, RUN_CYCLE, pixelGrid } from "../floodlight/PixelPlayer.js";
 
 /** The frame of a 4-frame cycle at `phase` (radians, one cycle per 2π). */
 const frameAt = (cycle: Pose[], phase: number) => cycle[Math.floor((((phase % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (Math.PI / 2)) % 4]!;
@@ -170,6 +171,9 @@ export interface Look {
   socks?: string;
   number?: string;
   hair?: string;
+  /** His footballer number: his own face is drawn over the head of the art. */
+  face?: number;
+  hairItem?: string | null;
 }
 
 // ------------------------------------------------------------ illustrated players (art/players, art/penalty)
@@ -245,6 +249,21 @@ export function artReady(back: boolean): boolean {
   return !!img && img.complete && img.naturalWidth > 0;
 }
 
+/**
+ * Where the head is in each frame: centre x (share of the cell's width),
+ * centre y and size (shares of its height), and how the head is seen. A
+ * footballer's own face (lib/face.ts) is drawn there, over the head of the art.
+ */
+const HEADS: Record<Sheet, { view: View; at: [number, number, number][] }> = {
+  rivalSide: { view: "side", at: [[0.77, 0.35, 0.36], [0.685, 0.18, 0.36], [0.707, 0.18, 0.36], [0.724, 0.19, 0.36], [0.674, 0.165, 0.36], [0.65, 0.26, 0.36]] },
+  rivalFront: { view: "front", at: [[0.5, 0.26, 0.35], [0.52, 0.2, 0.35], [0.474, 0.2, 0.35], [0.487, 0.165, 0.35], [0.73, 0.4, 0.35], [0.59, 0.4, 0.35]] },
+  top: { view: "front", at: [[0.523, 0.218, 0.43], [0.555, 0.25, 0.43], [0.582, 0.25, 0.43], [0.512, 0.212, 0.43], [0.484, 0.188, 0.43], [0.512, 0.2, 0.43]] },
+  heroBack: { view: "back", at: [[0.503, 0.09, 0.3], [0.494, 0.09, 0.3], [0.34, 0.18, 0.3], [0.304, 0.225, 0.3], [0.174, 0.42, 0.3], [0.47, 0.115, 0.3]] },
+  heroSide: { view: "side", at: [[0.77, 0.44, 0.37], [0.62, 0.27, 0.37], [0.68, 0.215, 0.37], [0.66, 0.26, 0.37], [0.72, 0.25, 0.37], [0.535, 0.2, 0.37]] },
+  shooter: { view: "back", at: [[0.498, 0.115, 0.33], [0.512, 0.115, 0.33], [0.444, 0.14, 0.33], [0.457, 0.11, 0.33], [0.492, 0.11, 0.33], [0.498, 0.11, 0.33]] },
+  keeper: { view: "front", at: [[0.491, 0.314, 0.35], [0.26, 0.49, 0.33], [0.329, 0.289, 0.35], [0.5, 0.2, 0.35], [0.17, 0.71, 0.33], [0.454, 0.224, 0.35]] },
+};
+
 /** Frame `n` of a strip, `h` px tall, feet at the origin. False until the strip has loaded. */
 function art(g: G, sheet: Sheet, look: Look, n: number, h: number, flip: boolean): boolean {
   const c = sheetFor(sheet, look.shirt);
@@ -254,13 +273,116 @@ function art(g: G, sheet: Sheet, look: Look, n: number, h: number, flip: boolean
   g.save();
   if (flip) g.scale(-1, 1);
   g.drawImage(c, n * cw, 0, cw, c.height, -w / 2, -h, w, h);
+  if (look.face !== undefined) {
+    // His own face, over the head of the picture.
+    const { view, at } = HEADS[sheet];
+    const [hx, hy, hs] = at[n]!;
+    const size = hs * h;
+    const was = g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled = false;
+    const head = headCanvas(faceOf(look.face), view, look.hairItem);
+    if (head.width > 64) {
+      // The drawn head: 64 px wide in a 128 px frame, its middle at (64, 72).
+      const f = size * 1.42;
+      g.imageSmoothingEnabled = true;
+      g.drawImage(head, -w / 2 + hx * w - f / 2, -h + hy * h - f * 0.565, f, f);
+    } else g.drawImage(head, -w / 2 + hx * w - size / 2, -h + hy * h - size * 0.56, size, size);
+    g.imageSmoothingEnabled = was;
+  }
   g.restore();
   return true;
 }
 
 /** Frame `n` of a strip in a shirt colour, `h` px tall, feet at the origin (the live match draws its 22 players with it). False until loaded. */
-export function sprite(g: G, sheet: Sheet, shirt: string, n: number, h: number, flip = false): boolean {
-  return art(g, sheet, { shirt }, n, h, flip);
+export function sprite(g: G, sheet: Sheet, shirt: string, n: number, h: number, flip = false, face?: number, hairItem?: string | null): boolean {
+  return art(g, sheet, { shirt, ...(face === undefined ? {} : { face, hairItem: hairItem ?? null }) }, n, h, flip);
+}
+
+/** Your own footballer: his face goes on the player you control in the drills. */
+let HERO: { face: number; hairItem: string | null } | null = null;
+export function setHero(face: number | null, hairItem?: string | null) {
+  HERO = face === null ? null : { face, hairItem: hairItem ?? null };
+}
+const hero = (look: Look): Look => (HERO ? { ...look, ...HERO } : look);
+
+/** What he wears from his wardrobe (item ids, as in lib/types Look). */
+export interface Worn {
+  hair?: string | null;
+  boots?: string | null;
+  band?: string | null;
+  socks?: string | null;
+  pads?: string | null;
+  gloves?: string | null;
+  wrist?: string | null;
+  tape?: string | null;
+}
+
+const AVATARS = new Map<string, HTMLCanvasElement>();
+/**
+ * A footballer head to toe, facing you (the first frame of the "rivalFront"
+ * strip, 314 x 320), with his own face and what he wears: each item repaints
+ * its part of the picture (boots, socks, shin pads, tape, gloves, wristbands)
+ * in its colours and pattern; the headband goes across his forehead.
+ * Null until the art has loaded. `key` must change when his face does.
+ */
+export function avatarCanvas(shirt: string, face: number, worn: Worn | null | undefined, key: string | number): HTMLCanvasElement | null {
+  if (!sheetFor("rivalFront", shirt)) return null;
+  const id = `${shirt}|${face}|${key}|${JSON.stringify(worn ?? {})}`;
+  let c = AVATARS.get(id);
+  if (c) return c;
+  const W = 314;
+  const H = 320;
+  c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.translate(W / 2, H);
+  art(g, "rivalFront", { shirt, face, hairItem: worn?.hair ?? null }, 0, H, false);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const d = g.getImageData(0, 0, W, H);
+  const p = d.data;
+  const tone = [1, 3, 5].map((k) => parseInt((SKINS[faceOf(face).skin] ?? SKINS[1]!).slice(k, k + 2), 16));
+  // Repaints a pixel in an item's colour, keeping the light and shade of the picture (`ref` = how bright the part is drawn).
+  const put = (i: number, item: string, x: number, y: number, v: number, ref: number) => {
+    const col = itemPaint(item, Math.floor(x / 7), Math.floor(y / 7))!;
+    const k = Math.min(1.35, Math.max(0.45, v / ref));
+    for (let ch = 0; ch < 3; ch++) p[i + ch] = Math.min(255, parseInt(col.slice(1 + ch * 2, 3 + ch * 2), 16) * k);
+  };
+  for (let y = 130; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if (p[i + 3]! < 40) continue;
+      const r = p[i]! / 255;
+      const gg = p[i + 1]! / 255;
+      const b = p[i + 2]! / 255;
+      const v = Math.max(r, gg, b);
+      const sat = v ? (v - Math.min(r, gg, b)) / v : 0;
+      const skin = r > gg && gg > b && sat > 0.18 && sat < 0.62 && v > 0.6;
+      if (y >= 284 && v > 0.09 && v < 0.4 && sat < 0.5) {
+        if (worn?.boots) put(i, worn.boots, x, y, v, 0.2);
+      } else if (y >= 246 && y < 294 && sat < 0.32 && v > 0.55) {
+        const item = worn?.tape && y >= 279 ? worn.tape : worn?.pads && y < 266 ? worn.pads : worn?.socks;
+        if (item) put(i, item, x, y, v, 0.95);
+      } else if (skin && y < 205 && (x < 64 || x > 250) && worn?.gloves) {
+        put(i, worn.gloves, x, y, v, 0.9);
+      } else if (skin && y < 205 && (x < 78 || x > 236) && worn?.wrist) put(i, worn.wrist, x, y, v, 0.9);
+      if (skin && p[i] === Math.round(r * 255) && p[i + 1] === Math.round(gg * 255)) {
+        // Bare skin: the tone of his face.
+        const k = v / 0.93;
+        for (let ch = 0; ch < 3; ch++) p[i + ch] = Math.min(255, tone[ch]! * k);
+      }
+    }
+  g.putImageData(d, 0, 0);
+  if (worn?.band) {
+    g.fillStyle = "#1B1030";
+    g.fillRect(117, 64, 80, 12);
+    for (let x = 0; x < 76; x += 4) {
+      g.fillStyle = itemPaint(worn.band, Math.floor(x / 4), 0)!;
+      g.fillRect(119 + x, 66, 4, 8);
+    }
+  }
+  AVATARS.set(id, c);
+  return c;
 }
 
 /** Which of two frames, alternating with a running cycle (radians). */
@@ -290,14 +412,14 @@ export function figure(g: G, x: number, y: number, scale: number, look: Look, o:
     // You, from behind.
     if (slide > 0) {
       g.translate(Math.sign(lean || 1) * 40 * slide * scale, 0);
-      drawn = art(g, "heroBack", look, 3, h * 0.95, lean > 0);
-    } else if (o.act === "down") drawn = art(g, "heroBack", look, 4, h * 0.8, lean > 0);
+      drawn = art(g, "heroBack", hero(look), 3, h * 0.95, lean > 0);
+    } else if (o.act === "down") drawn = art(g, "heroBack", hero(look), 4, h * 0.8, lean > 0);
     else if (s || o.act === "ball") {
       const cut = Math.abs(lean) > 0.2;
       g.rotate(lean * 0.25);
-      drawn = art(g, "heroBack", look, cut ? 2 : step(s), h, cut && lean < 0);
+      drawn = art(g, "heroBack", hero(look), cut ? 2 : step(s), h, cut && lean < 0);
       ball = drawn;
-    } else drawn = art(g, "shooter", look, 0, h, false);
+    } else drawn = art(g, "shooter", hero(look), 0, h, false);
   } else {
     // The other side, facing you.
     if (slide > 0) {
@@ -337,7 +459,7 @@ export function sideRunner(g: G, x: number, y: number, scale: number, look: Look
   g.translate(x, y - (running ? Math.abs(Math.sin(phase)) * 6 * reach * scale : 0));
   const sheet: Sheet = o.rival ? "rivalSide" : "heroSide";
   const n = o.set ? 0 : o.end && (o.rival ? o.end === "lost" : o.end === "won") ? 5 : running ? 1 + step4(phase) : 1;
-  if (!art(g, sheet, look, n, (n === 0 ? 170 : 215) * scale, false)) {
+  if (!art(g, sheet, o.rival ? look : hero(look), n, (n === 0 ? 170 : 215) * scale, false)) {
     g.rotate(0.04 + 0.12 * reach);
     // The rig runs to the left of the picture: mirrored to face right.
     pixelSprite(g, look, speed > 0.05 ? frameAt(RUN_CYCLE, phase) : "idle", 200 * scale, true);

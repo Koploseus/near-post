@@ -1,9 +1,9 @@
 /** Where the game lives. Override with VITE_* variables at build time. */
-export const LEAGUE = import.meta.env.VITE_LEAGUE_ID ?? "league-v9.near-post.testnet";
-export const GOALARS = import.meta.env.VITE_GOALARS_ID ?? "goalars-v9.near-post.testnet";
-export const PLAYERS = import.meta.env.VITE_PLAYERS_ID ?? "players-v9.near-post.testnet";
-export const ITEMS = import.meta.env.VITE_ITEMS_ID ?? "items-v9.near-post.testnet";
-export const TICKETS = import.meta.env.VITE_TICKETS_ID ?? "tickets-v9.near-post.testnet";
+export const LEAGUE = import.meta.env.VITE_LEAGUE_ID ?? "league-v10.near-post.testnet";
+export const GOALARS = import.meta.env.VITE_GOALARS_ID ?? "goalars-v10.near-post.testnet";
+export const PLAYERS = import.meta.env.VITE_PLAYERS_ID ?? "players-v10.near-post.testnet";
+export const ITEMS = import.meta.env.VITE_ITEMS_ID ?? "items-v10.near-post.testnet";
+export const TICKETS = import.meta.env.VITE_TICKETS_ID ?? "tickets-v10.near-post.testnet";
 export const RPC = import.meta.env.VITE_NEAR_RPC_URL ?? "https://test.rpc.fastnear.com";
 /** Public testnet RPCs (docs.near.org/api/rpc/providers) that answer browsers: reads move to them when one is rate-limited. */
 export const READ_RPCS: string[] = [RPC, "https://near-testnet.drpc.org", "https://testnet-rpc.intea.rs"];

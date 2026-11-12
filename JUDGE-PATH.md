@@ -1,6 +1,6 @@
 # Judge path: NEAR Post in 10 minutes
 
-Live app: **https://near-post.fly.dev** (NEAR testnet, contracts `*-v9.near-post.testnet`).
+Live app: **https://near-post.fly.dev** (NEAR testnet, contracts `*-v10.near-post.testnet`).
 No wallet needed. A phone works; a laptop shows more at once.
 
 What to look for: a football game whose **memecoin (G) is minted by the fans
@@ -17,7 +17,7 @@ a half.
 
 | Do | See | Proof |
 | --- | --- | --- |
-| `node scripts/verify.mjs` (Node only, no install, no key) | A table of the last 10 match days (fans in the stands, G minted by presence, onboarding, G burned), then `✓ N checks passed, 0 failed`. | It recomputes every stand, full-house mint, burn and goal mint from `results`, `stand_result` and `ledger` on `league-v9`, and checks each contract runs `contracts/res/*.wasm`. A goal behind an empty stand mints nothing. |
+| `node scripts/verify.mjs` (Node only, no install, no key) | A table of the last 10 match days (fans in the stands, G minted by presence, onboarding, G burned), then `✓ N checks passed, 0 failed`. | It recomputes every stand, full-house mint, burn and goal mint from `results`, `stand_result` and `ledger` on `league-v10`, and checks each contract runs `contracts/res/*.wasm`. A goal behind an empty stand mints nothing. |
 | **Stands → Goalars**, "No fans, no money" | The same days as a chart: the stand line goes up, the yellow bars (G minted) appear; it goes down, only red (burned). | Read by your browser from the league contract. |
 
 ## 1. Watch, without signing in (2 min)
@@ -26,7 +26,7 @@ a half.
 | --- | --- | --- |
 | Open **Today** | The live score and the table. | Read by your browser from the league contract, no backend in between. |
 | Open **Live** | The match played on chain, revealed minute by minute: shots, saves, tackles, cards, goals with their assist; players and ball move from those events. The two AI coaches' team talks. | Each half is one `play_match_day` transaction; the events are in its result. |
-| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v9.near-post.testnet` views `results`, `table`. |
+| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v10.near-post.testnet` views `results`, `table`. |
 | **Stands** | The busiest stand of the day: its tifo, painted square by square by the fans who came. | View `stand`. |
 | **Team → Season stats** | Leaderboards: players (goals, assists, tackles, saves, clean sheets...), clubs (attack, defence, form, winning runs, fair play), fans (crowds, full houses). | Counted from the on-chain match sheets and stands (`results`, `stand_result`); anyone can recount them. |
 
@@ -36,7 +36,7 @@ a half.
 | --- | --- | --- |
 | **Play now** → any email → **Continue** | Signed in, about 5 seconds, with 1M G in your wallet (top right): a welcome, so you can buy a ticket or a pack at once. Demo mode: the code is not emailed, so any address works. | A NEAR account `u….near-post.testnet` is created with **your browser's** public key. The relay never holds your key. The welcome is an `ft_transfer` from `near-post.testnet`'s own G (moved there from AI coaches): nothing is minted for it. |
 | Backup screen → **Not now** (or try a passkey / recovery key) | | Passkey: WebAuthn PRF encrypts your key in the browser. Recovery key: for Bitwarden and the like, which have no PRF. |
-| Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v9` in your name. |
+| Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v10` in your name. |
 | Pick a contract length → **Sign … days for** a club (one with fans) | Your locker room: club, ratings, energy, your contract, the club house. | `sign_for`, then your NFT is transferred to the club. Your contract is on the NFT's record (`get_player`): wage, last day, release clause. When it ends, or after 3 unpaid matches, the league sends the NFT back to you. |
 | **Training** → pick a skill → **Train · free** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. Your first session is free; then 400k G, burned. It costs 15 energy. | `train_free`. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
 | **Team** | The team sheet: tap a free slot, see the formation, vote the strategy. | Nobody can take a slot another player chose, and the contract closes the sheet a minute before kick-off; then free slots go to the best of the squad. Every person in the squad votes the strategy; AI footballers vote too. |
@@ -56,9 +56,12 @@ minutes left, and closes training in the last 3. Gas is paid by the relay
 | **Stands → Support … · Take your seat** | You are in the stand; the tifo gets a square. Then vote the tifo and your star of the match. In the last 5 minutes before kick-off the ola window opens: enough fans in it and the full house pays half more. | `follow` + `check_in`, `vote_tifo`, `vote_star`. Taking a seat mints nothing by itself. |
 | **Club → Club house** | What the treasury can buy (stadium, physio, academy) with this week's votes; vote one. | `vote_project`; season ticket holders vote through their ticket NFT. |
 | **Locker → Rest today** (before kick-off) | You sit out; a day off gives energy back faster. | `rest_today`. |
+| **Locker → Off the pitch** | Pick an instruction, a diet (200k G, burned) or a holiday. | `set_instruction`, `{"diet":…}` through `ft_transfer_call`, `go_on_holiday`; read them back with `condition_of`. |
+| **Club → Club house → Recruitment / Gifts** | How the club recruits (open or by vote), who applied, and the gifts to its treasury. | `recruitment_of`, `applicants`, `vote_recruit`, `gifts_of`. |
+| **Club → People** | The terrace, private messages, friends, and duels on the five drills. | Off chain, signed with your key; a duel has no stake. |
 | **Stands → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
 | Read the rules card | A full house (60% of fans in) pays 100k G per fan present; a goal pays **up to 600k G, as full as the scoring club's stand is**; an incomplete tifo burns 2% of the club's treasury. | `rules` view. No admin method changes them. |
-| **Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v9` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
+| **Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v10` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
 
 Why it matters for a memecoin: supply follows attendance. Simulation over 60
 match days (`pnpm sim`): loyal fans 5.4B, absent fans 2.6B, a league that stops
@@ -82,12 +85,12 @@ signed. The README has the full list.
 ## 5. Check the chain yourself (optional)
 
 ```bash
-near contract call-function as-read-only league-v9.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v9.near-post.testnet ledger json-args '{"limit":20}' network-config testnet now
+near contract call-function as-read-only league-v10.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v10.near-post.testnet ledger json-args '{"limit":20}' network-config testnet now
 ```
 
-- Contracts: `league-v9`, `goalars-v9` (NEP-141), `players-v9` (NEP-171),
-  `items-v9`, `tickets-v9` `.near-post.testnet`. Only the league mints G.
+- Contracts: `league-v10`, `goalars-v10` (NEP-141), `players-v10` (NEP-171),
+  `items-v10`, `tickets-v10` `.near-post.testnet`. Only the league mints G.
 - The wasm in `contracts/res/` is rebuilt by the CI in a pinned image and must
   match byte for byte; `deployments/testnet.json` gives each hash.
 - No contract has an owner, admin or upgrade method. On testnet the deploy keys

@@ -10,6 +10,7 @@ import { Crest } from "./Crest.js";
 import { SeasonStats } from "./SeasonStats.js";
 import { faceNumber, Head } from "./Look.js";
 import { Wall } from "./Wall.js";
+import { Scout, Treatment } from "./ClubLife.js";
 import { usePresence } from "../lib/social.js";
 
 const STRATEGIES: [Strategy, string][] = [
@@ -97,7 +98,7 @@ export function Lineup() {
             {[...(squad ?? [])]
               .sort((a, b) => b.overall - a.overall)
               .map((p) => (
-                <li key={p.token_id} className={p.controller ? "person" : ""}>
+                <li key={p.token_id} className={`${p.controller ? "person" : ""}${p.token_id === me?.token_id ? " is-me" : ""}`}>
                   <Head look={p.look} n={faceNumber(p.token_id)} size={40} />
                   <span>
                     <b>{p.name}</b>
@@ -177,7 +178,7 @@ export function Lineup() {
             const label = `${ROLE_NAME[role]}: ${p ? `${p.name}, rated ${p.overall}` : "empty"}${lineup.chosen[k] ? ", chosen by a player" : ""}`;
             const body = (
               <>
-                <span className="spot-disc">
+                <span className={`spot-disc${p && p.token_id === me?.token_id ? " is-me" : ""}`}>
                   {p ? <Head look={p.look} n={faceNumber(p.token_id)} size={46} /> : <span className="spot-free">+</span>}
                   <span className="spot-rating">{p?.overall ?? ROLE_LABEL[role]}</span>
                   {p && !!p.controller && online.has(p.controller) && <span className="online-dot" title="Online now" />}
@@ -224,6 +225,10 @@ export function Lineup() {
           <p className="note">Now: {lineup.strategy}. Players in slots: {lineup.chosen.filter(Boolean).length} of 11</p>
           <SetPieces clubId={sheetId} leader={isCaptain} />
         </aside>
+      </div>
+      <div className="sheet-extra">
+        <Scout clubId={sheetId} />
+        <Treatment clubId={sheetId} />
       </div>
       <Wall clubId={sheetId} />
       <SeasonStats />

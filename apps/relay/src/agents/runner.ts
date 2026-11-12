@@ -202,7 +202,7 @@ export class Agents {
             continue; // the NFT is minted in a later receipt: sign next time
           }
           if (a.startsAt && fb.owner === a.account && !this.d.journal.isDone(`joined:${a.account}`)) {
-            const tx = await this.d.as(a).callChecked!(this.d.playersId, "nft_transfer", { receiver_id: a.startsAt, token_id: fb.token_id }, 50, ONE_YOCTO);
+            const tx = await this.d.as(a).callChecked!(this.d.playersId, "nft_transfer", { receiver_id: a.startsAt, token_id: fb.token_id }, 100, ONE_YOCTO);
             this.log(a, 0, "setup", { acts: [{ what: "joined", club: a.startsAt, price: 0 }], txs: [tx], quote: "" });
           }
           this.d.journal.markDone(`joined:${a.account}`);
@@ -447,7 +447,7 @@ export class Agents {
           () =>
             offer !== null
               ? me.callChecked!(this.d.playersId, "nft_approve", { token_id: fb.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: offer }) }, 250, APPROVAL_DEPOSIT)
-              : me.callChecked!(this.d.playersId, "nft_transfer", { receiver_id: target, token_id: fb.token_id }, 50, ONE_YOCTO),
+              : me.callChecked!(this.d.playersId, "nft_transfer", { receiver_id: target, token_id: fb.token_id }, 100, ONE_YOCTO),
           { what: "joined", club: target, price: c.price },
         );
       }

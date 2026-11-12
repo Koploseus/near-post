@@ -99,6 +99,12 @@ const SOLID: Record<string, string> = {
 
 /** The colour of a patterned item at a grid pixel (x, y). */
 let forcedBand = "";
+/** The colour of a wardrobe item ("boots.gold", "socks.hooped"…) at a cell of its pattern, or null without one. */
+export function itemPaint(id: string | null | undefined, x: number, y: number): string | null {
+  const style = styleOf(id);
+  return style ? paint(style, x, y) : null;
+}
+
 function paint(style: string, x: number, y: number): string {
   switch (style) {
     case "__band":

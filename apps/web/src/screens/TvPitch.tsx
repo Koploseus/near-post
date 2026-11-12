@@ -50,7 +50,7 @@ const rnd = (n: number) => {
   return x - Math.floor(x);
 };
 
-export function TvPitch({ m, shown, c, players, shirts }: { m: MatchResult; shown: Ev[]; c: Clock; players: Map<string, Player>; shirts: [string, string] }) {
+export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult; shown: Ev[]; c: Clock; players: Map<string, Player>; shirts: [string, string]; /** Your footballer's token id: he gets a gold marker. */ mine?: string | null }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
@@ -63,8 +63,8 @@ export function TvPitch({ m, shown, c, players, shirts }: { m: MatchResult; show
   const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time" || c.phase === "before";
 
   // What the loop reads: always the latest props, without restarting it.
-  const live = useRef({ m, shown, c, players, shirts, keys, half, second, stopped });
-  live.current = { m, shown, c, players, shirts, keys, half, second, stopped };
+  const live = useRef({ m, shown, c, players, shirts, keys, half, second, stopped, mine });
+  live.current = { m, shown, c, players, shirts, keys, half, second, stopped, mine };
 
   useEffect(() => {
     const el = canvas.current;
@@ -260,12 +260,18 @@ export function TvPitch({ m, shown, c, players, shirts }: { m: MatchResult; show
 
       // Players and ball, the farthest first.
       const list: { y: number; draw: () => void }[] = [];
+      let myBody: Body | null = null;
       for (const side of [0, 1] as const)
         for (let k = 0; k < 11; k++) {
           if (gone(side, k)) continue;
           const b = bodies[side]![k]!;
           const act = acts[side]![k]!;
-          list.push({ y: b.y, draw: () => player(g, P, b, k === 0, L.shirts[side], act, cheer, side) });
+          // Who plays this slot this half: his own face, and a gold marker if he is yours.
+          const id = (L.second ? L.m.elevens[2 + side] : undefined)?.[k] || L.m.elevens[side]?.[k];
+          const p = id && id !== BOT ? L.players.get(id) : undefined;
+          const who = { face: p ? Number(p.token_id.replace(/\D/g, "")) || 0 : 7 + side * 11 + k, hair: p?.look?.hair ?? null, mine: !!id && id === L.mine };
+          if (who.mine) myBody = b;
+          list.push({ y: b.y, draw: () => player(g, P, b, k === 0, L.shirts[side], act, cheer, side, who, now) });
         }
       const lift = flight * (shot ? 20 : 9) * (0.55 + 0.45 * Math.abs(Math.sin(now / 170)));
       list.push({
@@ -293,7 +299,7 @@ export function TvPitch({ m, shown, c, players, shirts }: { m: MatchResult; show
       g.restore();
 
       if (caption) lowerThird(g, caption);
-      radar(g, bodies, ballAt, L.shirts, gone, cam);
+      radar(g, bodies, ballAt, L.shirts, gone, cam, myBody);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -422,10 +428,18 @@ function goal(g: G, P: Proj, x: number) {
   g.lineCap = "butt";
 }
 
-function player(g: G, P: Proj, b: Body, keeper: boolean, shirt: string, act: Act, cheer: number, side: number) {
+function player(g: G, P: Proj, b: Body, keeper: boolean, shirt: string, act: Act, cheer: number, side: number, who: { face: number; hair: string | null; mine: boolean }, now: number) {
   const [x, y, s] = P(b.x, b.y);
   if (x < -80 || x > CW + 80) return;
   const h = PLAYER_H * s;
+  if (who.mine) {
+    // Yours: a gold ring on the grass.
+    g.strokeStyle = "#F2B705";
+    g.lineWidth = 3 * s;
+    g.beginPath();
+    g.ellipse(x, y, 22 * s, 8 * s, 0, 0, Math.PI * 2);
+    g.stroke();
+  }
   g.fillStyle = "rgba(0,0,0,.28)";
   g.beginPath();
   g.ellipse(x, y, (act === "slide" || act === "down" || act === "beaten" || act === "dive" ? 26 : 15) * s, 5 * s, 0, 0, Math.PI * 2);
@@ -435,14 +449,14 @@ function player(g: G, P: Proj, b: Body, keeper: boolean, shirt: string, act: Act
   let ok: boolean;
   if (keeper) {
     const n = act === "dive" ? 1 : act === "hold" ? 3 : act === "beaten" ? 4 : 0;
-    ok = sprite(g, "keeper", shirt, n, (n === 1 ? 0.62 : n === 4 ? 0.45 : 1) * h * 1.06, side === 1);
+    ok = sprite(g, "keeper", shirt, n, (n === 1 ? 0.62 : n === 4 ? 0.45 : 1) * h * 1.06, side === 1, who.face, who.hair);
   } else if (act === "joy") {
     g.translate(0, -Math.abs(Math.sin(cheer * 7 + b.phase)) * 9 * s);
-    ok = sprite(g, "top", shirt, 5, h * 1.04, b.face < 0);
-  } else if (act === "slide") ok = sprite(g, "rivalFront", shirt, 4, h * 0.72, b.face > 0);
-  else if (act === "down") ok = sprite(g, "rivalFront", shirt, 5, h * 0.7, b.face > 0);
-  else if (b.v > 1.1) ok = sprite(g, "rivalSide", shirt, 1 + (Math.floor(b.phase) % 4), h, b.face < 0);
-  else ok = sprite(g, "top", shirt, 0, h, b.face < 0);
+    ok = sprite(g, "top", shirt, 5, h * 1.04, b.face < 0, who.face, who.hair);
+  } else if (act === "slide") ok = sprite(g, "rivalFront", shirt, 4, h * 0.72, b.face > 0, who.face, who.hair);
+  else if (act === "down") ok = sprite(g, "rivalFront", shirt, 5, h * 0.7, b.face > 0, who.face, who.hair);
+  else if (b.v > 1.1) ok = sprite(g, "rivalSide", shirt, 1 + (Math.floor(b.phase) % 4), h, b.face < 0, who.face, who.hair);
+  else ok = sprite(g, "top", shirt, 0, h, b.face < 0, who.face, who.hair);
   if (!ok) {
     // Until the art has loaded: a shirt and a head.
     g.fillStyle = "#0B0820";
@@ -453,6 +467,22 @@ function player(g: G, P: Proj, b: Body, keeper: boolean, shirt: string, act: Act
     g.fillRect(-6 * s, -56 * s, 12 * s, 12 * s);
   }
   g.restore();
+  if (who.mine) {
+    // And a gold arrow above his head.
+    const ty = y - h * (act === "slide" || act === "down" ? 0.8 : 1.08) - 6 * s - Math.abs(Math.sin(now / 260)) * 5 * s;
+    g.fillStyle = "#0B0820";
+    g.beginPath();
+    g.moveTo(x - 11 * s, ty - 14 * s);
+    g.lineTo(x + 11 * s, ty - 14 * s);
+    g.lineTo(x, ty + 3 * s);
+    g.fill();
+    g.fillStyle = "#F2B705";
+    g.beginPath();
+    g.moveTo(x - 7 * s, ty - 12 * s);
+    g.lineTo(x + 7 * s, ty - 12 * s);
+    g.lineTo(x, ty - 1 * s);
+    g.fill();
+  }
 }
 
 function tag(g: G, text: string, x: number, y: number, colour: string) {
@@ -489,7 +519,7 @@ function lowerThird(g: G, text: string) {
 }
 
 /** The whole pitch, small, with the part the camera shows. */
-function radar(g: G, bodies: Body[][], ball: V, shirts: [string, string], gone: (side: number, k: number) => boolean, cam: number) {
+function radar(g: G, bodies: Body[][], ball: V, shirts: [string, string], gone: (side: number, k: number) => boolean, cam: number, mine: Body | null) {
   const w = 168;
   const h = 84;
   const x0 = CW - w - 20;
@@ -515,8 +545,8 @@ function radar(g: G, bodies: Body[][], ball: V, shirts: [string, string], gone: 
       const b = bodies[side]![k]!;
       g.fillStyle = "#0B0820";
       g.fillRect(x0 + (b.x / 100) * w - 3, y0 + (b.y / 100) * h - 3, 6, 6);
-      g.fillStyle = shirts[side];
-      g.fillRect(x0 + (b.x / 100) * w - 2, y0 + (b.y / 100) * h - 2, 4, 4);
+      g.fillStyle = b === mine ? "#F2B705" : shirts[side];
+      g.fillRect(x0 + (b.x / 100) * w - (b === mine ? 3 : 2), y0 + (b.y / 100) * h - (b === mine ? 3 : 2), b === mine ? 6 : 4, b === mine ? 6 : 4);
     }
   g.fillStyle = "#FFFFFF";
   g.fillRect(x0 + (Math.min(100, Math.max(0, ball[0])) / 100) * w - 2, y0 + (ball[1] / 100) * h - 2, 4, 4);
