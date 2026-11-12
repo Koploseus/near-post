@@ -9,7 +9,9 @@ import { near } from "./chain.js";
 import { parseCrowd } from "./crowd.js";
 import { Journal } from "./agents/journal.js";
 import { askWith } from "./agents/minds.js";
+import { type Custody, custodyChain, keyOfImplicit, seedOf, walletAccounts } from "./agents/custody.js";
 import { agentKey, roster } from "./agents/roster.js";
+import { COACHES, FOOTBALLERS } from "./agents/rules.js";
 import { Selves } from "./agents/self.js";
 import { Agents } from "./agents/runner.js";
 import { Limiter, readsFrom, throttle } from "./agents/throttle.js";
@@ -35,12 +37,22 @@ const kickoffs = new Kickoffs();
 const vaults = new Vaults(config.DATA_DIR ? `${config.DATA_DIR}/vaults.json` : null);
 // Faces are kept by token id, and token ids start again with each league.
 const faces = new Faces(config.DATA_DIR ? `${config.DATA_DIR}/faces-${config.LEAGUE_ID}.json` : null);
-const agentsOn = !!(config.AGENTS_SEED && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
+// The agents' keys: in an enclave (agents/custody.ts) when custody is set, derived from AGENTS_SEED otherwise.
+const custody: Custody | null =
+  config.AGENTS_CUSTODY_URL && config.AGENTS_CUSTODY_ACCOUNT && config.AGENTS_CUSTODY_KEY
+    ? { url: config.AGENTS_CUSTODY_URL, accountId: config.AGENTS_CUSTODY_ACCOUNT, privateKey: config.AGENTS_CUSTODY_KEY }
+    : null;
+const leagueVersion = config.LEAGUE_ID?.match(/^league-([^.]+)\./)?.[1] ?? "v0";
+const agentsOn = !!((config.AGENTS_SEED || custody) && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
+const custodyAccounts =
+  custody && agentsOn
+    ? await walletAccounts(custody, [...COACHES.map((c) => c.club), ...FOOTBALLERS.map((f) => f.id)], leagueVersion, config.DATA_DIR ? `${config.DATA_DIR}/custody-${config.LEAGUE_ID}.json` : null)
+    : undefined;
 // One journal per league: a new league's match days start again at 1.
 const brain = config.NEAR_AI_API_KEY ? { url: config.NEAR_AI_URL, key: config.NEAR_AI_API_KEY, model: config.NEAR_AI_MODEL } : null;
 const agents = agentsOn
   ? {
-      roster: roster(config.PARENT_ACCOUNT_ID),
+      roster: roster(config.PARENT_ACCOUNT_ID, custodyAccounts),
       journal: new Journal(config.DATA_DIR ? `${config.DATA_DIR}/agents-${config.LEAGUE_ID}.json` : null),
       // What each remembers, believes and feels, and the hours he keeps (agents/self.ts).
       selves: new Selves(config.DATA_DIR ? `${config.DATA_DIR}/selves-${config.LEAGUE_ID}.json` : null),
@@ -74,7 +86,7 @@ if (config.WEB_DIST) {
 if (config.INSECURE_DEV_RETURN_CODE) console.warn("INSECURE_DEV_RETURN_CODE is on: codes are returned in responses");
 if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
   const crowdKey = config.CROWD_PRIVATE_KEY;
-  const clubs = parseCrowd(config.CROWD, config.PARENT_ACCOUNT_ID);
+  const clubs = parseCrowd(config.CROWD, config.PARENT_ACCOUNT_ID, custodyAccounts);
   startScheduler(chain, config.LEAGUE_ID, {
     kickoffs,
     ...(crowdKey && clubs.length
@@ -93,8 +105,8 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
   console.log(`scheduler on${crowdKey && clubs.length ? `, crowd of ${clubs.reduce((n, c) => n + c.fans.length, 0)} fans` : ""}`);
 }
 
-if (agents && config.AGENTS_SEED) {
-  const seed = config.AGENTS_SEED;
+if (agents && (config.AGENTS_SEED || custody)) {
+  const seed = config.AGENTS_SEED ?? "";
   const attester = config.ATTESTER_PRIVATE_KEY ? KeyPair.fromString(config.ATTESTER_PRIVATE_KEY as `ed25519:${string}`) : null;
   // One budget of RPC requests for all agents, so the scheduler keeps its share.
   const limiter = new Limiter(config.AGENTS_RPS);
@@ -102,10 +114,15 @@ if (agents && config.AGENTS_SEED) {
     {
       chain: throttle(readsFrom(rpcChain([config.AGENTS_RPC_URL, ...agentRpcs], signer), rpcChain(agentRpcs, signer)), limiter),
       as: (a) => {
+        if (custody) {
+          // His wallet signs, in the enclave; the relay reads, and checks what the transaction did.
+          const reads = throttle(readsFrom(rpcChain([config.AGENTS_RPC_URL, ...agentRpcs]), rpcChain(agentRpcs)), limiter);
+          return custodyChain(reads, custody, seedOf(a.slug, leagueVersion), a.account, (hash, signer) => chain.settled!(hash, signer));
+        }
         const k = { accountId: a.account, privateKey: agentKey(seed, a.account).privateKey };
         return throttle(readsFrom(rpcChain([config.AGENTS_RPC_URL, ...agentRpcs], k), rpcChain(agentRpcs, k)), limiter);
       },
-      publicKeyOf: (a) => agentKey(seed, a.account).publicKey,
+      publicKeyOf: (a) => (custody ? keyOfImplicit(a.account) : agentKey(seed, a.account).publicKey),
       leagueId: config.LEAGUE_ID!,
       goalarsId: config.GOALARS_ID!,
       playersId: config.PLAYERS_ID!,
@@ -131,7 +148,7 @@ if (agents && config.AGENTS_SEED) {
     }
   };
   setInterval(() => void look(), config.AGENTS_EVERY_MS);
-  console.log(`agents on: ${agents.roster.length}, ${brain ? `model ${brain.model}` : "rules only (no NEAR_AI_API_KEY)"}`);
+  console.log(`agents on: ${agents.roster.length}, keys ${custody ? `in custody (${custody.url})` : "derived from AGENTS_SEED"}, ${brain ? `model ${brain.model}` : "rules only (no NEAR_AI_API_KEY)"}`);
 }
 
 // What the agents say and start by themselves (agents/voices.ts): a look a minute.

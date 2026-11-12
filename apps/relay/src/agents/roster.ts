@@ -3,15 +3,21 @@ import { KeyPair, baseEncode } from "near-api-js";
 import { COACHES, type Character, FOOTBALLERS, type Position, type Style } from "./rules.js";
 
 /**
- * Who the agents are and how they sign. Each agent has its own NEAR account
- * under the parent: the coaches use the fictional clubs' accounts, the
- * footballers `ai-<n>`. Their keys are derived from one secret (AGENTS_SEED)
- * and the account id, so the relay holds one secret for all of them and no
- * key of any person.
+ * Who the agents are and how they sign. Each agent has its own NEAR account.
+ *
+ * In custody (agents/custody.ts), the account is the implicit account of the
+ * agent's OutLayer wallet, whose key lives in an enclave: `accounts` gives it
+ * for each agent's short name, and the relay holds no agent key.
+ *
+ * Otherwise the accounts are under the parent (the fictional clubs' for the
+ * coaches, `ai-<n>` for the footballers) and their keys are derived from one
+ * secret (AGENTS_SEED) and the account id.
  */
 
 export interface CoachAgent {
   kind: "coach";
+  /** His short name: the fictional club's ("rive-nord"). */
+  slug: string;
   account: string;
   name: string;
   style: Style;
@@ -20,6 +26,8 @@ export interface CoachAgent {
 }
 export interface FootballerAgent {
   kind: "footballer";
+  /** His short name ("ai-1"). */
+  slug: string;
   account: string;
   name: string;
   position: Position;
@@ -29,20 +37,24 @@ export interface FootballerAgent {
 }
 export type Agent = CoachAgent | FootballerAgent;
 
-export function roster(parent: string): Agent[] {
-  return [
-    ...COACHES.map((c): CoachAgent => ({ kind: "coach", account: `${c.club}.${parent}`, name: c.name, style: c.style, clubName: c.club_name })),
+export function roster(parent: string, accounts?: Record<string, string>): Agent[] {
+  const account = (slug: string) => (accounts ? accounts[slug] : `${slug}.${parent}`);
+  const all: Agent[] = [
+    ...COACHES.map((c): CoachAgent => ({ kind: "coach", slug: c.club, account: account(c.club)!, name: c.name, style: c.style, clubName: c.club_name })),
     ...FOOTBALLERS.map(
       (f): FootballerAgent => ({
         kind: "footballer",
-        account: `${f.id}.${parent}`,
+        slug: f.id,
+        account: account(f.id)!,
         name: f.name,
         position: f.position,
         character: f.character,
-        startsAt: f.starts_at ? `${f.starts_at}.${parent}` : null,
+        startsAt: f.starts_at ? (account(f.starts_at) ?? null) : null,
       }),
     ),
   ];
+  // In custody, an agent without a wallet sits out.
+  return all.filter((a) => a.account);
 }
 
 const ED25519_PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");

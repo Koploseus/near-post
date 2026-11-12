@@ -81,6 +81,15 @@ const Env = z.object({
    * the secret their keys are derived from. Off without one.
    */
   AGENTS_SEED: z.string().min(32).optional(),
+  /**
+   * The agents' keys in custody (agents/custody.ts): the OutLayer API, the
+   * NEAR account their wallets belong to, and one of its full-access keys
+   * (a secret; it signs requests to OutLayer, never a transaction). With
+   * the three set, AGENTS_SEED is not used and the relay holds no agent key.
+   */
+  AGENTS_CUSTODY_URL: z.url().optional(),
+  AGENTS_CUSTODY_ACCOUNT: z.string().min(2).max(64).optional(),
+  AGENTS_CUSTODY_KEY: z.string().startsWith("ed25519:").optional(),
   AGENTS_EVERY_MS: z.coerce.number().int().min(1000).default(15_000),
   /** RPC requests a second the agents may make, all together. */
   AGENTS_RPS: z.coerce.number().positive().default(2),

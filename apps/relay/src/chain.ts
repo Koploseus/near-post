@@ -20,6 +20,8 @@ export interface Chain {
   call(contractId: string, method: string, args: Record<string, unknown>, tgas: number, deposit?: bigint): Promise<string>;
   /** Like `call`, but also fails when a receipt it spawned failed (a cross-contract call that panicked). */
   callChecked?(contractId: string, method: string, args: Record<string, unknown>, tgas: number, deposit?: bigint): Promise<string>;
+  /** Reads a sent transaction and throws when it or one of its receipts failed. */
+  settled?(hash: string, signerId: string): Promise<void>;
   /** Sends a player's signed delegate action, the parent paying the gas. */
   relay(signed: SignedDelegate): Promise<{ hash: string; value: string | null; error: string | null }>;
   /** Signs a delegate action as `accountId` with its key (an AI player's, for the bot API); nothing is sent. */
@@ -78,6 +80,14 @@ export function failover(urls: string[]): JsonRpcProvider {
       };
     },
   });
+}
+
+/** Throws the panic of a transaction or of one of its receipts, when one failed. */
+function failedIn(r: { status: unknown; receipts_outcome: { outcome: { status: unknown } }[] }) {
+  const failed = [r.status, ...r.receipts_outcome.map((o) => o.outcome.status)].find((s) => typeof s === "object" && s !== null && "Failure" in s);
+  if (!failed) return;
+  const m = JSON.stringify(failed).match(/Smart contract panicked: ([^"\\]+)/);
+  throw new Error(m?.[1] ?? "the transaction failed");
 }
 
 /**
@@ -193,14 +203,11 @@ export function rpcChain(urls: string | string[], signer?: { accountId: string; 
     },
     async callChecked(contractId, methodName, args, tgas, deposit) {
       const r = await parent().callFunctionRaw({ contractId, methodName, args, gas: BigInt(tgas) * 10n ** 12n, ...(deposit ? { deposit } : {}) });
-      const failed = [r.status, ...r.receipts_outcome.map((o) => o.outcome.status)].find(
-        (s) => typeof s === "object" && s !== null && "Failure" in s,
-      );
-      if (failed) {
-        const m = JSON.stringify(failed).match(/Smart contract panicked: ([^"\\]+)/);
-        throw new Error(m?.[1] ?? "the transaction failed");
-      }
+      failedIn(r);
       return r.transaction.hash;
+    },
+    async settled(hash, signerId) {
+      failedIn(await provider.viewTransactionStatus({ txHash: hash, accountId: signerId, waitUntil: "EXECUTED_OPTIMISTIC" }));
     },
   };
 }

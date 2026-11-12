@@ -11,8 +11,8 @@ export function g(amount: string | bigint): string {
 
 export const minute = (m: number) => (m > 90 ? `90+${m - 90}'` : `${m}'`);
 
-/** "rive-nord" from "rive-nord.near-post.testnet". */
-export const short = (account: string) => account.split(".")[0] ?? account;
+/** "rive-nord" from "rive-nord.near-post.testnet"; an implicit account (64 hex characters) is cut to its first eight. */
+export const short = (account: string) => (/^[0-9a-f]{64}$/.test(account) ? `${account.slice(0, 8)}…` : (account.split(".")[0] ?? account));
 
 export const positionLabel: Record<string, string> = { Gk: "GK", Df: "DF", Mf: "MF", Fw: "FW" };
 
