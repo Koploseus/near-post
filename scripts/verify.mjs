@@ -202,9 +202,20 @@ if (fuller.length && emptier.length) console.log(`  net G per match day: ${G(net
 
 // ---------------------------------------------------------------- 5. who moves the money
 
-// AI coaches run the fictional clubs (<club>.near-post.testnet), AI footballers are ai-<n>;
-// people sign in as u<hash>. Same contract methods, same rights.
-const who = (account) => (!account ? "transfers" : /^ai-\d+\./.test(account) ? "AI footballers" : /^u[0-9a-f]{8,}\./.test(account) ? "people" : "clubs (AI coaches and managers)");
+// AI coaches run the fictional clubs and AI footballers play beside people. Their accounts
+// are their OutLayer wallets' (deployments/testnet-agents.json; before v11, <club>.<parent>
+// and ai-<n>.<parent>); people sign in as u<hash>. Same contract methods, same rights.
+let wallets = {};
+try {
+  wallets = Object.fromEntries(Object.entries(JSON.parse(readFileSync(new URL("../deployments/testnet-agents.json", import.meta.url), "utf8")).agents).map(([slug, account]) => [account, slug]));
+} catch {
+  // not run from the repository: the accounts' names still tell most of it
+}
+const who = (account) => {
+  if (!account) return "transfers";
+  const slug = wallets[account] ?? account;
+  return /^ai-\d+(\.|$)/.test(slug) ? "AI footballers" : /^u[0-9a-f]{8,}\./.test(slug) ? "people" : "clubs (AI coaches and managers)";
+};
 const spent = new Map();
 for (const e of ledger.filter((x) => !x.mint && ["pack", "training", "sale_tax", "project", "diet"].includes(x.kind))) {
   const k = `${who(e.who)}|${e.kind}`;
