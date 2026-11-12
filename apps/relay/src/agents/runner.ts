@@ -14,9 +14,14 @@ import {
   type Offer,
   type Player,
   type Position,
-  REST_BELOW,
+  type Memory,
   type Strategy,
+  dietFor,
   fallbackProject,
+  giftFor,
+  instructionFor,
+  recruitVote,
+  restBelow,
   marketSituation,
   tacticSituation,
   wageFor,
@@ -64,7 +69,29 @@ interface MatchResult {
   away: string;
   home_goals: number;
   away_goals: number;
+  /** First half home, first half away, then the second half's. */
+  formations?: Formation[];
+  strategies?: Strategy[];
+  full_time?: boolean;
 }
+interface Condition {
+  instruction: string;
+  diet: string | null;
+  diet_until: number;
+  holiday_until: number;
+  injured_until: number;
+}
+interface LifeRules {
+  pack_price: string;
+  week_length: number;
+  season_ticket_price?: string;
+  season_tickets_per_club?: number;
+  energy_match?: number;
+  injury_below?: number;
+  diet_price?: string;
+}
+/** Matches an agent remembers. */
+const MEMORY = 4;
 interface Lineup {
   formation: Formation;
 }
@@ -235,6 +262,8 @@ export class Agents {
       theirs: rank(them),
       clubs: this.divisionSize(ctx, c.account),
     });
+    const history = await this.history(ctx, c.account);
+    if (history.length) s.history = history;
     const d = await decideTactic(this.d.ask, s);
     const out: Partial<Entry> = { quote: d.decision.quote, acts: [], txs: [], errors: [] };
     // With a captain, the formation is his call (the contract says so): the coach only talks.
@@ -265,6 +294,7 @@ export class Agents {
     if (owed > 0n) await this.act(c, out, () => me.call(this.d.leagueId, "collect", {}, 50), { what: "collected" });
     // Without a captain the manager sets what the club pays its people.
     if (!(await this.league<unknown>("captain", { club_id: c.account }))) await this.setWage(c, c.account, ctx, out);
+    await this.voteRecruits(c, "coach", c.account, ctx, out);
     let squad = await this.squad(ctx, c.account);
     if (!squad.some((p) => p.position === "Gk")) {
       // No keeper in the squad: bring back the best one the club still owns.
@@ -362,9 +392,19 @@ export class Agents {
     await this.topUp(f);
     const club = ctx.clubs.get(fb.owner);
     const energy = fb.energy ?? 100;
-    if (club) {
-      // Tired legs sit the match day out (a day off gives energy back faster).
-      if (energy < REST_BELOW[f.character]) {
+    const rules = await this.league<LifeRules>("rules");
+    const life = rules.injury_below !== undefined ? await this.league<Condition>("condition_of", { token_id: fb.token_id }).catch(() => null) : null;
+    const outOfIt = !!life && (life.injured_until >= ctx.day || life.holiday_until >= ctx.day);
+    if (life) {
+      // How he plays: what his position asks. Said once, and again if his skills moved.
+      const instruction = instructionFor(fb.position, fb.skills);
+      if (life.instruction !== instruction) {
+        await this.act(f, out, () => me.call(this.d.leagueId, "set_instruction", { instruction }, 30), { what: "instruction", instruction });
+      }
+    }
+    if (club && !outOfIt) {
+      // Tired legs sit the match day out (a day off gives energy back faster, and a match on empty legs can hurt).
+      if (energy < restBelow(f.character, rules.injury_below ?? 0, rules.energy_match ?? 12)) {
         if (!(await this.league<boolean>("is_resting", { token_id: fb.token_id, match_day: ctx.day }))) {
           await this.act(f, out, () => me.call(this.d.leagueId, "rest_today", {}, 30), { what: "rested" });
         }
@@ -383,9 +423,55 @@ export class Agents {
     if (BigInt(fb.wallet) + BigInt(fb.salary) >= CLAIM_FROM) {
       await this.act(f, out, () => me.call(this.d.leagueId, "claim_player", { token_id: fb.token_id }, 60), { what: "collected" });
     }
-    const rules = await this.league<{ pack_price: string; week_length: number; season_ticket_price?: string; season_tickets_per_club?: number }>("rules");
-    const wallet = whole(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: f.account }));
+    let wallet = whole(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: f.account }));
     const week = Math.floor((Math.max(1, ctx.day) - 1) / rules.week_length);
+    if (club) await this.voteRecruits(f, f.character, fb.owner, ctx, out, fb);
+    // A diet, when none is running: for his legs first, then for his game.
+    if (club && life && rules.diet_price && !(life.diet && life.diet_until >= ctx.day)) {
+      const price = whole(rules.diet_price);
+      const diet = dietFor(f.character, fb.position, energy, wallet, price);
+      if (
+        diet &&
+        (await this.act(
+          f,
+          out,
+          () =>
+            me.callChecked!(
+              this.d.goalarsId,
+              "ft_transfer_call",
+              { receiver_id: this.d.leagueId, amount: rules.diet_price!, msg: JSON.stringify({ diet: { token_id: fb.token_id, diet } }) },
+              150,
+              ONE_YOCTO,
+            ),
+          { what: "diet", diet, price },
+        ))
+      )
+        wallet -= price;
+    }
+    // Once a week, a loyal footballer or a leader helps a treasury that runs short.
+    if (club && life && !this.d.journal.isDone(`gift:${week}:${f.account}`)) {
+      const people = (await this.squad(ctx, fb.owner)).filter((p) => p.controller).length;
+      const amount = giftFor(f.character, wallet, whole(club.treasury), whole(club.wage ?? "0") * people);
+      if (amount > 0) {
+        const ok = await this.act(
+          f,
+          out,
+          () =>
+            me.callChecked!(
+              this.d.goalarsId,
+              "ft_transfer_call",
+              { receiver_id: this.d.leagueId, amount: (BigInt(amount) * ONE_G).toString(), msg: JSON.stringify({ gift: fb.owner }) },
+              150,
+              ONE_YOCTO,
+            ),
+          { what: "gift", club: fb.owner, amount },
+        );
+        if (ok) {
+          wallet -= amount;
+          this.d.journal.markDone(`gift:${week}:${f.account}`);
+        }
+      }
+    }
     if (club && !this.d.journal.isDone(`project:${week}:${f.account}`)) {
       const project = fallbackProject(f.character, energy);
       if (await this.act(f, out, () => me.call(this.d.leagueId, "vote_project", { project }, 30), { what: "project_vote", project })) {
@@ -477,7 +563,8 @@ export class Agents {
     const [ours, theirs, l1, l2] = await Promise.all([this.squad(ctx, club), this.squad(ctx, them), this.lineup(ctx, club), this.lineup(ctx, them)]);
     const r = ctx.results?.find((m) => m.home === club || m.away === club);
     const score: [number, number] = !r ? [0, 0] : r.home === club ? [r.home_goals, r.away_goals] : [r.away_goals, r.home_goals];
-    return { character: f.character, half, score, ours: zones(ours, l1.formation), theirs: zones(theirs, l2.formation) };
+    const history = await this.history(ctx, club);
+    return { character: f.character, half, score, ours: zones(ours, l1.formation), theirs: zones(theirs, l2.formation), ...(history.length ? { history } : {}) };
   }
 
   /** Teammates one may vote for (people only), under aliases. */
@@ -535,6 +622,49 @@ export class Agents {
       if (ch && ch.better_at_position === 0) joinable.push({ ...ch, id: `join-${ch.club}` });
     }
     return { choices: [...choices, ...joinable], clubs };
+  }
+
+  private past = new Map<number, Promise<MatchResult[]>>();
+  /** A club's last matches as its people remember them, the latest last: read from the chain's match sheets. */
+  private async history(ctx: Ctx, club: string): Promise<Memory[]> {
+    const out: Memory[] = [];
+    for (let day = Math.max(1, ctx.day - MEMORY); day < ctx.day; day++) {
+      let r = this.past.get(day);
+      if (!r) {
+        r = this.league<MatchResult[]>("results", { match_day: day }).catch(() => [] as MatchResult[]);
+        this.past.set(day, r);
+        for (const k of this.past.keys()) if (k < ctx.day - 2 * MEMORY) this.past.delete(k);
+      }
+      const m = (await r).find((x) => x.home === club || x.away === club);
+      if (!m || m.full_time === false || !m.formations?.length || !m.strategies?.length) continue;
+      const home = m.home === club;
+      // What his side ended the match with: the second half's when it was played.
+      const at = (m.formations.length >= 4 ? 2 : 0) + (home ? 0 : 1);
+      const formation = m.formations[at];
+      const strategy = m.strategies[at];
+      if (!formation || !strategy) continue;
+      out.push({ formation, strategy, score: home ? [m.home_goals, m.away_goals] : [m.away_goals, m.home_goals] });
+    }
+    return out;
+  }
+
+  /** His voice on the people who applied to a club that votes on its recruits: once per applicant. */
+  private async voteRecruits(a: Agent, who: "coach" | FootballerAgent["character"], clubAccount: string, ctx: Ctx, out: Partial<Entry>, me?: LeaguePlayer) {
+    const mode = await this.league<string>("recruitment_of", { club_id: clubAccount }).catch(() => "open");
+    if (mode !== "vote") return;
+    const list = await this.league<{ token_id: string; overall: number }[]>("applicants", { club_id: clubAccount }).catch(() => []);
+    if (!list.length) return;
+    const people = (await this.squad(ctx, clubAccount)).filter((p) => p.controller).length;
+    for (const ap of list) {
+      const key = `recruit:${clubAccount}:${ap.token_id}:${a.account}`;
+      if (this.d.journal.isDone(key)) continue;
+      const p = await this.league<Player | null>("get_player", { token_id: ap.token_id });
+      if (!p) continue;
+      const yes = recruitVote(who, people, p, me);
+      if (await this.act(a, out, () => this.d.as(a).call(this.d.leagueId, "vote_recruit", { token_id: ap.token_id, yes }, 30), { what: "recruit_vote", token_id: ap.token_id, yes })) {
+        this.d.journal.markDone(key);
+      }
+    }
   }
 
   /** Sets a club's wage to what its treasury can pay, when that moved enough to matter. */

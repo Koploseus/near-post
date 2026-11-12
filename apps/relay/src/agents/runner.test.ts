@@ -28,7 +28,7 @@ const squad = (owner: string, base: number, prefix: string): LeaguePlayer[] =>
     salary: "0",
   }));
 
-function world(firstHalfPlayed = false) {
+function world(firstHalfPlayed = false, more: Record<string, (a: Record<string, unknown>) => unknown> = {}) {
   const ours = squad(COACH, 50, "a");
   const theirs = squad(HUMAN, 60, "h");
   const ai: LeaguePlayer = { ...ours[9]!, token_id: "p900", controller: AI, name: "Remi Corbin" };
@@ -59,6 +59,7 @@ function world(firstHalfPlayed = false) {
     rules: () => ({ pack_price: G(500_000), week_length: 7, salary: G(200_000) }),
     last_unboxed: () => [],
     catalog: () => [],
+    ...more,
   };
   const chain = (signer: string): Chain => ({
     async view<T>(_c: string, method: string, args: Record<string, unknown> = {}) {
@@ -114,6 +115,8 @@ const ALLOWED = new Set([
   "create_footballer",
   "rename_club",
   "recall_player",
+  "set_instruction",
+  "vote_recruit",
 ]);
 
 const run = async (w: ReturnType<typeof world>, ask: Ask) => {
@@ -198,5 +201,45 @@ describe("agents runner", () => {
     expect(m.shown.some((t) => t.includes('"score":[0,1]'))).toBe(true);
     expect(w.calls.find((c) => c.method === "set_formation")?.args.formation).toBe("4-2-3-1");
     expect(journal.feed(10).find((e) => e.kind === "tactic")?.half).toBe(2);
+  });
+
+  it("in a v10 league a footballer picks his instruction, his diet and a gift, and everyone votes on the applicants", async () => {
+    const w = world(false, {
+      rules: () => ({ pack_price: G(500_000), week_length: 7, energy_match: 12, injury_below: 30, diet_price: G(200_000) }),
+      condition_of: () => ({ instruction: "balanced", diet: null, diet_until: 0, holiday_until: 0, injured_until: 0 }),
+      recruitment_of: () => "vote",
+      applicants: () => [{ token_id: "p77", overall: 58 }],
+      get_player: (a) => (a.token_id === "p77" ? { token_id: "p77", position: "Mf", skills: skills(58), overall: 58, owner: HUMAN, controller: HUMAN } : null),
+      // Four matches remembered: what was played and how it ended.
+      results: (a) => [{ home: COACH, away: HUMAN, home_goals: Number(a.match_day), away_goals: 1, formations: ["4-4-2", "4-4-2", "4-3-3", "4-4-2"], strategies: ["balanced", "balanced", "attack", "defend"], full_time: true }],
+      table: () => [
+        { name: "Olympique Rive Nord", manager: COACH, division: 1, treasury: G(100_000), points: 6, wage: G(50_000) },
+        { name: EVIL, manager: HUMAN, division: 1, treasury: G(1_000_000), points: 9 },
+      ],
+    });
+    // The AI footballer is a forward with tired legs and 2M G.
+    w.ai.energy = 50;
+    const m = model((schema) => {
+      const p = props(schema);
+      if (p.formation) return { formation: "4-3-3", quote: "It won twice." };
+      if (p.sell) return { sell: "none", buy: { id: "none", price: 0 }, quote: "Nothing today." };
+      return { strategy: "attack", vote: "me", pack: false, quote: "Let's go." };
+    });
+    await run(w, m.ask);
+    expect(w.calls.every((c) => ALLOWED.has(c.method))).toBe(true);
+    const by = (method: string) => w.calls.filter((c) => c.method === method);
+    expect(by("set_instruction")).toEqual([{ signer: AI, contract: "league", method: "set_instruction", args: { instruction: "shooter" } }]);
+    // The coach and the footballer each say yes to the midfielder who applied, once.
+    expect(by("vote_recruit").map((c) => [c.signer, c.args])).toEqual([
+      [COACH, { token_id: "p77", yes: true }],
+      [AI, { token_id: "p77", yes: true }],
+    ]);
+    // Legs at 50: the energy diet (200k G). Then nothing else is paid: this footballer is no giver, and the model said no pack.
+    const paid = by("ft_transfer_call").map((c) => [c.signer, c.args.msg, c.args.amount]);
+    expect(paid[0]).toEqual([AI, '{"diet":{"token_id":"p900","diet":"energy"}}', G(200_000)]);
+    expect(paid.filter(([, msg]) => String(msg).includes("gift")).length).toBeLessThanOrEqual(1);
+    // The coach is shown what he remembers: the formation and strategy his side ended with, and the scores.
+    const tactic = m.shown.find((t) => t.includes('"history"') && t.includes('"options"'))!;
+    expect(tactic).toContain('"history":[{"formation":"4-3-3","strategy":"attack","score":[1,1]},{"formation":"4-3-3","strategy":"attack","score":[2,1]}]');
   });
 });

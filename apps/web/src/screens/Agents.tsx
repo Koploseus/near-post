@@ -105,6 +105,14 @@ function actText(a: Act, clubs: Map<string, string>, names: Map<string, string>)
       return a.project === "save" ? "votes to save the treasury" : `votes for the ${a.project}`;
     case "wage":
       return `sets the club's wage at ${gOf(a.wage)} a match`;
+    case "instruction":
+      return a.instruction === "balanced" ? "plays as he is" : `plays as a ${a.instruction}`;
+    case "diet":
+      return `goes on the ${a.diet} diet (${gOf(a.price)})`;
+    case "gift":
+      return `gives ${gOf(a.amount)} to ${clubs.get(a.club) ?? "his club"}`;
+    case "recruit_vote":
+      return `says ${a.yes ? "yes" : "no"} to ${p(a.token_id)} joining`;
     case "season_ticket":
       return `buys a season ticket of ${clubs.get(a.club) ?? "his club"}`;
     default:

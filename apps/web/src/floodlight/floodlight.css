@@ -760,3 +760,5 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .face-row { grid-template-columns: 1fr !important; gap: 6px; align-items: start; }
   .face-heads, .face-swatches { gap: 6px; }
 }
+
+.ai-tag { margin-left: 8px; padding: 2px 5px; background: var(--np-night-deep); color: var(--np-blue-text); font-family: var(--np-led); font-size: 8px; vertical-align: middle; }

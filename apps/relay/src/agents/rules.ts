@@ -13,7 +13,7 @@
  * answers is checked against this list before anything is signed. Without a
  * model, or when its answer does not fit, `fallback` decides.
  *
- * Nothing written by users (player or club names) reaches the model: only
+ * Nothing written by users (player or club names) reaches a decision: only
  * ids, numbers and the coach's own style.
  */
 
@@ -216,6 +216,8 @@ export interface TacticSituation {
   /** The opponent's zones with the formation he plays. */
   theirs: Zones;
   table: { ours: number; theirs: number; clubs: number };
+  /** His last matches, the latest last: the formation and strategy his side ended with, and the score. */
+  history?: Memory[];
 }
 
 export function tacticSituation(
@@ -511,6 +513,8 @@ export interface StrategySituation {
   score: [number, number];
   ours: Zones;
   theirs: Zones;
+  /** His club's last matches, the latest last. */
+  history?: Memory[];
 }
 
 export function fallbackStrategy(s: StrategySituation): { strategy: Strategy; quote: string } {
@@ -643,3 +647,69 @@ export function checkFootballer(
   }
   return { ok, refused };
 }
+
+// ---- v10: a footballer's life around the match, and the club's recruits ----
+
+export type Instruction = "balanced" | "shooter" | "playmaker" | "dribbler" | "stopper";
+export type Diet = "energy" | "power" | "speed";
+
+/** How a footballer plays: what his position asks, with the better of his two skills for it. A keeper stays as he is. */
+export function instructionFor(position: Position, skills: Skills): Instruction {
+  if (position === "Fw") return skills.dribbling > skills.shooting + 6 ? "dribbler" : "shooter";
+  if (position === "Mf") return skills.dribbling > skills.passing + 6 ? "dribbler" : "playmaker";
+  if (position === "Df") return "stopper";
+  return "balanced";
+}
+
+/**
+ * Under this energy a footballer sits the match day out, now that tired legs
+ * get hurt: a match must not leave him under `injuryBelow`. A showman still
+ * plays on, down to the injury line itself, and takes the risk.
+ */
+export function restBelow(character: Character, injuryBelow: number, matchCost: number): number {
+  return character === "showman" ? Math.max(REST_BELOW.showman, injuryBelow) : Math.max(REST_BELOW[character], injuryBelow + matchCost);
+}
+
+/** How many times the price of a diet a footballer wants in his wallet before he buys one. */
+const DIET_RESERVE: Record<Character, number> = { showman: 1.5, leader: 2.5, mercenary: 3, loyal: 4 };
+
+/** The diet a footballer buys today, or null: energy when his legs are short, else what his position uses, when he can afford it. */
+export function dietFor(character: Character, position: Position, energy: number, wallet: number, price: number): Diet | null {
+  if (price <= 0 || wallet < price * DIET_RESERVE[character]) return null;
+  if (energy < 60) return "energy";
+  if (character === "loyal" || character === "mercenary") return null; // they only pay for it when they need the legs
+  return position === "Fw" || position === "Mf" ? "speed" : "power";
+}
+
+/**
+ * A voice on someone who applied to the club. A coach says yes while the
+ * squad has room for a person. So does a footballer, unless the newcomer
+ * plays his position and is better: a showman or a mercenary then says no.
+ */
+export function recruitVote(who: "coach" | Character, people: number, applicant: { position: Position; overall: number }, me?: { position: Position; overall: number }): boolean {
+  if (people >= 12) return false;
+  if (who === "coach" || who === "leader" || who === "loyal" || !me) return true;
+  return !(applicant.position === me.position && applicant.overall > me.overall);
+}
+
+/**
+ * What a footballer gives to his club's treasury this week, in whole G: only
+ * a loyal one or a leader, only when the treasury runs short of five match
+ * days of wages (or of 500k G), and never more than a share of his wallet.
+ */
+export function giftFor(character: Character, wallet: number, treasury: number, wageBill: number): number {
+  const share = character === "loyal" ? 0.2 : character === "leader" ? 0.1 : 0;
+  if (!share || wallet < 600_000 || treasury >= Math.max(wageBill * 5, 500_000)) return 0;
+  return Math.floor((wallet * share) / 10_000) * 10_000;
+}
+
+/** A past match as an agent remembers it: what was played and how it ended. */
+export interface Memory {
+  formation: Formation;
+  strategy: Strategy;
+  /** Goals: ours, theirs. */
+  score: [number, number];
+}
+
+/** "W", "D" or "L" for each remembered match, the latest last. */
+export const form = (history: Memory[]) => history.map((m) => (m.score[0] > m.score[1] ? "W" : m.score[0] < m.score[1] ? "L" : "D")).join("");

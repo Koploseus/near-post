@@ -91,6 +91,11 @@ function PersonRow({ p, children, rank }: { p: Person; children?: ReactNode; ran
         <b>
           {p.name}
           {you && " · YOU"}
+          {p.ai && (
+            <span className="ai-tag" title="An AI agent: he answers messages and plays duels by himself">
+              AI
+            </span>
+          )}
           {p.online && <span className="online-dot inline" title="Online now" />}
         </b>
         <span className="note">

@@ -68,10 +68,12 @@ interface Data {
   friendsOnly: Record<string, boolean>;
   chat: ChatLine[];
   duels: Duel[];
+  /** Small things to remember, by key (what an agent already said to whom). */
+  notes: Record<string, number>;
   next: number;
 }
 
-const empty = (): Data => ({ friends: {}, requests: {}, threads: {}, read: {}, friendsOnly: {}, chat: [], duels: [], next: 1 });
+const empty = (): Data => ({ friends: {}, requests: {}, threads: {}, read: {}, friendsOnly: {}, chat: [], duels: [], notes: {}, next: 1 });
 const pair = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 /** Who won a duel both have played: the account, or null for a draw. */
@@ -199,6 +201,19 @@ export class People {
       out.push({ with: other, last, unread: ms.filter((m) => m.id > seen && m.from !== me).length });
     }
     return out.sort((x, y) => y.last.at - x.last.at);
+  }
+
+  // ---- Notes ----
+
+  note(key: string): number | undefined {
+    return this.data.notes[key];
+  }
+
+  setNote(key: string, value: number) {
+    this.data.notes[key] = value;
+    const keys = Object.keys(this.data.notes);
+    if (keys.length > 20_000) for (const k of keys.slice(0, 5_000)) delete this.data.notes[k];
+    this.save();
   }
 
   // ---- The terrace ----
