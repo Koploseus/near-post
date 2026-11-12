@@ -139,7 +139,8 @@ function draw(
     dive = Math.sign(shot.keeper.to - shot.keeper.from || 0.01) * Math.min(1, Math.abs(shot.keeper.to - shot.keeper.from) / 1.2) * ease;
     lift = Math.min(shot.target.y, 1.6) * ease * (Math.abs(dive) > 0.3 ? 1 : 0.4);
   }
-  keeper(g, kx, dive, lift, t);
+  const end = shot && landed >= 1 ? { result: shot.result, ms: t - shot.up - shot.flight } : undefined;
+  keeper(g, kx, dive, lift, t, end);
   goalFront(g, scored ? Math.min(1, (t - (shot!.up + shot!.flight)) / 300) : 0, shot);
 
   // The ball.
@@ -163,7 +164,7 @@ function draw(
       else if (shot.result === "post") [bx, by, r] = [to.x - Math.sign(to.x - 500 || 1) * 90 * after, to.y + 120 * after, 8 + 4 * after];
       else [bx, by, r] = [to.x + (to.x - 500) * 0.5 * after, to.y - 50 * after, 8 - 3 * after];
     }
-    taker(g, Math.min(1, (t - shot.up + 250) / 350));
+    taker(g, Math.min(1, (t - shot.up + 250) / 350), end);
     ball(g, bx, by, Math.max(4, r), (t - shot.up) / 40);
     if (landed >= 1) banner(g, VERDICT[shot.result]!, shot.result === "goal", t - shot.up - shot.flight);
   }
@@ -290,8 +291,52 @@ export function goalFront(g: CanvasRenderingContext2D, bulge: number, shot: { ta
   g.lineCap = "butt";
 }
 
-/** The keeper, `x` metres from the centre of his line; `dive` -1..1 leans him over; `lift` metres up. */
-export function keeper(g: CanvasRenderingContext2D, x: number, dive: number, lift: number, t: number) {
+/** The illustrated keeper and taker (art/penalty/*.webp, six frames each), as the 3D game draws them. */
+const sheet = (src: string) => (typeof Image !== "undefined" ? Object.assign(new Image(), { src }) : null);
+const KEEPER_ART = sheet("/art/penalty/keeper.webp");
+const TAKER_ART = sheet("/art/penalty/shooter.webp");
+const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
+
+/** How a kick ended, and how long ago (ms): picks the keeper's and the taker's last frames. */
+export interface Outcome {
+  result: string;
+  ms: number;
+}
+
+/** One of six frames, `h` px tall, feet at the origin, mirrored or not. */
+function frame(g: CanvasRenderingContext2D, img: HTMLImageElement, n: number, h: number, flip: boolean) {
+  const cw = img.naturalWidth / 6;
+  const ch = img.naturalHeight;
+  const w = (h * cw) / ch;
+  g.save();
+  if (flip) g.scale(-1, 1);
+  g.drawImage(img, n * cw, 0, cw, ch, -w / 2, -h, w, h);
+  g.restore();
+}
+
+/** The keeper, `x` metres from the centre of his line; `dive` -1..1 is how far he goes and which way; `lift` metres up. */
+export function keeper(g: CanvasRenderingContext2D, x: number, dive: number, lift: number, t: number, end?: Outcome) {
+  if (!ready(KEEPER_ART)) return keeperDrawn(g, x, dive, lift, t);
+  const base = toScreen(x, 0);
+  const s = (GOAL_SCREEN.bottom - GOAL_SCREEN.top) / GOAL_M.height; // px per metre
+  // Frames: 0 ready, 1 dive low, 2 dive high, 3 ball held, 4 beaten, 5 fist pump. The dives go left: mirrored to go right.
+  let n = Math.abs(dive) > 0.3 ? (lift > 0.7 ? 2 : 1) : 0;
+  let up = n === 2 ? lift * 0.55 : n === 1 ? 0.1 : lift * 0.4;
+  let bounce = dive === 0 ? Math.abs(Math.sin(t / 260)) * 3 : 0;
+  if (end && end.result === "goal" && end.ms > 250) [n, up] = [4, 0];
+  else if (end && end.ms > 450) {
+    n = end.result === "saved" && Math.abs(dive) <= 0.3 ? 3 : 5;
+    up = 0;
+    bounce = n === 5 ? Math.abs(Math.sin(end.ms / 120)) * 6 : 0;
+  }
+  shadow(g, base.x, base.y + 2, n === 1 || n === 2 || n === 4 ? 60 : 30);
+  g.save();
+  g.translate(base.x, base.y + 4 - up * s - bounce);
+  frame(g, KEEPER_ART, n, 2.04 * s, dive > 0 || (dive === 0 && Math.sin(t / 600) > 0));
+  g.restore();
+}
+
+function keeperDrawn(g: CanvasRenderingContext2D, x: number, dive: number, lift: number, t: number) {
   const base = toScreen(x, 0);
   const s = (GOAL_SCREEN.bottom - GOAL_SCREEN.top) / GOAL_M.height; // px per metre
   const bounce = dive === 0 ? Math.abs(Math.sin(t / 260)) * 3 : 0;
@@ -348,8 +393,26 @@ export function keeper(g: CanvasRenderingContext2D, x: number, dive: number, lif
   g.restore();
 }
 
-/** The penalty taker, seen from behind at the bottom left; `kick` 0..1 swings his leg. */
-export function taker(g: CanvasRenderingContext2D, kick: number) {
+/** The penalty taker, seen from behind at the bottom left; `kick` 0..1 is the run-up and the strike. */
+export function taker(g: CanvasRenderingContext2D, kick: number, end?: Outcome) {
+  if (!ready(TAKER_ART)) return takerDrawn(g, kick);
+  const k = Math.max(0, Math.min(1, kick));
+  // Frames: 0 hands on hips, 1 running, 2 wind-up, 3 strike, 4 arms up, 5 hands on head.
+  let n = k === 0 ? 0 : k < 0.6 ? 2 : 3;
+  let jump = 0;
+  let x = 330 + 90 * k;
+  if (end && end.ms > 150) {
+    n = end.result === "goal" ? 4 : 5;
+    if (n === 4) jump = Math.abs(Math.sin(end.ms / 130)) * 22;
+    x = 420 - 170 * Math.min(1, (end.ms - 150) / 250); // he steps aside: the goal stays in view
+  }
+  g.save();
+  g.translate(x, 668 - 14 * k - jump);
+  frame(g, TAKER_ART, n, 340, false);
+  g.restore();
+}
+
+function takerDrawn(g: CanvasRenderingContext2D, kick: number) {
   const k = Math.max(0, Math.min(1, kick));
   g.save();
   g.translate(390 + 40 * k, 640 - 10 * k);

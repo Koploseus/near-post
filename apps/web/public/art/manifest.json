@@ -439,5 +439,61 @@
    512
   ],
   "use": "Object"
+ },
+ "art/penalty/keeper.webp": {
+  "size": [
+   2304,
+   360
+  ],
+  "use": "3D penalty keeper: 6 frames of 384x360, feet bottom-centre (ready, dive low, dive high, ball held, beaten on the grass, fist pump). Dives go to the left of the picture: mirror for the right. Cell = 2.04 m."
+ },
+ "art/penalty/shooter.webp": {
+  "size": [
+   1806,
+   400
+  ],
+  "use": "3D penalty shooter seen from behind: 6 frames of 301x400 (hands on hips, running, wind-up, strike, arms up, hands on head). Key-blue kit (hue 205-260) recoloured to the club colour at load. Cell = 1.84 m."
+ },
+ "art/penalty/stand.webp": {
+  "size": [
+   2048,
+   698
+  ],
+  "use": "3D penalty: the stand behind the goal (fans, tifo star, floodlights), edges faded to the night sky."
+ },
+ "art/players/hero-back.webp": {
+  "size": [
+   1878,
+   320
+  ],
+  "use": "Dribble and tackles, you seen from behind: 6 frames of 313x320 (run with the ball x2, cut with the ball leaning right, slide to the left, down on all fours, pass). Key-blue kit (hue 205-260), repainted to the shirt colour at load (art.ts)."
+ },
+ "art/players/hero-side.webp": {
+  "size": [
+   1488,
+   320
+  ],
+  "use": "Sprint, you from the side facing right: 6 frames of 248x320 (crouched start, run x4, arms up). Key-blue kit (hue 205-260), repainted to the shirt colour at load (art.ts)."
+ },
+ "art/players/rival-side.webp": {
+  "size": [
+   1752,
+   320
+  ],
+  "use": "Sprint, the rival from the side facing right: 6 frames of 292x320 (crouched start, run x4, beaten). Key-blue kit (hue 205-260), repainted to the shirt colour at load (art.ts)."
+ },
+ "art/players/rival-front.webp": {
+  "size": [
+   1884,
+   320
+  ],
+  "use": "Dribble and tackles, the other side facing you: 6 frames of 314x320 (stance, run x2, run with the ball, slide to the left, sat down beaten). Key-blue kit (hue 205-260), repainted to the shirt colour at load (art.ts)."
+ },
+ "art/players/top.webp": {
+  "size": [
+   768,
+   200
+  ],
+  "use": "Through balls, players from above: 6 frames of 128x200 (standing, run x2, pass, control, arms up). Key-blue kit (hue 205-260), repainted to the shirt colour at load (art.ts)."
  }
 }

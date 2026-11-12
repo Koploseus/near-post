@@ -59,11 +59,6 @@ export function Highlight({ m, onEnd }: { m: HighlightMoment; onEnd: () => void 
   return (
     <button type="button" className="highlight" onClick={onEnd} aria-label={`${TITLE[m.kind]} ${m.name}, ${m.team}. Tap to skip.`}>
       <canvas ref={canvas} width={W * 2} height={H * 2} />
-      {m.kind.endsWith("goal") && (
-        <span className="goal-flash" aria-hidden="true">
-          GOAL!
-        </span>
-      )}
     </button>
   );
 }
@@ -94,7 +89,8 @@ function shot(g: CanvasRenderingContext2D, t: number, m: HighlightMoment) {
   const dive = flying ? easeOut((t - STRIKE - 120) / 380) : 0;
   const to = saved ? target.x : scored ? -side * 1.6 : side * 0.8;
   const kx = flying ? to * dive : 0.4 * Math.sin(t / 300);
-  keeper(g, kx, flying ? Math.sign(to) * Math.min(1, Math.abs(to) / 1.2) * dive : 0, flying ? Math.min(target.y, 1.5) * dive : 0, t);
+  const end = after > 0 ? { result: scored ? "goal" : saved ? "saved" : "wide", ms: after } : undefined;
+  keeper(g, kx, flying ? Math.sign(to) * Math.min(1, Math.abs(to) / 1.2) * dive : 0, flying ? Math.min(target.y, 1.5) * dive : 0, t, end);
   goalFront(g, scored && after > 0 ? Math.min(1, after / 300) : 0, scored ? { target } : null);
 
   // A free kick has a wall, which jumps as the ball goes.
@@ -124,7 +120,7 @@ function shot(g: CanvasRenderingContext2D, t: number, m: HighlightMoment) {
       else if (saved) [bx, by, r] = [to2.x + side * 160 * a, to2.y - 60 * Math.sin(a * Math.PI) + 40 * a, 8 + 3 * a];
       else [bx, by, r] = [to2.x + (to2.x - 500) * 0.5 * a, to2.y - 50 * a, 8 - 3 * a];
     }
-    taker(g, 1);
+    taker(g, 1, end);
     ball(g, bx, by, Math.max(4, r), (t - STRIKE) / 40);
   }
   if (after > 0) banner(g, TITLE[m.kind], scored, after, 92);

@@ -3,7 +3,10 @@
  * banners and the players seen from behind, from the front, from the side
  * and from above. Everything is drawn on a 1000 × 600 logical screen.
  */
-import { type Pose, pixelGrid } from "../floodlight/PixelPlayer.js";
+import { BACK_RUN_CYCLE, type Pose, RUN_CYCLE, pixelGrid } from "../floodlight/PixelPlayer.js";
+
+/** The frame of a 4-frame cycle at `phase` (radians, one cycle per 2π). */
+const frameAt = (cycle: Pose[], phase: number) => cycle[Math.floor((((phase % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (Math.PI / 2)) % 4]!;
 
 export const W = 1000;
 export const H = 600;
@@ -169,52 +172,181 @@ export interface Look {
   hair?: string;
 }
 
+// ------------------------------------------------------------ illustrated players (art/players, art/penalty)
+
+/**
+ * Six-frame strips drawn in GUS, feet at the bottom of each cell. The kit is
+ * key-blue (hue 205-260) and is repainted in the shirt colour of the look.
+ * Until a strip has loaded, the pixel rig draws instead.
+ */
+const SHEETS = {
+  /** Seen from behind: run with the ball (2), cut with the ball (leans right), slide (to the left), down on all fours, pass. */
+  heroBack: "/art/players/hero-back.webp",
+  /** From the side, facing right: crouched start, run (4), arms up. */
+  heroSide: "/art/players/hero-side.webp",
+  /** From the side, facing right: crouched start, run (4), beaten. */
+  rivalSide: "/art/players/rival-side.webp",
+  /** Facing you: stance, run (2), run with the ball, slide (to the left), sat down beaten. */
+  rivalFront: "/art/players/rival-front.webp",
+  /** From above: standing, run (2), pass, control, arms up. */
+  top: "/art/players/top.webp",
+  /** Seen from behind: hands on hips (frame 0). */
+  shooter: "/art/penalty/shooter.webp",
+} as const;
+type Sheet = keyof typeof SHEETS;
+
+const IMAGES = new Map<Sheet, HTMLImageElement>();
+const PAINTED = new Map<string, HTMLCanvasElement>();
+function sheetFor(sheet: Sheet, shirt: string): HTMLCanvasElement | null {
+  if (typeof Image === "undefined" || typeof document === "undefined") return null;
+  let img = IMAGES.get(sheet);
+  if (!img) {
+    img = Object.assign(new Image(), { src: SHEETS[sheet] });
+    IMAGES.set(sheet, img);
+  }
+  if (!img.complete || !img.naturalWidth) return null;
+  const key = `${sheet}|${shirt}`;
+  let c = PAINTED.get(key);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const x = c.getContext("2d", { willReadFrequently: true })!;
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height);
+    const [tr, tg, tb] = [1, 3, 5].map((i) => parseInt(shirt.slice(i, i + 2), 16) / 255) as [number, number, number];
+    const px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3]! < 8) continue;
+      const r = px[i]! / 255;
+      const g = px[i + 1]! / 255;
+      const b = px[i + 2]! / 255;
+      const mx = Math.max(r, g, b);
+      const mn = Math.min(r, g, b);
+      if (mx !== b || mx - mn < 0.35 * mx) continue;
+      const h = 60 * ((r - g) / (mx - mn) + 4);
+      if (h < 205 || h > 260) continue;
+      const k = Math.min(1.25, mx / 0.9); // keep the shading
+      px[i] = Math.min(255, tr * 255 * k);
+      px[i + 1] = Math.min(255, tg * 255 * k);
+      px[i + 2] = Math.min(255, tb * 255 * k);
+    }
+    x.putImageData(d, 0, 0);
+    PAINTED.set(key, c);
+  }
+  return c;
+}
+
+/** True once the strip of players seen from behind (`back`) or facing you has loaded: the picture then shows the ball at their feet. */
+export function artReady(back: boolean): boolean {
+  const img = IMAGES.get(back ? "heroBack" : "rivalFront");
+  return !!img && img.complete && img.naturalWidth > 0;
+}
+
+/** Frame `n` of a strip, `h` px tall, feet at the origin. False until the strip has loaded. */
+function art(g: G, sheet: Sheet, look: Look, n: number, h: number, flip: boolean): boolean {
+  const c = sheetFor(sheet, look.shirt);
+  if (!c) return false;
+  const cw = c.width / 6;
+  const w = (h * cw) / c.height;
+  g.save();
+  if (flip) g.scale(-1, 1);
+  g.drawImage(c, n * cw, 0, cw, c.height, -w / 2, -h, w, h);
+  g.restore();
+  return true;
+}
+
+/** Which of two frames, alternating with a running cycle (radians). */
+const step = (phase: number) => (Math.floor(((phase % (2 * Math.PI)) + 2 * Math.PI) / Math.PI) % 2 === 0 ? 0 : 1);
+/** Which of four frames of a running cycle (radians). */
+const step4 = (phase: number) => Math.floor((((phase % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
+
 /**
  * A player standing or running, feet at (x, y), about 280 px tall at scale 1,
- * seen from behind (`back`) or from the front. `stride` is the running cycle
- * in radians; `lean` tilts him (radians, + to the right); `slide` 0..1 puts
- * him down in a sliding tackle towards the side of `lean`.
+ * seen from behind (`back`: you) or from the front (the other side). `stride`
+ * is the running cycle in radians; `lean` tilts him (radians, + to the right);
+ * `slide` 0..1 puts him down in a sliding tackle towards the side of `lean`.
+ * `act`: "ball" when the ball is at his feet, "beaten" or "down" when he lost.
+ * Returns true when the picture already shows the ball at his feet.
  */
-export function figure(g: G, x: number, y: number, scale: number, look: Look, o: { back: boolean; stride?: number; lean?: number; slide?: number }) {
+export function figure(g: G, x: number, y: number, scale: number, look: Look, o: { back: boolean; stride?: number; lean?: number; slide?: number; act?: "ball" | "beaten" | "down" }): boolean {
   const lean = o.lean ?? 0;
   const slide = Math.max(0, Math.min(1, o.slide ?? 0));
   const s = o.stride ?? 0;
-  const pose: Pose = o.back ? "back" : slide > 0 ? "kick" : s && Math.sin(s) > 0 ? "run" : "idle";
   shadow(g, x, y - 6 * scale, 46 * scale);
   g.save();
   g.translate(x, y);
-  if (slide > 0) {
-    // Down on the grass: the whole body turns towards the slide.
-    g.translate(Math.sign(lean || 1) * 40 * slide * scale, -10 * slide * scale);
-    g.rotate(Math.sign(lean || 1) * (Math.PI / 2.3) * slide);
-  } else g.rotate(lean * 0.6);
-  // The running cycle: the stride leg swaps sides.
-  pixelSprite(g, look, pose, 280 * scale, !o.back && !!s && Math.sin(s / 2) > 0);
+  const h = 270 * scale;
+  let drawn = false;
+  let ball = false;
+  if (o.back) {
+    // You, from behind.
+    if (slide > 0) {
+      g.translate(Math.sign(lean || 1) * 40 * slide * scale, 0);
+      drawn = art(g, "heroBack", look, 3, h * 0.95, lean > 0);
+    } else if (o.act === "down") drawn = art(g, "heroBack", look, 4, h * 0.8, lean > 0);
+    else if (s || o.act === "ball") {
+      const cut = Math.abs(lean) > 0.2;
+      g.rotate(lean * 0.25);
+      drawn = art(g, "heroBack", look, cut ? 2 : step(s), h, cut && lean < 0);
+      ball = drawn;
+    } else drawn = art(g, "shooter", look, 0, h, false);
+  } else {
+    // The other side, facing you.
+    if (slide > 0) {
+      g.translate(Math.sign(lean || 1) * 40 * slide * scale, 0);
+      drawn = art(g, "rivalFront", look, 4, h * 0.85, lean > 0);
+    } else if (o.act === "beaten" || o.act === "down") drawn = art(g, "rivalFront", look, 5, h * 0.8, lean > 0);
+    else {
+      g.rotate(lean * 0.4);
+      if (o.act === "ball") {
+        drawn = art(g, "rivalFront", look, 3, h, step(s) === 1);
+        ball = drawn;
+      } else drawn = art(g, "rivalFront", look, s ? 1 + step(s) : 0, h, false);
+    }
+  }
+  if (!drawn) {
+    // The pixel rig, until the art has loaded.
+    const pose: Pose = slide > 0 ? "slide" : s ? frameAt(o.back ? BACK_RUN_CYCLE : RUN_CYCLE, s) : o.back ? "back" : "idle";
+    if (slide > 0) g.rotate(Math.sign(lean || 1) * 0.12 * slide);
+    else g.rotate(lean * 0.6);
+    pixelSprite(g, look, pose, 280 * scale, slide > 0 && lean > 0);
+  }
   g.restore();
+  return ball;
 }
 
 /**
  * A runner seen from the side, facing right, feet at (x, y), about 200 px
  * tall at scale 1. `phase` is the running cycle; `speed` 0..1 sets the lean
- * and how far the limbs reach.
+ * and how far the limbs reach. `o.rival` is the other side; `o.set` crouched
+ * on the line before GO; `o.end` once the race is over.
  */
-export function sideRunner(g: G, x: number, y: number, scale: number, look: Look, phase: number, speed: number) {
+export function sideRunner(g: G, x: number, y: number, scale: number, look: Look, phase: number, speed: number, o: { rival?: boolean; set?: boolean; end?: "won" | "lost" } = {}) {
   const reach = 0.25 + 0.75 * Math.max(0, Math.min(1, speed));
   shadow(g, x, y - 4 * scale, 34 * scale);
   g.save();
-  g.translate(x, y - Math.abs(Math.sin(phase)) * 8 * reach * scale);
-  g.rotate(0.04 + 0.12 * reach);
-  pixelSprite(g, look, speed > 0.05 ? "run" : "idle", 200 * scale, Math.sin(phase) > 0);
+  const running = !o.set && !o.end && speed > 0.05;
+  g.translate(x, y - (running ? Math.abs(Math.sin(phase)) * 6 * reach * scale : 0));
+  const sheet: Sheet = o.rival ? "rivalSide" : "heroSide";
+  const n = o.set ? 0 : o.end && (o.rival ? o.end === "lost" : o.end === "won") ? 5 : running ? 1 + step4(phase) : 1;
+  if (!art(g, sheet, look, n, (n === 0 ? 170 : 215) * scale, false)) {
+    g.rotate(0.04 + 0.12 * reach);
+    // The rig runs to the left of the picture: mirrored to face right.
+    pixelSprite(g, look, speed > 0.05 ? frameAt(RUN_CYCLE, phase) : "idle", 200 * scale, true);
+  }
   g.restore();
 }
 
-/** A player seen from above at (x, y), facing `angle` (radians, 0 = up the pitch): drawn as the kit's pixel footballer. */
-export function topPlayer(g: G, x: number, y: number, look: Look, angle: number, phase: number, size = 1) {
+/** A player seen from above at (x, y), facing `angle` (radians, 0 = up the pitch); `act` "pass" or "joy". */
+export function topPlayer(g: G, x: number, y: number, look: Look, angle: number, phase: number, size = 1, act?: "pass" | "joy") {
   shadow(g, x, y + 22 * size, 20 * size);
   g.save();
   g.translate(x, y + 30 * size);
-  const moving = Math.abs(Math.sin(phase)) > 0.3;
-  pixelSprite(g, look, Math.abs(angle) > Math.PI / 2 ? "idle" : moving ? "run" : "idle", 74 * size, Math.sin(phase) > 0 || Math.sin(angle) < 0);
+  const n = act === "pass" ? 3 : act === "joy" ? 5 : phase ? 1 + step(phase) : 0;
+  if (!art(g, "top", look, n, 84 * size, Math.sin(angle) < 0)) {
+    pixelSprite(g, look, Math.abs(angle) > Math.PI / 2 || !phase ? "idle" : frameAt(RUN_CYCLE, phase), 74 * size, Math.sin(angle) > 0);
+  }
   g.restore();
   if (look.number) {
     g.save();
@@ -237,7 +369,8 @@ function spriteOf(look: Look, pose: Pose, flip: boolean): HTMLCanvasElement | nu
   if (SPRITES.has(key)) return SPRITES.get(key)!;
   let c: HTMLCanvasElement | null = null;
   if (typeof document !== "undefined") {
-    const n = [...key].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 1_000_003, 7);
+    // The face comes from the look only, so he keeps his skin and hair from one frame to the next.
+    const n = [...`${look.shirt}|${look.shorts ?? ""}|${look.hair ?? ""}|${look.number ?? ""}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 1_000_003, 7);
     const grid = pixelGrid({ n, shirt: look.shirt, shorts: look.shorts, pose, flip, colors: look.hair ? { hair: look.hair } : undefined });
     c = document.createElement("canvas");
     c.width = grid[0]?.length ?? 34;
