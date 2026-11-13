@@ -381,6 +381,19 @@ describe("passkey backups", () => {
     return { chain, box, app, kp, account: r.account_id, sign, vaults, wait: (ms: number) => (t += ms), now: () => t };
   }
 
+  it("a recovery key's backup is found by its id alone, a passkey's is not", async () => {
+    const { app, kp, account, sign, now } = await signedUp();
+    const mine = { ...entry, credential_id: "recovery-key-AbCdEfGhIjKlMnOp" };
+    expect((await post(app, "/v1/vault", { ...mine, account_id: account, public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(mine) })).status).toBe(200);
+    expect((await post(app, "/v1/vault", { ...entry, account_id: account, public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(entry) })).status).toBe(200);
+    const found = await post(app, "/v1/vault/find", { credential_id: mine.credential_id });
+    expect(found.status).toBe(200);
+    expect(await found.json()).toEqual({ account_id: account, vault: mine });
+    expect((await post(app, "/v1/vault/find", { credential_id: "recovery-key-0000000000000000" })).status).toBe(404);
+    // Only a recovery key's id is taken: a passkey's backup still needs the email code.
+    expect((await post(app, "/v1/vault/find", { credential_id: entry.credential_id })).status).toBe(400);
+  });
+
   it("stores a backup signed by a key of the account, and hands it back after the email code", async () => {
     const { app, kp, account, sign, box, now } = await signedUp();
     const r = await post(app, "/v1/vault", { ...entry, account_id: account, public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(entry) });

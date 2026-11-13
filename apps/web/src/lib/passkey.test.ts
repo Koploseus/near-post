@@ -59,6 +59,13 @@ describe("recovery key backup", () => {
       expect((await unlockWithRecoveryKey(accountId, [b], key)).privateKey).toBe(privateKey);
       await expect(unlockWithRecoveryKey(accountId, [b], encodeRecovery(new Uint8Array(20)))).rejects.toThrow(/doesn't open/);
       await expect(unlockWithRecoveryKey("other.near-post.testnet", [b], key)).rejects.toThrow(/doesn't open/);
+      // The key alone signs in: its backup's id is a hash of the key, the relay answers with the account and the backup.
+      const { signInWithRecoveryKey, recoveryId, decodeRecovery } = await import("./passkey.js");
+      expect(await recoveryId(decodeRecovery(key)!)).toBe(b.credential_id);
+      globalThis.fetch = (async (_u: string, init: { body: string }) =>
+        JSON.parse(init.body).credential_id === b.credential_id ? new Response(JSON.stringify({ account_id: accountId, vault: b }), { status: 200 }) : new Response("{}", { status: 404 })) as unknown as typeof fetch;
+      expect(await signInWithRecoveryKey(key.toLowerCase())).toEqual({ accountId, privateKey });
+      await expect(signInWithRecoveryKey(encodeRecovery(new Uint8Array(20)))).rejects.toThrow(/No account/);
     } finally {
       globalThis.fetch = real;
     }
