@@ -34,7 +34,7 @@ describe("a transaction signed here", () => {
     const signer = hex(pair.publicKey);
     const blockHash = base58(sha256(utf8("a block")));
     const raw = unbase64(
-      signedCall({ signerId: signer, secretKey: pair.secretKey, nonce: 277429097000001n, receiverId: "league-v12.near-post.testnet", blockHash, method: "report_for_match", args: { token_id: "p1" }, gas: 30_000_000_000_000n, deposit: 1n }),
+      signedCall({ signerId: signer, secretKey: pair.secretKey, nonce: 277429097000001n, receiverId: "league-v13.near-post.testnet", blockHash, method: "report_for_match", args: { token_id: "p1" }, gas: 30_000_000_000_000n, deposit: 1n }),
     );
     const tx = raw.subarray(0, raw.length - 65);
     expect(raw[raw.length - 65]).toBe(0); // an ed25519 signature
@@ -49,7 +49,7 @@ describe("a transaction signed here", () => {
     expect(bytes(1)[0]).toBe(0);
     expect(hex(bytes(32))).toBe(signer); // an implicit account's key is the account
     expect(u64()).toBe(277429097000001n);
-    expect(str()).toBe("league-v12.near-post.testnet");
+    expect(str()).toBe("league-v13.near-post.testnet");
     expect(base58(bytes(32))).toBe(blockHash);
     expect(u32()).toBe(1);
     expect(bytes(1)[0]).toBe(2); // FunctionCall
