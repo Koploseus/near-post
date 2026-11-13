@@ -325,7 +325,8 @@ function PlayerColumn() {
         <Avatar look={me.look} n={faceNumber(me.token_id)} size={190} />
         <span className="avatar-rating">{me.overall}</span>
       </div>
-      <h3>{me.name}</h3>
+      {/* A long name in one word is written smaller, so it stays whole on the card. */}
+      <h3 className={Math.max(...me.name.split(" ").map((w) => w.length)) > 12 ? "long" : Math.max(...me.name.split(" ").map((w) => w.length)) > 8 ? "longish" : undefined}>{me.name}</h3>
       <p className="note">{club ? club.name : "Free agent"}</p>
       <dl className="player-facts">
         <dt>Goals</dt>
