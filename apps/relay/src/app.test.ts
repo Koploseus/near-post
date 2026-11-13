@@ -390,6 +390,8 @@ describe("passkey backups", () => {
     expect(found.status).toBe(200);
     expect(await found.json()).toEqual({ account_id: account, vault: mine });
     expect((await post(app, "/v1/vault/find", { credential_id: "recovery-key-0000000000000000" })).status).toBe(404);
+    // For a key whose backup has a random name, the browser gets the recovery keys' backups and tries each. A passkey's is never among them.
+    expect(await (await post(app, "/v1/vault/legacy", {})).json()).toEqual({ vaults: [{ account_id: account, vault: mine }] });
     // Only a recovery key's id is taken: a passkey's backup still needs the email code.
     expect((await post(app, "/v1/vault/find", { credential_id: entry.credential_id })).status).toBe(400);
   });

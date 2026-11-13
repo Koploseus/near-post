@@ -51,6 +51,18 @@ export class Vaults {
     return null;
   }
 
+  /**
+   * Every recovery key's backup. Those saved before a key named its own backup (13 November 2026), or by
+   * a browser still running the older page, have random names: the browser gets them all and tries the
+   * key on each. They are few, and a ciphertext opens with its 160-bit key only.
+   */
+  recoveries(most = 500): { account_id: string; entry: VaultEntry }[] {
+    const out: { account_id: string; entry: VaultEntry }[] = [];
+    for (const [account_id, list] of Object.entries(this.data))
+      for (const entry of list) if (entry.credential_id.startsWith("recovery-key-") && out.length < most) out.push({ account_id, entry });
+    return out;
+  }
+
   put(accountId: string, entry: VaultEntry) {
     const list = this.get(accountId).filter((e) => e.credential_id !== entry.credential_id);
     list.push(entry);
