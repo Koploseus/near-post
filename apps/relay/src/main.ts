@@ -102,7 +102,7 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
   startScheduler(chain, config.LEAGUE_ID, {
     kickoffs,
     ...(crowdKey && clubs.length
-      ? { crowd: { clubs, every: config.CROWD_EVERY, asFan: (fan: string) => rpcChain(agentRpcs, { accountId: fan, privateKey: crowdKey }) } }
+      ? { crowd: { clubs, every: config.CROWD_EVERY, asFan: (fan: string) => rpcChain(agentRpcs, { accountId: fan, privateKey: crowdKey }), file: config.DATA_DIR ? `${config.DATA_DIR}/crowd-${config.LEAGUE_ID}.json` : null } }
       : {}),
     ...(config.KEEP_FUNDED
       ? {

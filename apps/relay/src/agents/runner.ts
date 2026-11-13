@@ -50,6 +50,8 @@ interface Schedule {
   match_day: number;
   first_half_played: boolean;
   season?: number;
+  /** Kick-off of the current match day (or of the next one, before it starts), in ms. */
+  kickoff_at_ms?: string;
 }
 interface Club {
   name: string;
@@ -219,7 +221,9 @@ export class Agents {
     const fixtures = await this.league<[string, string][]>("fixtures_of", { match_day: day });
     const opponent = new Map<string, string>();
     for (const [h, a] of fixtures) opponent.set(h, a).set(a, h);
-    const ctx: Ctx = { day, season: s.season ?? 1, clubs, table, opponent, squads: new Map(), lineups: new Map(), results: null };
+    // The team sheet closes a minute before kick-off (and stays closed during the match): resting is refused after that.
+    const sheetOpen = s.kickoff_at_ms === undefined || Date.now() + 90_000 <= Number(s.kickoff_at_ms);
+    const ctx: Ctx = { day, season: s.season ?? 1, clubs, table, opponent, squads: new Map(), lineups: new Map(), results: null, sheetOpen };
 
     if (!s.first_half_played) {
       const coaches = this.coaches.filter((c) => clubs.has(c.account) && !this.cantSign.has(c.account));
@@ -502,7 +506,7 @@ export class Agents {
     if (club && !outOfIt) {
       // Tired legs sit the match day out (a day off gives energy back faster, and a match on empty legs can hurt).
       if (energy < restBelow(f.character, rules.injury_below ?? 0, rules.energy_match ?? 12)) {
-        if (!(await this.league<boolean>("is_resting", { token_id: fb.token_id, match_day: ctx.day }))) {
+        if (ctx.sheetOpen && !(await this.league<boolean>("is_resting", { token_id: fb.token_id, match_day: ctx.day }))) {
           await this.act(f, out, () => me.call(this.d.leagueId, "rest_today", {}, 30), { what: "rested" });
         }
       } else {
@@ -1022,6 +1026,8 @@ interface Ctx {
   squads: Map<string, Promise<Player[]>>;
   lineups: Map<string, Promise<Lineup>>;
   results: MatchResult[] | null;
+  /** A footballer can still say he rests today (the contract takes it until a minute before kick-off). */
+  sheetOpen: boolean;
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));

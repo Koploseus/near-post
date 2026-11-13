@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Chain } from "./chain.js";
 import { type CrowdClub, seatedBy, unit } from "./crowd.js";
 
@@ -124,13 +126,31 @@ export interface SchedulerOptions {
   /** How often to look whether a half is due (3 s: a half starts at most a few seconds late). */
   everyMs?: number;
   kickoffs?: Kickoffs;
-  crowd?: { clubs: CrowdClub[]; every: number; asFan: (fan: string) => Chain };
+  /** `file`: where the fans already sent today are kept, so that a restart does not send them again (the contract refuses a second check-in). */
+  crowd?: { clubs: CrowdClub[]; every: number; asFan: (fan: string) => Chain; file?: string | null };
   keep?: { contracts: string[]; minFree: bigint; topUp: bigint };
 }
 
 /** Checks every `everyMs`; anyone else may play a match day first, that is fine. */
 export function startScheduler(chain: Chain, leagueId: string, opts: SchedulerOptions = {}) {
+  const file = opts.crowd?.file ?? null;
   const done = new Set<string>();
+  if (file)
+    try {
+      for (const k of JSON.parse(readFileSync(file, "utf8")) as string[]) done.add(k);
+    } catch {
+      // No file yet: nobody was sent.
+    }
+  const keep = () => {
+    if (!file) return;
+    try {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(`${file}.tmp`, JSON.stringify([...done]));
+      renameSync(`${file}.tmp`, file);
+    } catch (e) {
+      console.error(`crowd: could not remember who is seated: ${e instanceof Error ? e.message : e}`);
+    }
+  };
   let n = 0;
   let busy = false;
   const log = (what: string) => (e: unknown) => console.error(`${what}: ${e instanceof Error ? e.message : e}`);
@@ -143,7 +163,9 @@ export function startScheduler(chain: Chain, leagueId: string, opts: SchedulerOp
       // The rest needs no hurry: every tenth look (30 s).
       if (n++ % 10 !== 0) return;
       if (opts.crowd) {
+        const before = done.size;
         const seated = await crowdTick(chain, opts.crowd.asFan, leagueId, opts.crowd.clubs, opts.crowd.every, done).catch(log("crowd"));
+        if (done.size !== before || seated?.length) keep();
         if (seated?.length) console.log(`crowd: ${seated.length} fans seated`);
       }
       if (opts.keep && n % 200 === 1) {
