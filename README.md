@@ -1015,6 +1015,7 @@ refuses packages published less than a day ago.
 
 ## License
 
-[Business Source License 1.1](LICENSE), licensor OPENWEB3: you may read,
-copy, modify and run NEAR Post for non-production use. On 2030-11-14 it
-becomes GPL-2.0-or-later. Third-party libraries keep their own licenses.
+[NEAR Post Source-Available License](LICENSE), (c) 2026 OPENWEB3, all rights
+reserved: you may read the code and run it privately to evaluate, judge or
+audit it. Any copy, change, redistribution or operation needs our written
+permission. Third-party libraries keep their own licenses.
