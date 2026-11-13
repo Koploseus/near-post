@@ -133,10 +133,15 @@ const whistle = (a: AudioContext, at: number, blows: number[]) => {
   return t;
 };
 
-/** The ball: a dull thump, harder with more power, and a little leather click. */
+/**
+ * The ball: a short "pock" heard on a phone or a laptop speaker (which play
+ * nothing under about 150 Hz), with a low body for headphones. Harder with more power.
+ */
 const thump = (a: AudioContext, at: number, power: number) => {
-  tone(a, vary(150, 0.08), at, 0.11, "sine", 0.22 + 0.2 * power, 50);
-  hiss(a, at, 0.03, 0.05, 2600, 2600, 0.8, 0.2);
+  const p = Math.max(0, Math.min(1, power));
+  tone(a, vary(520 + 160 * p, 0.06), at, 0.045, "triangle", 0.16 + 0.1 * p, 260);
+  tone(a, vary(240, 0.06), at, 0.09, "sine", 0.2 + 0.12 * p, 90);
+  hiss(a, at, 0.04, 0.09 + 0.05 * p, 1800, 1400, 1.2, 0.1);
 };
 
 const notes = (a: AudioContext, list: [number, number][], type: OscillatorType, level: number, from: number) => {
@@ -158,9 +163,14 @@ export type Sfx =
 const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, near: 4000, miss: 700, beaten: 700, cheer: 600, ole: 500, kick: 80, tackle: 400 };
 const last = new Map<Sfx, number>();
 
-export function play(what: Sfx, power = 0.6) {
+export function play(what: Sfx, power = 0.6, waited = false) {
   const a = context();
-  if (!a || a.state !== "running") return;
+  if (!a) return;
+  if (a.state !== "running") {
+    // Waking up from the tap that asked for it: play once it is awake.
+    if (!waited && document.visibilityState === "visible") void a.resume().then(() => play(what, power, true), () => {});
+    return;
+  }
   const now = performance.now();
   const gap = GAP[what];
   if (gap && now - (last.get(what) ?? -1e9) < gap) return;
@@ -175,39 +185,38 @@ export function play(what: Sfx, power = 0.6) {
     case "penalty": return void whistle(a, t, [0.45]);
     case "go": return void whistle(a, t, [0.12]);
     case "goal":
-      roar(a, t, 2.4, 0.2);
+      roar(a, t, 1.6, 0.1);
       return notes(a, [[523, 0.1], [659, 0.1], [784, 0.22]], "square", 0.04, t);
     case "my_goal":
-      roar(a, t, 3.4, 0.26);
+      roar(a, t, 2.2, 0.14);
       return notes(a, [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.12], [784, 0.09], [1047, 0.34]], "square", 0.05, t);
     case "win":
-      roar(a, t, 3.2, 0.18);
+      roar(a, t, 2, 0.1);
       return notes(a, [[523, 0.14], [523, 0.14], [659, 0.14], [784, 0.2], [659, 0.12], [784, 0.14], [1047, 0.5]], "square", 0.05, t);
     case "lose":
-      ooh(a, t, 0.08);
+      ooh(a, t, 0.04);
       return notes(a, [[392, 0.26], [349, 0.26], [311, 0.26], [262, 0.6]], "triangle", 0.07, t + 0.3);
     case "draw": return notes(a, [[440, 0.18], [494, 0.18], [440, 0.4]], "triangle", 0.07, t);
     case "gain": return notes(a, [[1319, 0.07], [1568, 0.07], [2093, 0.16]], "square", 0.03, t);
     case "kick": return thump(a, t, Math.max(0, Math.min(1, power)));
     case "net":
       hiss(a, t, 0.35, 0.06, 3200, 5000, 0.6, 0.1);
-      return roar(a, t + 0.05, vary(1.4, 0.1), 0.14);
+      return roar(a, t + 0.05, vary(0.9, 0.1), 0.06);
     case "save":
-      tone(a, vary(220), t, 0.06, "sine", 0.12, 120);
-      return ooh(a, t + 0.08, 0.1);
+      tone(a, vary(430), t, 0.06, "triangle", 0.12, 200);
+      return void hiss(a, t, 0.05, 0.06, 1200, 900, 1, 0.1);
     case "post":
       tone(a, vary(880, 0.03), t, 0.5, "triangle", 0.06, 860);
       tone(a, vary(1320, 0.03), t, 0.35, "sine", 0.03);
-      return ooh(a, t + 0.12, 0.1);
-    case "miss": case "beaten": return ooh(a, t, 0.09);
-    case "near": return ooh(a, t, 0.06);
+      return;
+    case "miss": case "beaten": return ooh(a, t, 0.035);
+    case "near": return ooh(a, t, 0.03);
     case "ole":
-      hiss(a, t, 0.22, 0.09, 480, 520, 1.4, 0.3);
-      return hiss(a, t + 0.26, 0.5, 0.11, 760, 820, 1.4, 0.25);
+      hiss(a, t, 0.2, 0.045, 480, 520, 1.4, 0.3);
+      return hiss(a, t + 0.24, 0.4, 0.055, 760, 820, 1.4, 0.25);
     case "tackle":
-      hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
-      return roar(a, t + 0.15, 0.9, 0.08);
-    case "cheer": return roar(a, t, vary(1.1, 0.1), 0.11);
+      return hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
+    case "cheer": return roar(a, t, vary(0.7, 0.1), 0.045);
     case "passed": return notes(a, [[523, 0.1], [659, 0.1], [784, 0.1], [1047, 0.32]], "square", 0.045, t);
     case "failed": return notes(a, [[392, 0.2], [330, 0.4]], "triangle", 0.06, t);
   }
