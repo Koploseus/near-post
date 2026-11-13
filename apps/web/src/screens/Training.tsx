@@ -7,6 +7,7 @@ import { DribbleGame, PassesGame, SprintGame, TacklesGame } from "./Games.js";
 import { PenaltyGame } from "./Penalty.js";
 import { SKILLS, g } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
+import { play } from "../lib/sound.js";
 import { attestDrill, finishTraining, league, leagueCall, startDrill, train } from "../lib/near.js";
 import { serverNow } from "../lib/time.js";
 import type { Player, Schedule, Skill, Ticket } from "../lib/types.js";
@@ -90,6 +91,7 @@ export function Training({ me }: { me: Player }) {
         const saved = { ticket: ticket.id, ...a };
         saveAttested(saved);
         setAttested(saved);
+        play(a.points > 0 ? "passed" : "failed");
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
