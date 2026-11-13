@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { type Key, type V, frameAt, keyframes, positions } from "../lib/flow.js";
+import { type Key, type V, atBall, frameAt, keyframes, positions } from "../lib/flow.js";
 import { type Clock, HALF_SECONDS } from "../lib/live.js";
 import { BOT, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
 import { ball as drawBall, sprite } from "./art.js";
@@ -81,6 +81,9 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
     let bp: V = [50, 50];
     let flight = 0;
     let placed = false;
+    /** How much each side is attacking (0 to 1, eased), and who of each was at the ball last. */
+    const attack = [0, 0];
+    const lastAtBall: (number | undefined)[] = [undefined, undefined];
     let cur = live.current.c.second;
     let cam = PW / 2;
     let zoom = 1;
@@ -100,7 +103,16 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
 
       const at: Key = L.stopped ? { t: cur, ball: [50, 50], side: 0, dead: true } : frameAt(L.keys, cur);
       const f = [L.m.formations[L.second ? 2 : 0] ?? L.m.formations[0]!, L.m.formations[L.second ? 3 : 1] ?? L.m.formations[1]!];
-      const targets = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined));
+      // Stopped, or the ball on the centre spot for a kick-off: each eleven in its own half.
+      const restart = L.stopped ? ("rest" as const) : at.dead && Math.hypot(at.ball[0] - 50, at.ball[1] - 50) < 1.5 ? ("kickoff" as const) : undefined;
+      const targets = ([0, 1] as const).map((side) => {
+        // A side takes a second or so to turn from defending to attacking: the blocks do not jump with the ball.
+        const want = at.side === side ? 1 : 0;
+        attack[side] = placed ? attack[side]! + (want - attack[side]!) * Math.min(1, dt / 1.4) : want;
+        const out = positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined, { attack: attack[side]!, ...(lastAtBall[side] !== undefined ? { prefer: lastAtBall[side]! } : {}), ...(restart ? { restart } : {}) });
+        if (!restart) lastAtBall[side] = atBall(out, at.ball);
+        return out;
+      });
       const gone = (side: number, k: number) =>
         (L.second && L.m.elevens[2 + side]?.[k] === "") || L.shown.some((e) => e.kind === "red" && e.half === L.half && Number(!e.home) === side && e.player === k);
 

@@ -195,47 +195,98 @@ export function frameAt(keys: Key[], s: number): Key {
   return keys[keys.length - 1]!;
 }
 
+export interface Shape {
+  /**
+   * How much the side is attacking, 0 to 1. By default 1 for the side on the
+   * ball and 0 for the other; the live pitch eases it over a second or so, so
+   * that a block does not jump when the ball changes feet.
+   */
+  attack?: number;
+  /**
+   * The ball is on the centre spot and play is stopped: both elevens are in
+   * their own half and the side without the ball stays out of the centre
+   * circle. "kickoff": the side on the ball has a man on it. "rest": nobody
+   * has it (before the match, at half-time, after the whistle).
+   */
+  restart?: "kickoff" | "rest";
+  /** The slot that went to the ball (or pressed) last time: he keeps going unless another is clearly nearer. */
+  prefer?: number;
+}
+
+const mix = (a: number, b: number, p: number) => a + (b - a) * p;
+const within = (lo: number, hi: number, v: number) => Math.min(hi, Math.max(lo, v));
+
+/** The slot nearest to a point, with a head start for the one who was going already. */
+function nearest(out: V[], x: number, y: number, prefer?: number): number {
+  let best = 1;
+  let d = Infinity;
+  for (let k = 1; k < 11; k++) {
+    const dd = Math.hypot(out[k]![0] - x, out[k]![1] - y) - (k === prefer ? 5 : 0);
+    if (dd < d) (d = dd), (best = k);
+  }
+  return best;
+}
+
 /**
  * Where the eleven of `side` stand when the ball is at `ball` and `possession`
- * has it: the formation as a block that moves up and down with the ball,
- * wider when attacking; the keeper in his goal; the player on the ball on it.
+ * has it: the formation as a block that moves up and down with the ball
+ * (less than the ball does: a back line does not run the length of the
+ * pitch at every pass), wider when attacking; the keeper in his goal; the
+ * player on the ball on it.
  */
-export function positions(formation: Formation, side: Side, ball: V, possession: Side, carrier?: number): V[] {
+export function positions(formation: Formation, side: Side, ball: V, possession: Side, carrier?: number, shape: Shape = {}): V[] {
   // Work as if attacking to the right, then turn the result for the away side.
   const bx = side === 0 ? ball[0] : 100 - ball[0];
   const by = side === 0 ? ball[1] : 100 - ball[1];
-  const attacking = possession === side;
-  const back = attacking ? Math.min(58, Math.max(18, bx - 30)) : Math.min(42, Math.max(10, bx - 22));
-  const front = attacking ? Math.min(90, Math.max(48, bx + 18)) : Math.min(72, Math.max(34, bx + 14));
+  const has = possession === side;
+  const att = within(0, 1, shape.attack ?? (has ? 1 : 0));
   const spots = SPOTS[formation];
+  /** How far up the pitch a slot plays, 0 (back line) to 1 (front line). */
+  const rank = (sy: number) => within(0, 1, (76 - sy) / 62);
+  const turn = (out: V[]): V[] => (side === 0 ? out : out.map(([x, y]) => [100 - x, 100 - y] as V));
+
+  if (shape.restart) {
+    // Everyone in his own half; without the ball, behind the centre circle.
+    const kicking = shape.restart === "kickoff" && has;
+    const front = kicking ? 46 : 38;
+    const out: V[] = spots.map(([sx, sy], k) => (k === 0 ? [3, 50] : [mix(12, front, rank(sy)), clampY(50 + (100 - sx - 50) * 0.86)]));
+    if (kicking) {
+      // The one who plays highest and most central takes it, a team-mate beside him.
+      const order = [...Array(10).keys()].map((i) => i + 1).sort((a, b) => out[b]![0] - Math.abs(out[b]![1] - 50) * 0.3 - (out[a]![0] - Math.abs(out[a]![1] - 50) * 0.3));
+      const taker = carrier !== undefined && carrier > 0 && carrier < 11 ? carrier : order[0]!;
+      const mate = order.find((k) => k !== taker)!;
+      out[taker] = [48.8, 51.5];
+      out[mate] = [47.5, 60];
+    }
+    return turn(out);
+  }
+
+  // The back line and the front line: higher up with the ball, and higher still when attacking.
+  const back = mix(within(8, 44, 6 + bx * 0.42), within(20, 60, 16 + bx * 0.52), att);
+  const front = mix(within(32, 68, back + 28), within(52, 92, bx + 16), att);
+  const width = mix(0.7, 0.9, att);
   const out: V[] = spots.map(([sx, sy], k) => {
     if (k === 0) return [3, 50 + (by - 50) * 0.12];
-    // How far up the pitch the slot plays, 0 (back line) to 1 (front line).
-    const r = Math.min(1, Math.max(0, (76 - sy) / 62));
-    const x = back + (front - back) * r;
-    const width = attacking ? 0.9 : 0.72;
-    const y = 50 + (100 - sx - 50) * width + (by - 50) * 0.28;
-    return [x, clampY(y)];
+    return [mix(back, front, rank(sy)), clampY(50 + (100 - sx - 50) * width + (by - 50) * 0.22)];
   });
-  if (carrier !== undefined && carrier > 0 && carrier < 11 && possession === side) out[carrier] = [bx - 1.2, by + 1.5];
-  else if (possession === side) {
-    // Nobody named: the nearest outfield player goes to the ball.
-    let best = 1;
-    let d = Infinity;
-    for (let k = 1; k < 11; k++) {
-      const dd = (out[k]![0] - bx) ** 2 + (out[k]![1] - by) ** 2;
-      if (dd < d) (d = dd), (best = k);
-    }
-    out[best] = [bx - 1.2, by + 1.5];
+  if (has) {
+    // The man named is on the ball; nobody named: the nearest outfield player goes to it.
+    const k = carrier !== undefined && carrier > 0 && carrier < 11 ? carrier : nearest(out, bx, by, shape.prefer);
+    out[k] = [bx - 1.2, by + 1.5];
   } else {
-    // Out of possession: the nearest one presses.
-    let best = 1;
-    let d = Infinity;
-    for (let k = 1; k < 11; k++) {
-      const dd = (out[k]![0] - bx) ** 2 + (out[k]![1] - by) ** 2;
-      if (dd < d) (d = dd), (best = k);
-    }
-    out[best] = [bx - 4, by - 3];
+    // Out of possession: one presses, goal side of the ball.
+    out[nearest(out, bx, by, shape.prefer)] = [bx - 4, by - 3];
   }
-  return side === 0 ? out : out.map(([x, y]) => [100 - x, 100 - y]);
+  return turn(out);
+}
+
+/** The slot of `side` that is at the ball in `out` (on it, or pressing): what to hand back as `prefer` next time. */
+export function atBall(out: V[], ball: V): number {
+  let best = 1;
+  let d = Infinity;
+  for (let k = 1; k < 11; k++) {
+    const dd = Math.hypot(out[k]![0] - ball[0], out[k]![1] - ball[1]);
+    if (dd < d) (d = dd), (best = k);
+  }
+  return best;
 }
