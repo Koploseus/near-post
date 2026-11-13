@@ -138,6 +138,8 @@ export class Waker {
       }
       if (out.entries?.length) this.journal.save();
       if (out.idle) this.idle.set(share, phase);
+      // AGENTS_ENCLAVE_LOG=1: one line a run, to follow them in the logs.
+      if (process.env.AGENTS_ENCLAVE_LOG) console.log(`agents: share ${share} (${phase}): ${out.entries?.length ?? 0} entries, ${JSON.stringify({ ...out, entries: undefined, logs: undefined })} ${(out.logs ?? []).slice(-2).join(" | ").slice(0, 300)}`);
     } catch (e) {
       console.error(`agents: share ${share}: ${e instanceof Error ? e.message : e}`);
     }
