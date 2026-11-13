@@ -2204,6 +2204,44 @@ fn a_clause_needs_the_players_word() {
 }
 
 #[test]
+#[should_panic(expected = "a person moves only if he agrees")]
+fn a_club_cannot_sell_a_person_who_did_not_agree() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    bid(&mut l, "c1.testnet", &token, 1_000);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(token, acc("c0.testnet"), 1, "{\"accept\":0}".into());
+}
+
+#[test]
+#[should_panic(expected = "a person moves only if he agrees")]
+fn his_word_to_one_club_does_not_sell_him_to_another() {
+    let mut l = league_with(3, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    bid(&mut l, "c1.testnet", &token, 1_000);
+    as_caller("koplo.testnet");
+    l.sign_for(acc("c2.testnet"), 13);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(token, acc("c0.testnet"), 1, "{\"accept\":0}".into());
+}
+
+#[test]
+fn a_club_sells_a_person_to_the_club_he_gave_his_word_to() {
+    let mut l = league_with(2, 0);
+    let token = sign_person(&mut l, "koplo.testnet", "c0.testnet");
+    bid(&mut l, "c1.testnet", &token, 1_000);
+    as_caller("koplo.testnet");
+    l.sign_for(acc("c1.testnet"), 13);
+    as_caller("players.testnet");
+    let _ = l.nft_on_approve(token.clone(), acc("c0.testnet"), 1, "{\"accept\":0}".into());
+    assert_eq!(l.get_offer(0).unwrap().state, OfferState::Accepting);
+    // He gets there on the contract he chose.
+    l.on_player_transferred(token.clone(), acc("c0.testnet"), acc("c1.testnet"));
+    let c = l.get_player(token).unwrap().contract.unwrap();
+    assert_eq!((c.club, c.until_day), (acc("c1.testnet"), 13));
+}
+
+#[test]
 #[should_panic(expected = "pay exactly his release clause")]
 fn a_clause_is_paid_in_full() {
     let mut l = league_with(2, 0);
