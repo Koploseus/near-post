@@ -275,7 +275,7 @@ export function PasskeyIcon() {
  * The other backup: a recovery key, shown once, in a form a password manager
  * offers to save (Bitwarden keeps it like a password for this site).
  */
-export function RecoveryKeySetup({ session, username, onDone }: { session: Session | null; username: string; onDone?: () => void }) {
+export function RecoveryKeySetup({ session, username, onDone, replace = false }: { session: Session | null; username: string; onDone?: () => void; /** He has a backup already: a new key replaces his recovery key. */ replace?: boolean }) {
   const [key, setKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -299,7 +299,7 @@ export function RecoveryKeySetup({ session, username, onDone }: { session: Sessi
             }
           }}
         >
-          {busy ? "…" : "Use a recovery key instead (Bitwarden, other password managers)"}
+          {busy ? "…" : replace ? "Make a new recovery key (the one you have stops working)" : "Use a recovery key instead (Bitwarden, other password managers)"}
         </button>
         {error && (
           <p className="err" role="alert">

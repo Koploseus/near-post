@@ -392,6 +392,12 @@ describe("passkey backups", () => {
     expect((await post(app, "/v1/vault/find", { credential_id: "recovery-key-0000000000000000" })).status).toBe(404);
     // For a key whose backup has a random name, the browser gets the recovery keys' backups and tries each. A passkey's is never among them.
     expect(await (await post(app, "/v1/vault/legacy", {})).json()).toEqual({ vaults: [{ account_id: account, vault: mine }] });
+    // A new recovery key replaces the old one: the old key's backup is gone, the passkey's stays.
+    const next = { ...entry, credential_id: "recovery-key-ZyXwVuTsRqPoNmLk" };
+    expect((await post(app, "/v1/vault", { ...next, account_id: account, public_key: kp.getPublicKey().toString(), ts: now(), signature: sign(next) })).status).toBe(200);
+    expect((await post(app, "/v1/vault/find", { credential_id: mine.credential_id })).status).toBe(404);
+    expect((await post(app, "/v1/vault/find", { credential_id: next.credential_id })).status).toBe(200);
+    expect(await (await app.request(`/v1/vault/${account}`)).json()).toEqual({ passkeys: 2 });
     // Only a recovery key's id is taken: a passkey's backup still needs the email code.
     expect((await post(app, "/v1/vault/find", { credential_id: entry.credential_id })).status).toBe(400);
   });
