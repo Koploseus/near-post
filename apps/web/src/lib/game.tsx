@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { goalars, league, loadSession, type Session } from "./near.js";
 import { liveDay } from "./live.js";
 import { type Kickoffs, kickoffsOf, serverNow, syncClock } from "./time.js";
@@ -41,10 +41,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, []);
 
+  const loaded = useRef(false);
+  const day = schedule?.match_day ?? 0;
+  useEffect(() => {
+    loaded.current = false;
+  }, [session]);
   useEffect(() => {
     let live = true;
     (async () => {
-      setLoading(true);
+      // Only the first load shows "Loading…": a later one swaps the figures in place.
+      if (!loaded.current) setLoading(true);
       const [sched, player, bal] = await Promise.all([
         league<Schedule>("schedule").catch(() => null),
         session ? league<Player | null>("footballer_of", { account_id: session.accountId }).catch(() => null) : null,
@@ -59,11 +65,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setClub(c);
       setBalance(bal);
       setLoading(false);
+      loaded.current = true;
     })();
     return () => {
       live = false;
     };
   }, [session, tick]);
+
+  // Each new match day too: a club may have sold him, wages and goals have landed.
+  const seen = useRef(0);
+  useEffect(() => {
+    if (seen.current && day !== seen.current) setTick((n) => n + 1);
+    seen.current = day;
+  }, [day]);
 
   // One clock for every viewer: the relay's.
   useEffect(() => {
