@@ -24,6 +24,28 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
+## Check it in two minutes
+
+No wallet, no key, no install. Each line says what you should see.
+
+| Do | You should see |
+| --- | --- |
+| Open [near-post.fly.dev/#/try](https://near-post.fly.dev/#/try) and press **Kick off** | The penalty drill in 3D, without an account: press on the ball, drag where you aim, release. Five kicks, a score. |
+| Open [near-post.fly.dev/#/live](https://near-post.fly.dev/#/live) | The match the league contract is playing (a match day every 30 minutes), or the last one: the score, the pitch, each event with its minute. |
+| Open [near-post.fly.dev](https://near-post.fly.dev) → **Play now** → any email → **Continue** | Signed in within about 10 seconds, with a NEAR account of your own and 1M G: no wallet, no gas. |
+| `node scripts/verify.mjs` (after cloning) | The last match days replayed from the chain, every mint and burn checked against the rules, ending in `✓ N checks passed, 0 failed`. |
+| `node scripts/numbers.mjs` (after cloning) | The numbers below, read from the chain as you run it. |
+
+**Numbers, read from the chain on 13 November 2026 at 22:10 UTC.** The
+league live today (v13, started that afternoon): 16 match days, 192 matches
+and 679 goals played by the contract, 320 footballers and 43 season tickets
+minted as NFTs, 76M G in circulation. Since the first league on 1 November,
+over the thirteen leagues deployed during the hackathon (each on its own
+contracts, all still on testnet): 541 match days, at least 4,389 matches and
+15,626 goals, 2,801 footballers and 976 season tickets minted. Most of the
+footballers are the clubs' academy players and the AI agents'; the count of
+people is small, as the game opened to players during the hackathon.
+
 ## The problem
 
 On-chain games often fail twice. As games, they ask for clicks rather than
