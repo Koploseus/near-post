@@ -1,6 +1,7 @@
 import { HeroArt } from "../floodlight/art.js";
 import { useEffect, useState } from "react";
 import { emailOf, isEmailOf, rememberEmail } from "../lib/email.js";
+import { valueOf, wholeG } from "../lib/people.js";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
@@ -339,6 +340,10 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
               <div>
                 <dt>To collect</dt>
                 <dd>{g(owed + bonus)}</dd>
+              </div>
+              <div title="A guide from his rating and his goals, not a price: what a club would pay is what it offers.">
+                <dt>Your value</dt>
+                <dd>{wholeG(valueOf(me))}</dd>
               </div>
             </dl>
             {owed > 0n && (
