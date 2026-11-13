@@ -1,7 +1,7 @@
 /**
  * The game's sounds, made here with the Web Audio API (no file to load): the
- * ball, the net, the referee's whistle, a short tune when a drill or a match
- * ends. No crowd: the stand stays silent. On unless the player turns them off; his choice is remembered on this
+ * ball, the referee's whistle, the crowd, a short tune when a drill or a match
+ * ends. On unless the player turns them off; his choice is remembered on this
  * device. A browser plays nothing before the first tap, so the first tap anywhere
  * wakes the sound up.
  *
@@ -96,7 +96,7 @@ const tone = (a: AudioContext, freq: number, at: number, dur: number, type: Osci
   o.stop(at + dur + 0.02);
 };
 
-/** Filtered noise with an envelope: the net, a swish, the leather. */
+/** Filtered noise with an envelope: the crowd, the net, a swish. */
 const hiss = (a: AudioContext, at: number, dur: number, level: number, f0: number, f1: number, q = 0.7, attack = 0.18) => {
   const src = a.createBufferSource();
   src.buffer = noise(a);
@@ -116,6 +116,11 @@ const hiss = (a: AudioContext, at: number, dur: number, level: number, f0: numbe
   src.start(at, Math.random());
   src.stop(at + dur + 0.05);
 };
+
+/** The crowd on a goal or a win: louder and longer. There is no murmur in between: the stand is heard only when something happens. */
+const roar = (a: AudioContext, at: number, dur: number, level: number) => hiss(a, at, dur, level, 700, 1500);
+/** The crowd's "ooh": a short swell that falls. */
+const ooh = (a: AudioContext, at: number, level: number) => hiss(a, at, vary(0.9, 0.15), level, vary(620), 360, 1.1, 0.3);
 
 const whistle = (a: AudioContext, at: number, blows: number[]) => {
   let t = at;
@@ -146,11 +151,11 @@ const notes = (a: AudioContext, list: [number, number][], type: OscillatorType, 
 
 export type Sfx =
   | "whistle" | "full_time" | "goal" | "my_goal" | "win" | "lose" | "draw" | "gain"
-  | "kick" | "net" | "save" | "post" | "tackle" | "go"
-  | "passed" | "failed" | "foul" | "card" | "penalty";
+  | "kick" | "net" | "save" | "post" | "miss" | "ole" | "tackle" | "beaten" | "go" | "cheer"
+  | "passed" | "failed" | "foul" | "card" | "penalty" | "near";
 
 /** The least time (ms) between two of the same: the frequent ones never pile up. */
-const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, kick: 80, tackle: 400 };
+const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, near: 4000, miss: 700, beaten: 700, cheer: 600, ole: 500, kick: 80, tackle: 400 };
 const last = new Map<Sfx, number>();
 
 export function play(what: Sfx, power = 0.6) {
@@ -170,25 +175,39 @@ export function play(what: Sfx, power = 0.6) {
     case "penalty": return void whistle(a, t, [0.45]);
     case "go": return void whistle(a, t, [0.12]);
     case "goal":
+      roar(a, t, 2.4, 0.2);
       return notes(a, [[523, 0.1], [659, 0.1], [784, 0.22]], "square", 0.04, t);
     case "my_goal":
+      roar(a, t, 3.4, 0.26);
       return notes(a, [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.12], [784, 0.09], [1047, 0.34]], "square", 0.05, t);
     case "win":
+      roar(a, t, 3.2, 0.18);
       return notes(a, [[523, 0.14], [523, 0.14], [659, 0.14], [784, 0.2], [659, 0.12], [784, 0.14], [1047, 0.5]], "square", 0.05, t);
     case "lose":
+      ooh(a, t, 0.08);
       return notes(a, [[392, 0.26], [349, 0.26], [311, 0.26], [262, 0.6]], "triangle", 0.07, t + 0.3);
     case "draw": return notes(a, [[440, 0.18], [494, 0.18], [440, 0.4]], "triangle", 0.07, t);
     case "gain": return notes(a, [[1319, 0.07], [1568, 0.07], [2093, 0.16]], "square", 0.03, t);
     case "kick": return thump(a, t, Math.max(0, Math.min(1, power)));
     case "net":
-      return hiss(a, t, 0.35, 0.06, 3200, 5000, 0.6, 0.1);
+      hiss(a, t, 0.35, 0.06, 3200, 5000, 0.6, 0.1);
+      return roar(a, t + 0.05, vary(1.4, 0.1), 0.14);
     case "save":
-      return tone(a, vary(220), t, 0.06, "sine", 0.12, 120);
+      tone(a, vary(220), t, 0.06, "sine", 0.12, 120);
+      return ooh(a, t + 0.08, 0.1);
     case "post":
       tone(a, vary(880, 0.03), t, 0.5, "triangle", 0.06, 860);
-      return tone(a, vary(1320, 0.03), t, 0.35, "sine", 0.03);
+      tone(a, vary(1320, 0.03), t, 0.35, "sine", 0.03);
+      return ooh(a, t + 0.12, 0.1);
+    case "miss": case "beaten": return ooh(a, t, 0.09);
+    case "near": return ooh(a, t, 0.06);
+    case "ole":
+      hiss(a, t, 0.22, 0.09, 480, 520, 1.4, 0.3);
+      return hiss(a, t + 0.26, 0.5, 0.11, 760, 820, 1.4, 0.25);
     case "tackle":
-      return hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
+      hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
+      return roar(a, t + 0.15, 0.9, 0.08);
+    case "cheer": return roar(a, t, vary(1.1, 0.1), 0.11);
     case "passed": return notes(a, [[523, 0.1], [659, 0.1], [784, 0.1], [1047, 0.32]], "square", 0.045, t);
     case "failed": return notes(a, [[392, 0.2], [330, 0.4]], "triangle", 0.06, t);
   }
@@ -210,14 +229,17 @@ export function once(key: string, what: Sfx, power?: number) {
   done.add(key);
   play(what, power);
 }
-const WORDS: Record<string, Sfx> = { "CLEAN TACKLE!": "tackle", "GO!": "go", "GOAL!": "net", "SAVED!": "save", "OFF THE POST!": "post" };
+const WORDS: Record<string, Sfx> = {
+  "OLÉ!": "ole", "TACKLED!": "beaten", "CLEAN TACKLE!": "tackle", "GO!": "go", "FIRST TO IT!": "cheer",
+  "ON HIS FEET!": "cheer", "GOAL!": "net", "SAVED!": "save", "OFF THE POST!": "post",
+};
 const heard = new Map<string, number>();
-/** Called with each big word as it is drawn, every frame: those with a sound play it once, as they pop in. */
-export function word(text: string, _good: boolean, since: number) {
+/** Called with each big word as it is drawn, every frame: it sounds once, as it pops in. */
+export function word(text: string, good: boolean, since: number) {
   if (drills === 0 || since < 0 || since > 150) return;
   const now = performance.now();
   if (now - (heard.get(text) ?? -1e9) < 900) return;
   heard.set(text, now);
-  const sfx = WORDS[text];
+  const sfx = WORDS[text] ?? (text.endsWith("…") ? null : good ? "cheer" : "miss");
   if (sfx) play(sfx);
 }
