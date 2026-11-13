@@ -44,8 +44,8 @@ export interface Key {
 export interface Frame extends Key {
   /** The ball is on its way between two players (or to the goal): from where, to where, how far along (0 to 1). */
   flight?: { from: V; to: V; p: number };
-  /** The one the ball is going to, or is about to be passed to, and where he gets it. */
-  next?: { side: Side; k: number; at: V };
+  /** The one the ball is going to, or is about to be passed to, where he gets it, and in how many match seconds. */
+  next?: { side: Side; k: number; at: V; in: number };
 }
 
 export interface Plan {
@@ -190,6 +190,9 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
   const chain = (until: number, s: Side, to: V, o: { final?: number; via?: number; lose?: boolean } = {}) => {
     const other = (1 - s) as Side;
     let waited = false;
+    /** He has just run with the ball; who gave him the ball, and from where. */
+    let ran = false;
+    let gave: { k: number; from: V } | null = null;
     /** The one credited with the last pass has the ball: his next ball is the last. */
     let direct = false;
     const via = o.via !== undefined && o.via > 0 && o.via !== o.final ? o.via : -1;
@@ -210,18 +213,36 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
       }
       waited = true;
       const seed = cur.t * 1.37 + keys.length * 0.61;
-      const n = Math.max(1, Math.round(left / real(2.3)));
+      const dir = s === 0 ? 1 : -1;
+      // The tempo: patient at the back, quick near the goal.
+      const far = Math.abs(ahead(s, 0) - cur.ball[0]);
+      const zone = far > 66 ? { hold: [1.2, 1.9], pace: 2.6 } : far > 36 ? { hold: [0.6, 1.5], pace: CARRY * rate } : { hold: [0.35, 0.8], pace: 5.6 };
+      const n = Math.max(1, Math.round(left / real(zone.hold[0]! + zone.hold[1]! / 2 + 0.75)));
+      if (n > 3 && !direct && !cur.dead && !ran && far < 72 && far > 24 && noise(seed + 4) < 0.17) {
+        // He takes it on himself: a run with the ball.
+        const T = real(1.8 + noise(seed + 4.5) * 1.2);
+        ran = true;
+        carryTo(cur.t + T, [cur.ball[0] + dir * (7 / rate) * T, clampY(cur.ball[1] + (noise(seed + 4.7) - 0.5) * 10)]);
+        continue;
+      }
       if (n > 1 && !direct) {
         // An ordinary beat: a step of the way, with a change of side or a ball back now and then.
         const calm = Math.min(1, (n - 1) / 3);
         // (A kick-off is played back to a midfielder.)
         const centre = !!cur.dead && dist(cur.ball, [50, 50]) < 1.5;
+        // Now and then the play is switched to the other wing, or given back to the one who passed (he has run on).
+        const swap = !centre && n > 2 && noise(seed + 5) < 0.14;
+        const wall = !centre && !swap && n > 2 && !!gave && gave.k !== c && gave.k !== o.final && here(s, gave.k, cur.t) && noise(seed + 6) < 0.2;
         const want: V = centre
           ? [50 - (s === 0 ? 1 : -1) * (9 + noise(seed) * 5), 34 + noise(seed + 1) * 32]
-          : [
+          : swap
+            ? [within(5, 95, cur.ball[0] + dir * (4 + noise(seed) * 8)), cur.ball[1] < 50 ? 74 + noise(seed + 1) * 14 : 12 + noise(seed + 1) * 14]
+            : wall
+              ? [within(5, 95, gave!.from[0] + dir * (8 + noise(seed) * 4)), clampY(gave!.from[1] + (noise(seed + 1) - 0.5) * 8)]
+              : [
               within(5, 95, cur.ball[0] + (to[0] - cur.ball[0]) / n + (noise(seed) - 0.5) * 22 * calm),
-              clampY(cur.ball[1] + (to[1] - cur.ball[1]) / n + (noise(seed + 1) - 0.5) * 52 * calm),
-            ];
+                  clampY(cur.ball[1] + (to[1] - cur.ball[1]) / n + (noise(seed + 1) - 0.5) * 52 * calm),
+                ];
         // Where each team-mate can be when the ball gets there: between his place now and his place with the ball there.
         const now = placed(s, cur.t);
         const then = shape(s, want, s);
@@ -229,20 +250,25 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
         let best = -1;
         let score = Infinity;
         if (n === 2 && via > 0 && via !== c && here(s, via, cur.t)) best = via;
+        else if (wall) best = gave!.k;
         else
           for (let k = 1; k < 11; k++) {
             if (k === c || k === o.final || !here(s, k, cur.t)) continue;
             const len = dist(cur.ball, mixV(spots[k]!, want, 0.4));
-            const sc = dist(spots[k]!, want) + noise(seed + k * 7.3) * 8 + (len < 9 ? (9 - len) * 5 : 0) + (len > 34 ? len - 34 : 0);
+            const sc = dist(spots[k]!, want) + noise(seed + k * 7.3) * 8 + (len < 12 ? (12 - len) * 4 : 0) + (len > 36 && !swap ? len - 36 : 0);
             if (sc < score) (score = sc), (best = k);
           }
         if (best >= 0) {
-          const at = mixV(spots[best]!, want, 0.4);
-          const hold = cur.dead ? 0 : real(0.5 + noise(seed + 2) * 1.7);
-          const from = toward(cur.ball, at, Math.min(CARRY * hold, Math.max(0, dist(cur.ball, at) - 9)));
+          // Played into his run, a step ahead of him.
+          const meet = wall ? want : mixV(spots[best]!, want, 0.4);
+          const at: V = [within(3, 97, meet[0] + (centre ? 0 : dir * 2.5)), meet[1]];
+          const hold = cur.dead ? 0 : real(wall ? 0.35 : zone.hold[0]! + noise(seed + 2) * zone.hold[1]!);
+          const from = toward(cur.ball, [cur.ball[0] + dir * 20, mix(cur.ball[1], at[1], 0.5)], Math.min((zone.pace / rate) * hold, Math.max(0, dist(cur.ball, at) - 10)));
           const flight = Math.max(real(0.35), dist(from, at) / pace(dist(from, at)));
           if (cur.t + hold + flight <= until - real(1.2)) {
             if (hold > 0) carryTo(cur.t + hold, from);
+            gave = { k: c, from: last().ball };
+            ran = false;
             passTo(last().t + flight, at, s, best);
             direct = best === via;
             continue;
@@ -505,12 +531,12 @@ export function frameAt(keys: Key[], s: number): Frame {
   if (a.move) k.move = a.move;
   if (a.move === "pass" || a.move === "shot") {
     k.flight = { from: a.ball, to: b.ball, p };
-    if (b.carrier !== undefined) k.next = { side: b.side, k: b.carrier, at: b.ball };
+    if (b.carrier !== undefined) k.next = { side: b.side, k: b.carrier, at: b.ball, in: b.t - s };
   } else {
     if (a.carrier !== undefined) k.carrier = a.carrier;
     // He is about to pass: the one he will find is already on the move.
     const c = keys[lo + 1];
-    if (b.move === "pass" && c && c.carrier !== undefined && c.t - s < 12) k.next = { side: c.side, k: c.carrier, at: c.ball };
+    if (b.move === "pass" && c && c.carrier !== undefined && c.t - s < 12) k.next = { side: c.side, k: c.carrier, at: c.ball, in: c.t - s };
   }
   return k;
 }
@@ -592,9 +618,9 @@ export function positions(formation: Formation, side: Side, ball: V, possession:
   const gy = shape.block ? (side === 0 ? shape.block[1] : 100 - shape.block[1]) : by;
   // Attacking: the back line some way behind the ball, the forwards ahead of it, never past the last defender's line.
   // Defending: goal side of the ball, the back line between it and the goal, down to the edge of the six-yard box.
-  const back = mix(within(7, 46, gx - 22), within(18, 62, gx - 26), att);
-  const front = mix(within(24, 70, gx + 8), within(46, 92, gx + 20), att);
-  const width = mix(0.66, 0.9, att);
+  const back = mix(within(7, 46, gx - 22), within(16, 60, gx - 31), att);
+  const front = mix(within(24, 70, gx + 8), within(46, 92, gx + 21.5), att);
+  const width = mix(0.7, 0.97, att);
   const lean = mix(0.3, 0.2, att);
   const out: V[] = spots.map(([sx, sy], k) => {
     // The keeper comes off his line a little when his side is camped up the pitch.
@@ -652,7 +678,16 @@ export function positions(formation: Formation, side: Side, ball: V, possession:
     // Out of possession: one closes down, goal side of the ball (or of where it is going).
     const px = shape.press ? (side === 0 ? shape.press[0] : 100 - shape.press[0]) : bx;
     const py = shape.press ? (side === 0 ? shape.press[1] : 100 - shape.press[1]) : by;
-    out[nearest(out, px, py, shape.prefer)] = [px - 4, py - 3];
+    const first = nearest(out, px, py, shape.prefer);
+    out[first] = [px - 3, py - 2];
+    // And another covers him, between the ball and the goal.
+    let second = -1;
+    let d = Infinity;
+    for (let k = 1; k < 11; k++) {
+      const dd = Math.hypot(out[k]![0] - (px - 9), out[k]![1] - py);
+      if (k !== first && dd < d) (d = dd), (second = k);
+    }
+    if (second > 0 && d < 16) out[second] = [Math.max(4, px - 9), clampY(py + (50 - py) * 0.25)];
   }
   return turn(out);
 }

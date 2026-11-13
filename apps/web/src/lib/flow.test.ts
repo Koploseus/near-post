@@ -84,12 +84,14 @@ describe("where the elevens stand", () => {
   it("a block turns from defending to attacking without a jump", () => {
     for (const f of FORMATIONS) {
       // The ball changes feet at the same place: eased, nobody's place moves more than a step at a time.
-      // (The one who pressed and the one who takes the ball have a run to make: they are left out.)
+      // (The ones who pressed or covered and the one who takes the ball have a run to make: they are left out.)
       let before = positions(f, 0, [55, 40], 1, undefined, { attack: 0 });
       const presser = atBall(before, [55, 40]);
       for (let i = 1; i <= 10; i++) {
         const now = positions(f, 0, [55, 40], 0, 5, { attack: i / 10 });
-        for (let k = 1; k < 11; k++) if (k !== 5 && k !== presser) expect(Math.hypot(now[k]![0] - before[k]![0], now[k]![1] - before[k]![1])).toBeLessThan(3.5);
+        const free = positions(f, 0, [55, 40], 1, undefined, { attack: 0, free: true });
+        const busy = (k: number) => i === 1 && Math.hypot(free[k]![0] - before[k]![0], free[k]![1] - before[k]![1]) > 0.01;
+        for (let k = 1; k < 11; k++) if (k !== 5 && k !== presser && !busy(k)) expect(Math.hypot(now[k]![0] - before[k]![0], now[k]![1] - before[k]![1])).toBeLessThan(3.5);
         before = now;
       }
     }
@@ -193,7 +195,7 @@ describe("the football between the events", () => {
   });
 
   it("a man with the ball goes at a runner's pace, a pass at a pass's", () => {
-    for (const l of legs.filter((l) => l.a.move === "carry")) expect(l.d / Math.max(l.dt, 0.01)).toBeLessThan(5.6);
+    for (const l of legs.filter((l) => l.a.move === "carry")) expect(l.d / Math.max(l.dt, 0.01)).toBeLessThan(7.6);
     const speeds = legs.filter((l) => l.a.move === "pass" && l.dt > 0.3).map((l) => l.d / l.dt).sort((x, y) => x - y);
     expect(speeds[Math.floor(speeds.length / 2)]!).toBeGreaterThan(14);
     expect(speeds[Math.floor(speeds.length * 0.9)]!).toBeLessThan(40);
@@ -228,7 +230,8 @@ describe("the football between the events", () => {
     const f = frameAt(keys, (keys[i]!.t + keys[i + 1]!.t) / 2);
     expect(f.carrier).toBeUndefined();
     expect(f.flight).toBeDefined();
-    expect(f.next).toEqual({ side: keys[i + 1]!.side, k: keys[i + 1]!.carrier, at: keys[i + 1]!.ball });
+    expect(f.next).toMatchObject({ side: keys[i + 1]!.side, k: keys[i + 1]!.carrier, at: keys[i + 1]!.ball });
+    expect(f.next!.in).toBeCloseTo((keys[i + 1]!.t - keys[i]!.t) / 2, 5);
     // On the ball: nobody of his side is at the ball when it is free, the carrier is when he has it.
     const free = positions("4-3-3", 0, [60, 40], 0, undefined, { free: true });
     expect(free.slice(1).every((p) => Math.hypot(p[0] - 60, p[1] - 40) > 2)).toBe(true);

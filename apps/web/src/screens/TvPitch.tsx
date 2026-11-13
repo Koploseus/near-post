@@ -90,6 +90,9 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
     const lastAtBall: (number | undefined)[] = [undefined, undefined];
     /** Where the play is, as the elevens have read it. */
     let read: V = [50, 50];
+    /** The one who has just passed runs on for a moment. */
+    let gave: { side: 0 | 1; k: number; until: number } | null = null;
+    let wasFlying = false;
     let cur = live.current.c.second;
     let cam = PW / 2;
     let zoom = 1;
@@ -137,6 +140,24 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
         if (!restart && !flying) lastAtBall[side] = atBall(out, at.ball);
         return out;
       });
+      // Without the ball, each one picks up the opponent in his zone and stands goal side of him.
+      if (!restart && !at.set && !at.dead) {
+        const d = (1 - at.side) as 0 | 1;
+        const press = atBall(targets[d]!, at.flight && at.move === "pass" ? at.flight.to : at.ball);
+        const goalSide = d === 0 ? -1 : 1;
+        for (let k = 1; k < 11; k++) {
+          if (k === press) continue;
+          const me = targets[d]![k]!;
+          let best: V | null = null;
+          let bd = 12;
+          for (let j = 1; j < 11; j++) {
+            const a = targets[at.side]![j]!;
+            const dd = Math.hypot(a[0] - me[0], (a[1] - me[1]) * 0.7);
+            if (dd < bd) (bd = dd), (best = a);
+          }
+          if (best) targets[d]![k] = [me[0] + (best[0] + goalSide * 4.5 - me[0]) * 0.3, me[1] + (best[1] + (me[1] < best[1] ? -2 : 2) - me[1]) * 0.3];
+        }
+      }
       const gone = (side: number, k: number) =>
         (L.second && L.m.elevens[2 + side]?.[k] === "") || L.shown.some((e) => e.kind === "red" && e.half === L.half && Number(!e.home) === side && e.player === k);
 
@@ -215,6 +236,11 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
       // Everyone runs to his place, each in his own way.
       const time = now / 1000;
       const live2 = !L.stopped && !at.dead;
+      const flyingNow = live2 && !!at.flight && at.move === "pass";
+      if (flyingNow && !wasFlying && at.side === holder.side) gave = { side: holder.side, k: holder.k, until: now + 1700 };
+      wasFlying = flyingNow;
+      /** The receiver times his run: he gets there as the ball does, still moving. */
+      const eta = at.next ? Math.max(0.2, at.next.in / RATE) : 0;
       for (const side of [0, 1] as const)
         for (let k = 0; k < 11; k++) {
           const b = bodies[side]![k]!;
@@ -223,9 +249,12 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
           if (o) [tx, ty] = o;
           else if (k > 0 && live2 && Math.hypot(tx - at.ball[0], ty - at.ball[1]) > 7) {
             // Away from the ball he roams around his place; the forwards of the side on the ball make runs.
-            tx += 1.5 * Math.sin(time * 0.29 + b.seed * 1.7) + 0.8 * Math.sin(time * 0.61 + b.seed * 3.1);
-            ty += 2.2 * Math.sin(time * 0.23 + b.seed * 2.3) + 0.9 * Math.sin(time * 0.5 + b.seed);
-            if (at.side === side && k >= 7) tx += (side === 0 ? 1 : -1) * 4 * Math.max(0, Math.sin(time * 0.4 + b.seed * 5));
+            // (Nobody stands still in a match: he is always on the move, a few steps one way and the other.)
+            tx += 2.4 * Math.sin(time * 0.47 + b.seed * 1.7) + 1.2 * Math.sin(time * 0.93 + b.seed * 3.1);
+            ty += 3.0 * Math.sin(time * 0.39 + b.seed * 2.3) + 1.4 * Math.sin(time * 0.81 + b.seed);
+            if (at.side === side && k >= 7) tx += (side === 0 ? 1 : -1) * 5 * Math.max(0, Math.sin(time * 0.4 + b.seed * 5));
+            // He has just passed: he runs on.
+            if (gave && gave.side === side && gave.k === k && now < gave.until && at.side === side) tx += (side === 0 ? 1 : -1) * 8;
             ty = Math.min(97, Math.max(3, ty));
           }
           if (!placed) [b.x, b.y, b.tx, b.ty] = [tx, ty, tx, ty];
@@ -238,7 +267,8 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
           const d = Math.hypot(dx, dy);
           // The man on the ball keeps up with it (the match runs faster than the picture); far from his place, a player sprints.
           const onBall = live2 && side === at.side && k === at.carrier && k > 0;
-          const want = Math.min(k === 0 ? 5 : onBall ? 15 : o || at.set ? 12 : d > 10 ? b.top * 1.3 : b.top, d * 2.4);
+          const meeting = !!o && !!at.next && at.next.side === side && at.next.k === k && k > 0;
+          const want = meeting ? Math.min(12.5, Math.max(2.6, d / eta)) : Math.min(k === 0 ? 5 : onBall ? 15 : o || at.set ? 12 : d > 10 ? b.top * 1.3 : b.top, d * 2.4);
           b.v += (want - b.v) * Math.min(1, dt * 5);
           if (d > 0.01) {
             const stepLen = Math.min(d, b.v * dt);
@@ -247,7 +277,7 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
             if (Math.abs(dx) > 0.5) b.face = Math.sign(dx);
           }
           if (b.v < 0.6) b.face = Math.abs(at.ball[0] - b.x) > 2 ? Math.sign(at.ball[0] - b.x) : side === 0 ? 1 : -1; // standing: he watches the ball
-          b.phase += dt * (4 + b.v * 1.3);
+          b.phase += dt * (2.6 + b.v * 1.25);
         }
       placed = true;
 
@@ -515,7 +545,7 @@ function player(g: G, P: Proj, b: Body, keeper: boolean, shirt: string, act: Act
     ok = sprite(g, "top", shirt, 5, h * 1.04, b.face < 0, who.face, who.hair);
   } else if (act === "slide") ok = sprite(g, "rivalFront", shirt, 4, h * 0.72, b.face > 0, who.face, who.hair);
   else if (act === "down") ok = sprite(g, "rivalFront", shirt, 5, h * 0.7, b.face > 0, who.face, who.hair);
-  else if (b.v > 1.8) ok = sprite(g, "rivalSide", shirt, 1 + (Math.floor(b.phase) % 4), h, b.face < 0, who.face, who.hair);
+  else if (b.v > 1.3) ok = sprite(g, "rivalSide", shirt, 1 + (Math.floor(b.phase) % 4), h, b.face < 0, who.face, who.hair);
   else ok = sprite(g, "top", shirt, 0, h, b.face < 0, who.face, who.hair);
   if (!ok) {
     // Until the art has loaded: a shirt and a head.
