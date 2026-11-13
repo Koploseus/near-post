@@ -278,3 +278,48 @@ export function drillGame(d: DrillT, onDone: (trace: Click[]) => void, shirt?: s
       return <TacklesGame setup={d.setup} onDone={onDone} />;
   }
 }
+
+/** The drill each position plays first (the training page suggests it). */
+const FIRST = { Fw: ["shooting", "Penalties"], Mf: ["passing", "Through balls"], Df: ["defending", "Tackles"], Gk: ["defending", "Tackles"] } as const;
+
+/**
+ * Training, as its own page (menu: Training): the five arcade drills, one
+ * session a match day. Without a footballer in a club yet, the way there.
+ */
+export function TrainingPage() {
+  const { session, me, club, loading } = useGame();
+  if (session && loading && !me) return <p className="sub">Opening the training ground…</p>;
+  if (!session || !me || !club)
+    return (
+      <section className="paper panel training-gate">
+        <span className="k">TRAINING</span>
+        <h2>Five football mini-games</h2>
+        <p>
+          Penalties, through balls, dribbles, sprints and tackles. Each one trains a skill of your footballer: one session a match day, up to +3. {!session ? "Sign in, create your footballer and sign for a club to train." : !me ? "Create your footballer first." : "Sign for a club first."}
+        </p>
+        <div className="gate-actions">
+          <a className="cta" href="#/locker">
+            {!session ? "PLAY NOW" : !me ? "CREATE MY FOOTBALLER" : "PICK A CLUB"}
+          </a>
+          <a className="cta small ghost" href="#/try">
+            TRY THE PENALTIES
+          </a>
+        </div>
+      </section>
+    );
+  const [skill, title] = FIRST[me.position as keyof typeof FIRST] ?? FIRST.Mf;
+  return (
+    <div className="training-page">
+      <header className="training-head">
+        <span className="k">TRAINING GROUND</span>
+        <h2>Train {me.name.split(" ")[0]}</h2>
+        <p className="note">
+          One session a match day: pick a skill, play its mini-game, and your score adds 0 to 3 points to it. As a {positionName(me.position)}, start with <b>{title}</b> ({skill}). Training costs 15 energy.
+        </p>
+      </header>
+      <Training me={me} />
+    </div>
+  );
+}
+
+const positionName = (p: string) => ({ Gk: "keeper", Df: "defender", Mf: "midfielder", Fw: "forward" })[p] ?? "player";
