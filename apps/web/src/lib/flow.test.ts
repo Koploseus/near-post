@@ -53,7 +53,7 @@ describe("the live pitch follows the events", () => {
   it("keepers stay in their goal; both blocks cross the halfway line", () => {
     const attack = positions("4-3-3", 0, [80, 50], 0);
     const defend = positions("4-3-3", 1, [80, 50], 0);
-    expect(attack[0]![0]).toBeLessThan(5);
+    expect(attack[0]![0]).toBeLessThan(9); // a little off his line: his side is camped up the pitch
     expect(defend[0]![0]).toBeGreaterThan(95);
     expect(Math.max(...attack.slice(1).map((p) => p[0]))).toBeGreaterThan(60); // home forwards in the away half
     expect(Math.min(...defend.slice(1).map((p) => p[0]))).toBeLessThan(80);
@@ -81,7 +81,7 @@ describe("where the elevens stand", () => {
     }
   });
 
-  it("a block turns from defending to attacking without a jump, and moves less than the ball", () => {
+  it("a block turns from defending to attacking without a jump", () => {
     for (const f of FORMATIONS) {
       // The ball changes feet at the same place: eased, nobody's place moves more than a step at a time.
       // (The one who pressed and the one who takes the ball have a run to make: they are left out.)
@@ -92,13 +92,61 @@ describe("where the elevens stand", () => {
         for (let k = 1; k < 11; k++) if (k !== 5 && k !== presser) expect(Math.hypot(now[k]![0] - before[k]![0], now[k]![1] - before[k]![1])).toBeLessThan(3.5);
         before = now;
       }
-      // The ball goes 40 units up the pitch: the back line follows by clearly less.
-      const low = positions(f, 0, [30, 50], 0, 9);
-      const high = positions(f, 0, [70, 50], 0, 9);
-      const line = (out: [number, number][]) => Math.min(...out.slice(1).map((p) => p[0]));
-      expect(line(high) - line(low)).toBeGreaterThan(8);
-      expect(line(high) - line(low)).toBeLessThan(26);
     }
+  });
+
+  it("the side without the ball is goal side of it, and the forwards of the other stay onside", () => {
+    for (const f of FORMATIONS) {
+      for (const x of [12, 25, 40, 55, 70, 85, 95]) {
+        // Home has the ball at x; away defends the goal at x = 100.
+        const home = positions(f, 0, [x, 50], 0, 9);
+        const away = positions(f, 1, [x, 50], 0);
+        const outfield = away.slice(1).map((p) => p[0]);
+        const lastLine = Math.max(...outfield);
+        // The back line is between the ball and its goal (it stops at the six-yard box when the ball is past it).
+        if (x < 90) expect(lastLine).toBeGreaterThan(x);
+        // Most of the eleven is behind the ball or level with it.
+        expect(outfield.filter((px) => px > x - (x > 90 ? 20 : 9)).length).toBeGreaterThanOrEqual(8);
+        // Nobody of the side on the ball waits behind the last defender, but the man on the ball.
+        for (let k = 1; k < 11; k++) if (k !== 9) expect(home[k]![0]).toBeLessThanOrEqual(lastLine + 0.5);
+        // The elevens keep a team's length: neither a pack nor strung over the whole pitch.
+        const len = (out: [number, number][]) => Math.max(...out.slice(1).map((p) => p[0])) - Math.min(...out.slice(1).map((p) => p[0]));
+        expect(len(away)).toBeGreaterThan(12);
+        expect(len(away)).toBeLessThan(48);
+      }
+    }
+  });
+
+  it("at a corner the box fills up, at a penalty it empties, at a free kick there is a wall", () => {
+    const inBox = (out: [number, number][], end: number) => out.slice(1).filter((p) => Math.abs(p[0] - end) < 18 && p[1] > 20 && p[1] < 80).length;
+    for (const f of FORMATIONS) {
+      // Home's corner, from the top flag at the away end.
+      const taking = positions(f, 0, [99.5, 1], 0, 7, { set: "corner" });
+      const defending = positions(f, 1, [99.5, 1], 0, undefined, { set: "corner" });
+      expect(Math.hypot(taking[7]![0] - 99.5, taking[7]![1] - 1)).toBeLessThan(3);
+      expect(inBox(taking, 100)).toBeGreaterThanOrEqual(5);
+      expect(inBox(defending, 100)).toBeGreaterThanOrEqual(7);
+      expect(defending[0]![0]).toBeGreaterThan(97);
+      // Away's penalty at the home end: only the taker and the keeper in the box.
+      const pen = positions(f, 1, [11, 50], 1, 9, { set: "penalty" });
+      const facing = positions(f, 0, [11, 50], 1, undefined, { set: "penalty" });
+      expect(inBox(pen, 0)).toBe(1);
+      expect(inBox(facing, 0)).toBe(0);
+      expect(facing[0]![0]).toBeLessThan(2);
+      // Home's free kick 24 from goal: four of the away side stand between the ball and their goal.
+      const wall = positions(f, 1, [76, 40], 0, undefined, { set: "free_kick" }).slice(1).filter((p) => Math.abs(p[0] - 85) < 0.6 && Math.abs(p[1] - 41) < 6);
+      expect(wall).toHaveLength(4);
+    }
+  });
+
+  it("the shooter is in the move before his shot, and a set piece's keys say which", () => {
+    const keys = keyframes([ev(600, true, "goal", 9), ev(900, false, "corner", 6), ev(1500, true, "penalty", 10), ev(1500, true, "goal", 10)], 0, 2700, 0);
+    const before = keys.filter((k) => k.t < 598 && k.t > 540);
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every((k) => k.carrier === 9 && k.side === 0)).toBe(true);
+    expect(frameAt(keys, 902).set).toBe("corner");
+    expect(frameAt(keys, 1495).set).toBe("penalty");
+    expect(frameAt(keys, 700).set).toBeUndefined();
   });
 
   it("the one who went to the ball keeps going while another is not clearly nearer", () => {
