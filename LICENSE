@@ -1,84 +1,51 @@
-Business Source License 1.1
+NEAR Post Source-Available License, version 1.0
 
-Parameters
+Copyright (c) 2026 OPENWEB3. All rights reserved.
 
-Licensor:             OPENWEB3
-Licensed Work:        NEAR Post
-                      The Licensed Work is (c) 2026 OPENWEB3.
-Additional Use Grant: None
-Change Date:          2030-11-14
-Change License:       GNU General Public License v2.0 or later (GPL-2.0-or-later)
+1. Definitions
+"Software" means everything in this repository: source code, smart
+contracts, compiled files, illustrations, sounds, texts and documentation.
+"Licensor" means OPENWEB3.
 
-Third-party libraries keep their own licenses.
+2. What you may do
+You may read the Software. You may also download, build and run it
+privately, for the sole purpose of evaluating, reviewing, judging or
+auditing it, including looking for security problems and reporting them to
+the Licensor.
 
------------------------------------------------------------------------------
+3. What you may not do without the Licensor's prior written permission
+a. Copy the Software, beyond the copies section 2 needs.
+b. Modify it or create works derived from it.
+c. Distribute, publish, sublicense, sell or rent it, in whole or in part.
+d. Deploy or operate it, or anything derived from it, for anyone else or
+   for any commercial purpose, on any network, test networks included.
+e. Reuse its illustrations, sounds, characters or texts.
+f. Use it to train or evaluate a machine-learning model.
 
-License text copyright © 2017 MariaDB Corporation Ab, All Rights Reserved.
-"Business Source License" is a trademark of MariaDB Corporation Ab.
+4. Hosting platforms
+Nothing here limits what the terms of the platform hosting this repository
+let its users do there (for example viewing or forking it on GitHub). Any
+such copy stays under this license.
 
-Terms
+5. Third-party components
+Libraries and tools the Software depends on keep their own licenses.
 
-The Licensor hereby grants you the right to copy, modify, create derivative
-works, redistribute, and make non-production use of the Licensed Work. The
-Licensor may make an Additional Use Grant, above, permitting limited
-production use.
+6. Names and marks
+This license gives no right to the name NEAR Post, its logo or any other
+name or mark of the Licensor.
 
-Effective on the Change Date, or the fourth anniversary of the first publicly
-available distribution of a specific version of the Licensed Work under this
-License, whichever comes first, the Licensor hereby grants you rights under
-the terms of the Change License, and the rights granted in the paragraph
-above terminate.
+7. Termination
+Any use outside this license ends your rights under it at once. You must
+then delete every copy you hold.
 
-If your use of the Licensed Work does not comply with the requirements
-currently in effect as described in this License, you must purchase a
-commercial license from the Licensor, its affiliated entities, or authorized
-resellers, or you must refrain from using the Licensed Work.
+8. No warranty
+The Software is provided "as is", without warranty of any kind. To the
+extent the law allows, the Licensor is not liable for any damage arising
+from the Software or its use.
 
-All copies of the original and modified Licensed Work, and derivative works
-of the Licensed Work, are subject to this License. This License applies
-separately for each version of the Licensed Work and the Change Date may vary
-for each version of the Licensed Work released by Licensor.
+9. Governing law
+This license is governed by French law. The courts of the place where the
+Licensor has its registered office have jurisdiction.
 
-You must conspicuously display this License on each original or modified copy
-of the Licensed Work. If you receive the Licensed Work in original or
-modified form from a third party, the terms and conditions set forth in this
-License apply to your use of that work.
-
-Any use of the Licensed Work in violation of this License will automatically
-terminate your rights under this License for the current and all other
-versions of the Licensed Work.
-
-This License does not grant you any right in any trademark or logo of
-Licensor or its affiliates (provided that you may use a trademark or logo of
-Licensor as expressly required by this License).
-
-TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
-AN “AS IS” BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
-EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
-TITLE.
-
-MariaDB hereby grants you permission to use this License’s text to license
-your works, and to refer to it using the trademark “Business Source License”,
-as long as you comply with the Covenants of Licensor below.
-
-Covenants of Licensor
-
-In consideration of the right to use this License’s text and the “Business
-Source License” name and trademark, Licensor covenants to MariaDB, and to all
-other recipients of the licensed work to be provided by Licensor:
-
-1. To specify as the Change License the GPL Version 2.0 or any later version,
-   or a license that is compatible with GPL Version 2.0 or a later version,
-   where “compatible” means that software provided under the Change License can
-   be included in a program with software provided under GPL Version 2.0 or a
-   later version. Licensor may specify additional Change Licenses without
-   limitation.
-
-2. To either: (a) specify an additional grant of rights to use that does not
-   impose any additional restriction on the right granted in this License, as
-   the Additional Use Grant; or (b) insert the text “None”.
-
-3. To specify a Change Date.
-
-4. Not to modify this License in any other way.
+To ask for permission: open an issue on this repository,
+https://github.com/Koploseus/near-post/issues
