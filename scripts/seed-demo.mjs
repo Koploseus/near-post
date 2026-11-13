@@ -8,6 +8,10 @@
 // fictional clubs belong to their coaches' OutLayer wallets (apps/relay/src/agents/custody.ts):
 // the club's account is the wallet's implicit account, its calls go through the wallet, and
 // the accounts of all agents are written to deployments/testnet-agents.json. Build the relay first.
+//
+// With AGENTS_ACCOUNTS=<file> (short name -> account, as the agents' program in the enclave
+// answers `{"op":"accounts"}`, apps/enclave), the agents make their clubs and name their derbies
+// themselves: this script only writes deployments/testnet-agents.json and seats the crowd.
 import { createRequire } from "node:module";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 const require = createRequire(new URL("../apps/relay/package.json", import.meta.url));
@@ -40,6 +44,14 @@ if (custody) {
   writeFileSync(file, JSON.stringify({ network: "testnet", version, custody: { api: custody.url, account_id: custody.accountId }, agents: wallets }, null, 2) + "\n");
   console.log("wallets", slugs.length);
   viaWallet = (prefix) => custodyChain({}, custody, seedOf(prefix, version), wallets[prefix], async () => {});
+}
+const byThemselves = process.env.AGENTS_ACCOUNTS ? JSON.parse(readFileSync(process.env.AGENTS_ACCOUNTS, "utf8")) : null;
+if (byThemselves) {
+  Object.assign(wallets, byThemselves);
+  writeFileSync(
+    new URL("../deployments/testnet-agents.json", import.meta.url).pathname,
+    JSON.stringify({ network: "testnet", version, enclave: { project: process.env.AGENTS_PROJECT ?? null, waker: process.env.AGENTS_WAKER ?? null }, agents: wallets }, null, 2) + "\n",
+  );
 }
 /** A fictional club's account: its coach's wallet in custody, a sub-account otherwise. */
 const clubId = (prefix) => wallets[prefix] ?? `${prefix}.${PARENT}`;
@@ -100,7 +112,7 @@ for (const [prefix, fund] of [[`league-${version}`, 15], [`players-${version}`, 
 if (!existsSync(`${keys}/crowd.json`)) save("crowd", KeyPair.fromRandom("ed25519"));
 const crowd = load("crowd");
 
-for (const [prefix, name] of [...CLUBS, ...(process.env.DIVISIONS === "1" ? [] : MORE)]) {
+for (const [prefix, name] of byThemselves ? [] : [...CLUBS, ...(process.env.DIVISIONS === "1" ? [] : MORE)]) {
   const id = clubId(prefix);
   if (custody) {
     // A wallet's account exists from its first NEAR.
@@ -111,7 +123,7 @@ for (const [prefix, name] of [...CLUBS, ...(process.env.DIVISIONS === "1" ? [] :
   }
   if (!(await view("get_club", { club_id: id }))) console.log("club", name, await clubCall(prefix, "create_club", { name }, 300));
 }
-for (const [prefix, , , rival] of CLUBS) {
+for (const [prefix, , , rival] of byThemselves ? [] : CLUBS) {
   const club = await view("get_club", { club_id: clubId(prefix) });
   if (club.rival !== clubId(rival)) console.log("rival", prefix, rival, await clubCall(prefix, "set_rival", { rival: clubId(rival) }));
 }
@@ -119,6 +131,7 @@ const spec = [];
 for (const [prefix, , size] of CLUBS) {
   for (let n = 1; n <= size; n++) {
     const fan = await sub(`${prefix}-f${n}`, crowd.public_key, 0.1);
+    if (!(await view("get_club", { club_id: clubId(prefix) }))) throw new Error(`${prefix} has no club yet: let the agents run first`);
     console.log("follow", fan, await call(as(fan, crowd.private_key), "follow", { club_id: clubId(prefix) }));
   }
   spec.push(`${prefix}:${size}`);

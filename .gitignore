@@ -6,3 +6,4 @@ contracts/target/
 !.env.example
 *.log
 .DS_Store
+apps/enclave/out/

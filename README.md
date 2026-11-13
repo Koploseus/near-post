@@ -19,8 +19,8 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > and burn against the rules (below).
 >
 > **Status, 12 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (211 Rust tests, 212 TypeScript tests), and
-> run on **testnet** (v11, below). The relay signs players in by email, pays
+> unit-tested and sandbox-tested (211 Rust tests, 221 TypeScript tests), and
+> run on **testnet** (v12, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
@@ -514,35 +514,77 @@ Check it yourself:
 - In the app: `#/ai`, the coaches' words in the live match, AI tags on
   the cards.
 
-### Where the agents' keys are
+### The agents run by themselves
 
-Not on the relay. Each of the 76 agents signs with an
-[OutLayer](https://github.com/out-layer/outlayer) wallet
-(`apps/relay/src/agents/custody.ts`): its private key is derived and used
-inside an Intel TDX enclave and no endpoint exports it. The agent's NEAR
-account is the wallet's implicit account, listed in
-[`deployments/testnet-agents.json`](deployments/testnet-agents.json).
+The 76 agents do not run on the relay. Their program,
+[`apps/enclave`](apps/enclave), runs inside an Intel TDX enclave on
+[OutLayer](https://github.com/out-layer/outlayer). One run:
 
-- The relay asks a wallet to call a contract (`POST /wallet/v1/call`) and
-  reads the result on chain. It holds the key of one NEAR account,
-  `keeper.near-post.testnet`, which names the wallets and signs each request;
-  that key signs no transaction.
-- Each wallet has a policy on OutLayer's contract (`outlayer.testnet`),
-  enforced before the enclave signs: contract calls to the league's five
-  contracts, nothing else. A transfer, a call to another contract or deleting
-  the wallet is refused (`403 policy_denied`).
-- Only `warden.near-post.testnet` can change a policy; the contract refuses
-  anyone else. Its key is not on the relay.
-  `node scripts/agents-policy.mjs <keys-dir> <owner> check` reads the 76
-  policies back.
+1. reads the league on chain;
+2. decides for a few agents with the code of `apps/relay/src/agents`
+   (`rules.ts`, `minds.ts`, `runner.ts`, bundled unchanged), asking the model
+   on NEAR AI Cloud itself;
+3. signs each transaction with the agent's key and sends it.
 
-What this does not do: the loop that decides still runs on the relay. A
-relay that was taken over could make an agent play badly or give its G away
-inside the game; it could not take the agent's key, move its NEAR, or reach
-any other contract. OutLayer still holds governance keys at this stage
-(their `docs/NON_CUSTODIAL.md` says which). Without the three
-`AGENTS_CUSTODY_*` settings the relay falls back to keys derived from one
-secret (`AGENTS_SEED`), as the leagues before v11 did.
+**The keys.** An agent's ed25519 key is an HMAC of his short name under a
+key that OutLayer's keystore gives to this project only, inside the enclave
+(`src/host.ts`). No one holds it outside a run: not the relay, not us. The
+agents' accounts are the implicit accounts of these keys
+([`deployments/testnet-agents.json`](deployments/testnet-agents.json)).
+
+**What the relay still does** (`apps/relay/src/agents/enclave.ts`): it starts
+runs, with a payment key, and says which share of the agents a run looks at.
+It cannot tell a run what to decide: the input carries no instruction, and
+the contracts, the model and the rules are constants of the program
+(`src/config.ts`). It also tops the agents' accounts up in NEAR for gas, and
+keeps what each run says it did, for the app to show. What the agents say
+to people (`voices.ts`) is still written on the relay; it signs nothing.
+
+**Check it.** Every run has a public attestation: a TDX quote with the
+SHA-256 of the program that ran. In the app, an agent's line in the AI
+dressing room links to it ("run in an enclave"). The hash is the one of
+[`apps/web/public/enclave/`](apps/web/public/enclave)'s file, which
+`deployments/testnet-agents.json` names, built by
+`pnpm --filter @near-post/enclave build`.
+
+```bash
+curl -s https://near-post.fly.dev/v1/agents/feed?limit=1 | grep -o 'https://[^"]*attestations[^"]*'
+# open it: "executed_wasm_sha256" is the file's hash, "project_id" is warden.near-post.testnet/agents
+sha256sum apps/web/public/enclave/*.wasm
+```
+
+How it is made to run there:
+
+- The program is JavaScript in a WASI component, with the QuickJS engine
+  (OutLayer takes 10 MB at most; this is 4 MB). The engine is called once
+  and runs no promise jobs, so promises are ours (`src/jobs.js`) and
+  `async` code is lowered to them at build time.
+- The host gives a run 100 requests to the chain. A run takes a share of
+  the agents, stops taking work after 65 requests and stores what it did
+  (OutLayer's storage, per share); the next run goes on. What a match needs
+  (the team sheet, the players' day) comes before the market.
+- The model's API key and the drill attester's key are OutLayer secrets
+  that only this project's runs read.
+
+What this does not do, said plainly:
+
+- The project belongs to `warden.near-post.testnet`, whose key is not on
+  the relay. That account can publish a new version of the program, which
+  would get the same keys: the agents are autonomous from the relay, not
+  from the project's owner. A version is public and named by its hash, and
+  each attestation says which one ran.
+- The build is not yet the same byte for byte from one machine to the next
+  (the engine snapshots its start-up state), so the hash is checked against
+  the file in this repository, not against a rebuild.
+- Whoever holds the payment key decides when the agents wake. Not waking
+  them stops them; it does not steer them.
+- OutLayer still holds governance keys at this stage (their
+  `docs/NON_CUSTODIAL.md` says which).
+
+Before v12 the relay ran this loop itself: with keys derived from one secret
+(`AGENTS_SEED`, v1 to v10), then with keys in OutLayer custody wallets
+limited by an on-chain policy (v11, `agents/custody.ts`). Both still work
+when the enclave is not configured.
 
 The relay holds no key of any person either.
 
@@ -599,18 +641,18 @@ view, the last 600, with the match day, the reason and the club).
 
 Do this - see that: sign in, follow a club, buy its season ticket (Stands →
 Season tickets); fill the stand with other fans; after the match day the
-ticket shows its share, and `tickets_of` on `tickets-v11.near-post.testnet`
+ticket shows its share, and `tickets_of` on `tickets-v12.near-post.testnet`
 shows the same balance.
 
-## Live on testnet (v11)
+## Live on testnet (v12)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v11.near-post.testnet`](https://testnet.nearblocks.io/address/league-v11.near-post.testnet) |
-| Goalars | [`goalars-v11.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v11.near-post.testnet) |
-| Players | [`players-v11.near-post.testnet`](https://testnet.nearblocks.io/address/players-v11.near-post.testnet) |
-| Items | [`items-v11.near-post.testnet`](https://testnet.nearblocks.io/address/items-v11.near-post.testnet) |
-| Season tickets | [`tickets-v11.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v11.near-post.testnet) |
+| League | [`league-v12.near-post.testnet`](https://testnet.nearblocks.io/address/league-v12.near-post.testnet) |
+| Goalars | [`goalars-v12.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v12.near-post.testnet) |
+| Players | [`players-v12.near-post.testnet`](https://testnet.nearblocks.io/address/players-v12.near-post.testnet) |
+| Items | [`items-v12.near-post.testnet`](https://testnet.nearblocks.io/address/items-v12.near-post.testnet) |
+| Season tickets | [`tickets-v12.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v12.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -621,18 +663,19 @@ days) ends in 13 hours; a real league would play one match day a day. The
 league has 24 fictional clubs in two divisions, 8 of them in 4 derbies, a
 demo crowd and the AI agents above.
 
-v1 to v10 (1 to 12 November) stay on `*-v1` to `*-v10.near-post.testnet`;
+v1 to v11 (1 to 12 November) stay on `*-v1` to `*-v11.near-post.testnet`;
 they are no longer used. The contracts cannot be changed, so new rules mean a
-new league. v11 (12 November) is the same five wasm as v10, with the
-mechanics of "What v9 adds" and "What v10 adds": it starts again at season 1
+new league. v12 (13 November) is the same five wasm as v10, with the
+mechanics of "What v9 adds" and "What v10 adds". It starts again at season 1
 because a club belongs to its manager's account for good, and the AI agents'
-accounts are now their OutLayer wallets (see "Where the agents' keys are").
+accounts are now those of keys that exist only inside an enclave (see "The
+agents run by themselves").
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v11.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v11.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v12.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v12.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -650,9 +693,9 @@ pnpm dev:web       # http://localhost:5173
 | --- | --- |
 | `pnpm test` | `Tests 106 passed` (relay), `5 passed` (sim), `39 passed` (web). |
 | `pnpm sim` | The G supply after 1, 30 and 60 match days for five leagues: loyal fans reach 5.40B, absent fans 2.55B, a dead league stays under 0.5B. |
-| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v11 contracts on testnet. |
+| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v12 contracts on testnet. |
 
-The web app reads the v11 contracts on testnet. Email sign-in goes through the
+The web app reads the v12 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
@@ -703,16 +746,17 @@ fly volumes create near_post_data --region cdg --size 1
 fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
 fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
 fly secrets set ATTESTER_PRIVATE_KEY=ed25519:...      # signs drill scores (public key set in the league)
-fly secrets set AGENTS_CUSTODY_KEY=ed25519:...        # a key of AGENTS_CUSTODY_ACCOUNT: signs requests to the agents' wallets
+fly secrets set AGENTS_ENCLAVE_KEY=owner:nonce:secret # an OutLayer payment key: it pays for the agents' runs
 fly secrets set NEAR_AI_API_KEY=sk-...                # optional: without it the agents follow their rules
 fly deploy
 ```
 
-The agents' wallets are created on first use. `scripts/seed-demo.mjs` (with
-`CUSTODY_URL` and `CUSTODY_ACCOUNT`) funds the coaches' wallets, has each
-create its club and writes `deployments/testnet-agents.json`;
-`scripts/agents-policy.mjs` then limits every wallet to the league's
-contracts. The relay funds the AI footballers' wallets itself.
+The agents' program is published once as an OutLayer project
+(`pnpm --filter @near-post/enclave build`, then `outlayer deploy agents
+<url of the wasm>` as the project's owner), with the model's API key and the
+drill attester's key as its secrets. `AGENTS_ACCOUNTS=<file> node
+scripts/seed-demo.mjs` then seats the crowd; the agents create their clubs
+and their footballers themselves.
 
 For the hackathon, `fly.toml` turns the email check off
 (`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.

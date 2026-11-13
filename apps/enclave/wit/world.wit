@@ -1,0 +1,13 @@
+package nearpost:agents@0.1.0;
+
+world agents {
+    import near:rpc/api@0.1.0;
+    import near:storage/api@0.2.0;
+    import outlayer:encryption-keys/api@0.1.0;
+    import wasi:http/types@0.2.12;
+    import wasi:http/outgoing-handler@0.2.12;
+    import wasi:cli/stdin@0.2.12;
+    import wasi:cli/stdout@0.2.12;
+    import wasi:cli/environment@0.2.12;
+    export wasi:cli/run@0.2.12;
+}

@@ -90,6 +90,20 @@ const Env = z.object({
   AGENTS_CUSTODY_URL: z.url().optional(),
   AGENTS_CUSTODY_ACCOUNT: z.string().min(2).max(64).optional(),
   AGENTS_CUSTODY_KEY: z.string().startsWith("ed25519:").optional(),
+  /**
+   * The agents by themselves (agents/enclave.ts): the call address of their
+   * program on OutLayer, and the payment key that pays for its runs (a
+   * secret; it starts a run and cannot tell it what to do). With both set,
+   * the relay holds no agent key and decides nothing for the agents.
+   */
+  AGENTS_ENCLAVE_URL: z.url().optional(),
+  AGENTS_ENCLAVE_KEY: z.string().min(20).optional(),
+  AGENTS_ENCLAVE_SHARES: z.coerce.number().int().min(1).max(16).default(16),
+  AGENTS_ENCLAVE_PARALLEL: z.coerce.number().int().min(1).max(8).default(4),
+  /** The row of OutLayer secrets a run reads (the model's API key), "profile:account". */
+  AGENTS_ENCLAVE_SECRETS: z.string().regex(/^[^:]+:[^:]+$/).optional(),
+  /** The relay tops up an agent's account under this much NEAR (gas; the enclave holds no key but the agents'). */
+  AGENTS_LOW_NEAR: z.string().regex(/^\d+(\.\d+)?$/).default("0.4"),
   AGENTS_EVERY_MS: z.coerce.number().int().min(1000).default(15_000),
   /** RPC requests a second the agents may make, all together. */
   AGENTS_RPS: z.coerce.number().positive().default(2),

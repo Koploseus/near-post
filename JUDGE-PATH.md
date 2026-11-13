@@ -1,11 +1,12 @@
 # Judge path: NEAR Post in 10 minutes
 
-Live app: **https://near-post.fly.dev** (NEAR testnet, contracts `*-v11.near-post.testnet`).
+Live app: **https://near-post.fly.dev** (NEAR testnet, contracts `*-v12.near-post.testnet`).
 No wallet needed. A phone works; a laptop shows more at once.
 
 What to look for: a football game whose **memecoin (G) is minted by the fans
 who show up**, **players that are NFTs**, and **AI coaches and footballers**
-whose decisions are signed inside a TEE and checkable.
+who run by themselves inside an enclave: their keys exist only there, and
+their decisions are signed inside a TEE and checkable.
 
 Timing: a match day kicks off every 30 minutes (two 10-minute halves, 5 minutes
 of half-time). Anything below works at any moment; the Live tab is best during
@@ -26,7 +27,7 @@ a half.
 | --- | --- | --- |
 | Open **Today** | The live score and the table. | Read by your browser from the league contract, no backend in between. |
 | Open **Live** | The match played on chain, revealed minute by minute: shots, saves, tackles, cards, goals with their assist; players and ball move from those events. The two AI coaches' team talks. | Each half is one `play_match_day` transaction; the events are in its result. |
-| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v11.near-post.testnet` views `results`, `table`. |
+| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v12.near-post.testnet` views `results`, `table`. |
 | **Stands** | The busiest stand of the day: its tifo, painted square by square by the fans who came. | View `stand`. |
 | **Team → Season stats** | Leaderboards: players (goals, assists, tackles, saves, clean sheets...), clubs (attack, defence, form, winning runs, fair play), fans (crowds, full houses). | Counted from the on-chain match sheets and stands (`results`, `stand_result`); anyone can recount them. |
 
@@ -36,7 +37,7 @@ a half.
 | --- | --- | --- |
 | **Play now** → any email → **Continue** | Signed in, about 5 seconds, with 1M G in your wallet (top right): a welcome, so you can buy a ticket or a pack at once. Demo mode: the code is not emailed, so any address works. | A NEAR account `u….near-post.testnet` is created with **your browser's** public key. The relay never holds your key. The welcome is an `ft_transfer` from `near-post.testnet`'s own G (moved there from AI coaches): nothing is minted for it. |
 | Backup screen → **Not now** (or try a passkey / recovery key) | | Passkey: WebAuthn PRF encrypts your key in the browser. Recovery key: for Bitwarden and the like, which have no PRF. |
-| Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v11` in your name. |
+| Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v12` in your name. |
 | Pick a contract length → **Sign … days for** a club (one with fans) | Your locker room: club, ratings, energy, your contract, the club house. | `sign_for`, then your NFT is transferred to the club. Your contract is on the NFT's record (`get_player`): wage, last day, release clause. When it ends, or after 3 unpaid matches, the league sends the NFT back to you. |
 | **Training** → pick a skill → **Train · free** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. Your first session is free; then 400k G, burned. It costs 15 energy. | `train_free`. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
 | **Team** | The team sheet: tap a free slot, see the formation, vote the strategy. | Nobody can take a slot another player chose, and the contract closes the sheet a minute before kick-off; then free slots go to the best of the squad. Every person in the squad votes the strategy; AI footballers vote too. |
@@ -61,7 +62,7 @@ minutes left, and closes training in the last 3. Gas is paid by the relay
 | **Club → People** | The terrace, private messages, friends, and duels on the five drills. | Off chain, signed with your key; a duel has no stake. |
 | **Stands → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
 | Read the rules card | A full house (60% of fans in) pays 100k G per fan present; a goal pays **up to 600k G, as full as the scoring club's stand is**; an incomplete tifo burns 2% of the club's treasury. | `rules` view. No admin method changes them. |
-| **Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v11` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
+| **Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v12` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
 
 Why it matters for a memecoin: supply follows attendance. Simulation over 60
 match days (`pnpm sim`): loyal fans 5.4B, absent fans 2.6B, a league that stops
@@ -75,6 +76,7 @@ the same contract methods, with no special rights.
 | Do | See | Proof |
 | --- | --- | --- |
 | Open **https://near-post.fly.dev/#/ai** | Each decision: the quote, what it did (with transaction links), what the rules refused. | Model: Qwen 3.6 on NEAR AI Cloud, in a TEE. |
+| On a line of the AI dressing room, follow **run in an enclave ↗** | A TDX quote for that run, with `executed_wasm_sha256` and `project_id: warden.near-post.testnet/agents`. | The agents decide and sign inside an enclave on OutLayer, with keys that exist only there. The hash is the file in `apps/web/public/enclave/`. The relay only wakes the program (README, "The agents run by themselves"). |
 | Run `pnpm --filter @near-post/relay verify-agent` | `10/10 decisions verified` | For each decision: the signed text is that request's and response's sha256; the ECDSA signature recovers to the signing address; that address is the one in NEAR AI's attestation report for the model (Intel TDX and NVIDIA quotes in the report). Trusts neither us nor our relay. |
 
 Prompt injection: the model only ever sees ids, aliases and numbers, never
@@ -85,12 +87,12 @@ signed. The README has the full list.
 ## 5. Check the chain yourself (optional)
 
 ```bash
-near contract call-function as-read-only league-v11.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v11.near-post.testnet ledger json-args '{"limit":20}' network-config testnet now
+near contract call-function as-read-only league-v12.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v12.near-post.testnet ledger json-args '{"limit":20}' network-config testnet now
 ```
 
-- Contracts: `league-v11`, `goalars-v11` (NEP-141), `players-v11` (NEP-171),
-  `items-v11`, `tickets-v11` `.near-post.testnet`. Only the league mints G.
+- Contracts: `league-v12`, `goalars-v12` (NEP-141), `players-v12` (NEP-171),
+  `items-v12`, `tickets-v12` `.near-post.testnet`. Only the league mints G.
 - The wasm in `contracts/res/` is rebuilt by the CI in a pinned image and must
   match byte for byte; `deployments/testnet.json` gives each hash.
 - No contract has an owner, admin or upgrade method. On testnet the deploy keys
