@@ -1,5 +1,6 @@
 import { HeroArt } from "../floodlight/art.js";
 import { useEffect, useState } from "react";
+import { emailOf, isEmailOf, rememberEmail } from "../lib/email.js";
 import { Action } from "../lib/Action.js";
 import { g, positionLabel, short } from "../lib/format.js";
 import { soon, useData, useGame } from "../lib/game.js";
@@ -420,6 +421,7 @@ function Account() {
           Explorer ↗
         </a>
       </p>
+      {isGasless(session.accountId) && <AccountEmail accountId={session.accountId} />}
       {isGasless(session.accountId) && <p className="note">Opened with your email: the game pays your gas.</p>}
       <button
         type="button"
@@ -487,5 +489,51 @@ function FoundClub({ me }: { me: Player }) {
       />
       <p className="note">You manage it: the formation (until the squad elects a captain), the market, the season tickets it sells.</p>
     </div>
+  );
+}
+
+/**
+ * The email this account was opened with. The game does not keep emails (the account's name is a
+ * hash of it), so it is shown when this browser remembers it; otherwise you type the one you think
+ * it was and it is checked here, on your device.
+ */
+function AccountEmail({ accountId }: { accountId: string }) {
+  const [known, setKnown] = useState(() => emailOf(accountId));
+  const [guess, setGuess] = useState("");
+  const [wrong, setWrong] = useState<string | null>(null);
+  if (known)
+    return (
+      <p className="account-field">
+        <small>EMAIL</small>
+        <span title={known}>{known}</span>
+      </p>
+    );
+  return (
+    <form
+      className="account-email"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const email = guess.trim();
+        void isEmailOf(accountId, email).then((yes) => {
+          if (!yes) return setWrong(email);
+          rememberEmail(accountId, email);
+          setKnown(email.toLowerCase());
+        });
+      }}
+    >
+      <label htmlFor="account-email">Which email was it?</label>
+      <p className="note">The game does not keep your email. Type the one you think you used: it is checked on this device, and is not sent.</p>
+      <div className="account-email-row">
+        <input id="account-email" type="email" required autoComplete="email" value={guess} onChange={(e) => (setGuess(e.target.value), setWrong(null))} />
+        <button type="submit" className="cta small" disabled={!guess.trim()}>
+          CHECK
+        </button>
+      </div>
+      {wrong && (
+        <p className="err" role="status">
+          Not {wrong}: this account was opened with another email.
+        </p>
+      )}
+    </form>
   );
 }
