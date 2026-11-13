@@ -155,7 +155,7 @@ export function Dashboard() {
         {/* The match: live score, or the countdown to kick-off. */}
         {ld?.state === "live" && liveMatch && schedule ? (
           <a className="hero live-hero" href="#/live">
-            <span className="badge-live">LIVE</span>
+            <span className="badge-live">{c?.phase === "full_time" ? "FULL TIME" : "LIVE"}</span>
             <LiveScore m={liveMatch} kickoff={ld.kickoff} day={ld.day} now={now} names={names} />
           </a>
         ) : (
@@ -365,7 +365,7 @@ function LiveScore({ m, kickoff, day, now, names }: { m: MatchResult; kickoff: n
         {clubName(names.get(m.away) ?? "")}
       </span>
       <em>{c.label}</em>
-      <span className="cta small hs-watch">WATCH LIVE</span>
+      <span className="cta small hs-watch">{c.phase === "full_time" ? "SEE THE MATCH" : "WATCH LIVE"}</span>
     </span>
   );
 }

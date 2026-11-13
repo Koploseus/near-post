@@ -245,7 +245,7 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .next-card { border: 0; box-shadow: var(--px); }
 .next-card.with-art { position: relative; min-height: 300px; padding-right: 46%; background: linear-gradient(90deg, var(--np-yellow) 52%, rgba(242, 183, 5, 0) 62%), url(/art/heroes/hero-cheer.png) right 6% bottom -10px / auto 104% no-repeat, url(/art/bg/bg-locker.webp) right center / 52% auto no-repeat, var(--np-yellow); align-content: center; }
 @media (max-width: 720px) {
-  .next-card.with-art { min-height: 0; padding-right: 24px; padding-top: 196px; background: url(/art/heroes/hero-cheer.png) center top 6px / auto 190px no-repeat, linear-gradient(var(--np-yellow), var(--np-yellow)) 0 200px / 100% 100% no-repeat, url(/art/bg/bg-locker.webp) center top / cover no-repeat, var(--np-yellow); }
+  .next-card.with-art { min-height: 0; padding-right: 24px; padding-top: 220px; background: url(/art/heroes/hero-cheer.png) center top 6px / auto 190px no-repeat, linear-gradient(var(--np-yellow), var(--np-yellow)) 0 200px / 100% 100% no-repeat, url(/art/bg/bg-locker.webp) center top / cover no-repeat, var(--np-yellow); }
 }
 @media (min-width: 721px) {
   .today.signed { grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; }
@@ -621,7 +621,14 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .drill-card .note { margin: 0; }
 .drill-card .cta { background: var(--np-yellow); color: var(--np-outline); }
 @media (max-width: 720px) { .drill-card { grid-template-columns: 64px minmax(0, 1fr); } .drill-card-cab { width: 64px; } .drill-card .cta { grid-column: 1 / -1; justify-self: stretch; text-align: center; } .hero-score .hs-watch { justify-self: center; } }
-.hero-score .hs-watch { white-space: nowrap; }
+.hero-score .hs-watch { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
+/* On a phone the score keeps the first row; the minute and the button each take a row of their own. */
+@media (max-width: 720px) {
+  .hero-score { grid-template-areas: "h s a" "m m m" "b b b"; grid-template-rows: auto auto auto; align-items: center; align-content: center; }
+  .hero-score .hs-watch { justify-self: stretch; align-self: center; }
+  .hero-score .hs-team { align-self: start; }
+  .live-hero .hero-score { margin-top: 26px; }
+}
 @media (max-width: 720px) { .today-player .avatar-stage { background: url(/art/bg/bg-locker.webp) center 40% / cover; border: 0; } }
 
 /* ---- v10: people, rankings, life off the pitch, recruits, gifts, pages ---- */
