@@ -933,3 +933,17 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .bottombar a:not([aria-current="page"]) .tile.art img, .bottombar button:not(.on) .tile.art img { filter: saturate(.75) brightness(.9) drop-shadow(1px 2px 0 rgba(11, 8, 32, .55)); }
 }
 .rules-pill img { width: 30px; height: 30px; object-fit: contain; }
+
+/* Home, signed in: the middle column keeps its width (a wide score or three doors no longer push it under the dressing room). */
+.today-main, .today-side { grid-template-columns: minmax(0, 1fr); }
+.today-main > * { min-width: 0; max-width: 100%; }
+/* Between the player's card and the dressing room there is room for two doors a row, not three. */
+@media (min-width: 1101px) { .today.signed.has-player .doors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.door-text b, .door-text span { overflow-wrap: anywhere; }
+/* A long name in one word stays inside the card. */
+.today-player h3 { overflow-wrap: anywhere; }
+@media (min-width: 721px) {
+  .today-player h3 { max-width: 54%; }
+  .today-player h3.longish { font-size: 22px; }
+  .today-player h3.long { font-size: 17px; }
+}
