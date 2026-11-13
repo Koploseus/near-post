@@ -86,6 +86,11 @@ if (config.WEB_DIST) {
     c.header("x-content-type-options", "nosniff");
     c.header("referrer-policy", "no-referrer");
     c.header("x-frame-options", "DENY");
+    // The page itself is asked for again each time (it names the build's files); those files carry a hash
+    // in their name and never change. Without this a browser kept the old page after a new version went out.
+    const path = c.req.path;
+    if (path === "/" || path.endsWith(".html")) c.header("cache-control", "no-cache");
+    else if (path.startsWith("/assets/")) c.header("cache-control", "public, max-age=31536000, immutable");
   });
   app.get("/*", serveStatic({ root: config.WEB_DIST }));
 }
