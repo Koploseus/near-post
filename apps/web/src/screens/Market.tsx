@@ -3,7 +3,7 @@ import { Action } from "../lib/Action.js";
 import { GOALARS, LEAGUE, PLAYERS } from "../lib/config.js";
 import { clubName, g, positionLabel, short } from "../lib/format.js";
 import { useData, useGame } from "../lib/game.js";
-import { call, league, leagueCall } from "../lib/near.js";
+import { acceptOffer, call, league, leagueCall } from "../lib/near.js";
 import type { Club, Offer, Player } from "../lib/types.js";
 import { roleOf, useAgents } from "../lib/agents.js";
 import { Sticker } from "./Sticker.js";
@@ -149,7 +149,7 @@ function MyClubOffers({ club }: { club: Club }) {
   const { data: squad } = useData(() => league<Player[]>("squad", { account_id: club.manager }), [club.manager]);
   if (!session) return null;
   const accept = (o: Offer) =>
-    call(session, PLAYERS, "nft_approve", { token_id: o.token_id, account_id: LEAGUE, msg: JSON.stringify({ accept: o.id }) }, { deposit: 10n ** 22n, tgas: 250 });
+    acceptOffer(session, o.token_id, o.id);
   return (
     <section className="paper panel" aria-label={`Offers for ${club.name}`}>
       <span className="k">YOUR CLUB</span>

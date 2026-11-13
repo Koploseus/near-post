@@ -145,7 +145,18 @@ export interface AgentsDeps {
 }
 
 const ONE_YOCTO = 1n;
-const APPROVAL_DEPOSIT = 10n ** 22n; // 0.01 NEAR, the approval's storage
+/**
+ * What approving `account` for a player costs the players contract in storage, to the yocto (the
+ * account's name, four bytes for its length and eight for the approval's number, at 10^19 a byte).
+ *
+ * It is paid exactly, and one yocto when the approval is there already: the contract sends back
+ * anything above it, and a transfer to an implicit account (what an agent is) is charged as if the
+ * account had to be created. That refund alone takes more gas than the 10 Tgas the contract keeps
+ * for itself before it calls the league, so with a round deposit every sale by an agent failed
+ * ("Exceeded the prepaid gas").
+ */
+export const approvalStorage = (account: string) => BigInt(account.length + 12) * 10n ** 19n;
+const SALE_TGAS = 250;
 // A payment prepays 150 Tgas (0.15 NEAR, mostly refunded): an agent is topped up before he runs that low.
 const LOW_NEAR = near("0.2");
 const TOP_UP_NEAR = near("0.2");
@@ -176,6 +187,11 @@ export class Agents {
   }
   private view<T>(contract: string, method: string, args: Record<string, unknown> = {}) {
     return this.d.chain.view<T>(contract, method, args);
+  }
+  /** The deposit that approving the league for this player takes: nothing to send back. */
+  private async approvalDeposit(token_id: string): Promise<bigint> {
+    const t = await this.view<{ approved_account_ids?: Record<string, number> } | null>(this.d.playersId, "nft_token", { token_id }).catch(() => null);
+    return t?.approved_account_ids?.[this.d.leagueId] !== undefined ? ONE_YOCTO : approvalStorage(this.d.leagueId);
   }
   private league<T>(method: string, args: Record<string, unknown> = {}) {
     return this.view<T>(this.d.leagueId, method, args);
@@ -437,8 +453,8 @@ export class Agents {
       await this.act(
         c,
         out,
-        () =>
-          me.callChecked!(this.d.playersId, "nft_approve", { token_id: sell.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: sell.offer_id }) }, 300, APPROVAL_DEPOSIT),
+        async () =>
+          me.callChecked!(this.d.playersId, "nft_approve", { token_id: sell.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: sell.offer_id }) }, SALE_TGAS, await this.approvalDeposit(sell.token_id)),
         { what: "sold", token_id: sell.token_id, price: sell.price, offer_id: sell.offer_id },
       );
     }
@@ -653,9 +669,9 @@ export class Agents {
         await this.act(
           f,
           out,
-          () =>
+          async () =>
             offer !== null
-              ? me.callChecked!(this.d.playersId, "nft_approve", { token_id: fb.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: offer }) }, 250, APPROVAL_DEPOSIT)
+              ? me.callChecked!(this.d.playersId, "nft_approve", { token_id: fb.token_id, account_id: this.d.leagueId, msg: JSON.stringify({ accept: offer }) }, SALE_TGAS, await this.approvalDeposit(fb.token_id))
               : me.callChecked!(this.d.playersId, "nft_transfer", { receiver_id: target, token_id: fb.token_id }, 100, ONE_YOCTO),
           { what: "joined", club: target, price: c.price },
         );
