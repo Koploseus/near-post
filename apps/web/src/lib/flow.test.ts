@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { frameAt, keyframes, positions } from "./flow.js";
-import type { MatchEvent } from "./types.js";
+import { atBall, frameAt, keyframes, positions } from "./flow.js";
+import { SPOTS } from "./pitch.js";
+import type { Formation, MatchEvent } from "./types.js";
 
 const ev = (second: number, home: boolean, kind: MatchEvent["kind"], player = 9): MatchEvent => ({ second, home, kind, player });
 
@@ -59,6 +60,52 @@ describe("the live pitch follows the events", () => {
     // The man on the ball is at the ball.
     const withBall = positions("4-4-2", 0, [70, 30], 0, 9);
     expect(Math.hypot(withBall[9]![0] - 70, withBall[9]![1] - 30)).toBeLessThan(3);
+  });
+});
+
+describe("where the elevens stand", () => {
+  const FORMATIONS = Object.keys(SPOTS) as Formation[];
+
+  it("at a kick-off and at rest each eleven is in its own half, and the side without the ball is out of the centre circle", () => {
+    for (const f of FORMATIONS) {
+      for (const restart of ["kickoff", "rest"] as const) {
+        const home = positions(f, 0, [50, 50], 0, undefined, { restart });
+        const away = positions(f, 1, [50, 50], 0, undefined, { restart });
+        expect(Math.max(...home.map((p) => p[0]))).toBeLessThan(50);
+        expect(Math.min(...away.map((p) => p[0]))).toBeGreaterThan(50);
+        // 9.15 m on a 105 m pitch is under 9 of these units along the pitch.
+        for (const p of away) expect(Math.hypot(p[0] - 50, (p[1] - 50) * 0.65)).toBeGreaterThan(9);
+        const onBall = home.filter((p) => Math.hypot(p[0] - 50, p[1] - 50) < 3).length;
+        expect(onBall).toBe(restart === "kickoff" ? 1 : 0);
+      }
+    }
+  });
+
+  it("a block turns from defending to attacking without a jump, and moves less than the ball", () => {
+    for (const f of FORMATIONS) {
+      // The ball changes feet at the same place: eased, nobody's place moves more than a step at a time.
+      // (The one who pressed and the one who takes the ball have a run to make: they are left out.)
+      let before = positions(f, 0, [55, 40], 1, undefined, { attack: 0 });
+      const presser = atBall(before, [55, 40]);
+      for (let i = 1; i <= 10; i++) {
+        const now = positions(f, 0, [55, 40], 0, 5, { attack: i / 10 });
+        for (let k = 1; k < 11; k++) if (k !== 5 && k !== presser) expect(Math.hypot(now[k]![0] - before[k]![0], now[k]![1] - before[k]![1])).toBeLessThan(3.5);
+        before = now;
+      }
+      // The ball goes 40 units up the pitch: the back line follows by clearly less.
+      const low = positions(f, 0, [30, 50], 0, 9);
+      const high = positions(f, 0, [70, 50], 0, 9);
+      const line = (out: [number, number][]) => Math.min(...out.slice(1).map((p) => p[0]));
+      expect(line(high) - line(low)).toBeGreaterThan(8);
+      expect(line(high) - line(low)).toBeLessThan(26);
+    }
+  });
+
+  it("the one who went to the ball keeps going while another is not clearly nearer", () => {
+    const first = positions("4-4-2", 1, [52, 50], 0);
+    const presser = atBall(first, [52, 50]);
+    const then = positions("4-4-2", 1, [54, 53], 0, undefined, { prefer: presser });
+    expect(atBall(then, [54, 53])).toBe(presser);
   });
 });
 

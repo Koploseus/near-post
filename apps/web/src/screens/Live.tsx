@@ -404,7 +404,9 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
   const gone = (side: number, k: number) =>
     (second && m.elevens[2 + side]?.[k] === "") ||
     shown.some((e) => e.kind === "red" && e.half === half && Number(!e.home) === side && e.player === k);
-  const teams = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined));
+  // Stopped, or a kick-off: each eleven in its own half.
+  const restart = stopped ? ("rest" as const) : "dead" in at && at.dead && Math.hypot(at.ball[0] - 50, at.ball[1] - 50) < 1.5 ? ("kickoff" as const) : undefined;
+  const teams = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined, restart ? { restart } : {}));
   // Club colours on the pitch; when both clubs wear the same, the away side changes.
   const home = crestOf(m.home);
   const away = crestOf(m.away);
