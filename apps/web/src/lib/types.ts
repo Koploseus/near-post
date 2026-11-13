@@ -131,6 +131,8 @@ export interface Rules {
   tired_malus_pct: number;
   contract_days: number[];
   default_contract_days: number;
+  /** Of a sale's price, to the person who plays the footballer (basis points). */
+  player_sale_bps: number;
   clause_factor: number;
   unpaid_to_free: number;
   max_wage: string;

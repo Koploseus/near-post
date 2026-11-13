@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { g } from "./lib/format.js";
 import { GameProvider, useGame } from "./lib/game.js";
+import { TransferNews } from "./screens/TransferNews.js";
 import { useHeartbeat } from "./lib/social.js";
 import { Toasts } from "./lib/toast.js";
 import { Agents } from "./screens/Agents.js";
@@ -374,6 +375,7 @@ function Shell() {
   return (
     <>
       <Header tab={tab} people={people} />
+      <TransferNews />
       <main className="wrap page">
         <SectionTabs r={r} />
         <View />

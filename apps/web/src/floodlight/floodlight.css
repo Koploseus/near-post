@@ -995,3 +995,9 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .skill-gain-plus { font-family: var(--np-display); font-style: normal; font-weight: 700; font-size: 22px; color: var(--np-green); animation: skill-pop .5s steps(5); }
 @keyframes skill-pop { 0% { transform: scale(.4); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .skill-gain-n.up, .skill-gain-plus { animation: none; } .skill-gain-bar b { transition: none; } }
+
+/* A transfer: the news when he comes back, and the clubs that ask for him in his locker. */
+.transfer-news .transfer-line { margin: 0; font: 400 clamp(20px, 3.4vw, 28px)/1.25 var(--display); background: rgba(18, 12, 48, .85); padding: 8px 14px; }
+.transfer-news .transfer-line b { color: var(--np-yellow, #F2B705); font-weight: 400; }
+.suitors { margin-top: 16px; }
+.suitors .clubs { list-style: none; margin: 10px 0 0; padding: 0; }
