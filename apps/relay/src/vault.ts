@@ -64,7 +64,9 @@ export class Vaults {
   }
 
   put(accountId: string, entry: VaultEntry) {
-    const list = this.get(accountId).filter((e) => e.credential_id !== entry.credential_id);
+    // One recovery key an account: a new one takes the old one's backup away, so the old key opens nothing any more.
+    const recovery = entry.credential_id.startsWith("recovery-key-");
+    const list = this.get(accountId).filter((e) => e.credential_id !== entry.credential_id && !(recovery && e.credential_id.startsWith("recovery-key-")));
     list.push(entry);
     this.data[accountId] = list.slice(-MAX_PASSKEYS);
     this.save();

@@ -437,9 +437,12 @@ function Account() {
     <div className="paper panel account">
       <span className="k">BACKUP</span>
       {passkeys ? (
-        <p className="ok">
-          <PasskeyIcon /> Backed up: you can sign in on your other devices
-        </p>
+        <>
+          <p className="ok">
+            <PasskeyIcon /> Backed up: you can sign in on your other devices
+          </p>
+          <RecoveryKeySetup session={session} username={session.accountId} replace />
+        </>
       ) : (
         <>
           <p className="note">Back up your key with a passkey or a recovery key to sign in on your other devices.</p>

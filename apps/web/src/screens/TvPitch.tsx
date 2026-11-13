@@ -52,7 +52,7 @@ const rnd = (n: number) => {
   return x - Math.floor(x);
 };
 
-export function TvPitch({ m, shown, c, players, shirts, mine, myClub }: { m: MatchResult; shown: Ev[]; c: Clock; players: Map<string, Player>; shirts: [string, string]; /** Your footballer's token id: he gets a gold marker. */ mine?: string | null; /** Your club: the final whistle is a win, a defeat or a draw for you. */ myClub?: string | null }) {
+export function TvPitch({ m, shown, c, players, shirts, mine, myClub, gain = 0 }: { m: MatchResult; shown: Ev[]; c: Clock; players: Map<string, Player>; shirts: [string, string]; /** Your footballer's token id: he gets a gold marker. */ mine?: string | null; /** Your club: the final whistle is a win, a defeat or a draw for you. */ myClub?: string | null; /** Whole G that came into your wallet over this match (0: nothing to show). */ gain?: number }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
@@ -69,8 +69,8 @@ export function TvPitch({ m, shown, c, players, shirts, mine, myClub }: { m: Mat
   const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time" || c.phase === "before";
 
   // What the loop reads: always the latest props, without restarting it.
-  const live = useRef({ m, shown, c, players, shirts, keys, half, second, stopped, mine, myClub });
-  live.current = { m, shown, c, players, shirts, keys, half, second, stopped, mine, myClub };
+  const live = useRef({ m, shown, c, players, shirts, keys, half, second, stopped, mine, myClub, gain });
+  live.current = { m, shown, c, players, shirts, keys, half, second, stopped, mine, myClub, gain };
 
   useEffect(() => {
     const el = canvas.current;
@@ -104,6 +104,8 @@ export function TvPitch({ m, shown, c, players, shirts, mine, myClub }: { m: Mat
     let raf = 0;
     /** When the final whistle was first seen here. */
     let endedAt: number | null = null;
+    /** When your pay for the match was first known here: it counts up from then. */
+    let paidAt: number | null = null;
 
     const frame = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -419,6 +421,12 @@ export function TvPitch({ m, shown, c, players, shirts, mine, myClub }: { m: Mat
       g.restore();
 
       if (mood) finale(g, mood, since, now, won === null ? ["#F2B705", "#F3EAD7"] : [L.shirts[won]!, "#F2B705", "#F3EAD7"], L.m.home_goals, L.m.away_goals);
+      const paid = (window as unknown as { __npGain?: number }).__npGain ?? L.gain; // (a test sets `window.__npGain`)
+      if (!mood || paid <= 0) paidAt = null;
+      else {
+        paidAt ??= now;
+        pay(g, paid, (now - paidAt) / 1000, now);
+      }
       if (caption) lowerThird(g, caption);
       radar(g, bodies, ballAt, L.shirts, gone, cam, myBody);
       raf = requestAnimationFrame(frame);
@@ -732,6 +740,43 @@ function finale(g: G, mood: Mood, since: number, now: number, colours: string[],
     g.fillText(sub, 0, 92);
   }
   g.restore();
+}
+
+const COIN = typeof Image !== "undefined" ? Object.assign(new Image(), { src: "/art/objects/coin.png" }) : null;
+
+/** What the match put in your wallet: a coin and the amount counting up, under the word. */
+function pay(g: G, amount: number, since: number, now: number) {
+  const p = Math.min(1, Math.max(0, (since - 0.4) / 1.6));
+  if (since < 0.4) return;
+  const shownAmount = Math.round(amount * (1 - (1 - p) ** 3));
+  const text = `+${shownAmount.toLocaleString("en-US")} G`;
+  const pop = p < 1 ? 1 : 1 + 0.05 * Math.sin(now / 160);
+  g.save();
+  g.translate(CW / 2, 300);
+  g.scale(pop, pop);
+  g.font = "400 30px 'Press Start 2P', monospace";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const w = g.measureText(`+${amount.toLocaleString("en-US")} G`).width + 110;
+  g.fillStyle = "#0B0820";
+  g.fillRect(-w / 2 - 5, -37, w + 10, 96);
+  g.fillStyle = "#251A57";
+  g.fillRect(-w / 2, -32, w, 86);
+  if (COIN?.complete && COIN.naturalWidth) g.drawImage(COIN, -w / 2 + 12, -26, 52, 52);
+  g.fillStyle = "#F2B705";
+  g.fillText(text, 30, 0);
+  g.font = "700 15px 'Archivo', system-ui";
+  g.fillStyle = "#F3EAD7";
+  g.fillText("in your wallet since kick-off", 0, 38);
+  g.restore();
+  // Coins fall while it counts.
+  if (p < 1 && COIN?.complete && COIN.naturalWidth)
+    for (let i = 0; i < 9; i++) {
+      const a = (since * 1.4 + i / 9) % 1;
+      g.globalAlpha = 1 - a;
+      g.drawImage(COIN, CW / 2 - w / 2 + (i / 8) * (w - 26), 190 + a * 80, 26, 26);
+    }
+  g.globalAlpha = 1;
 }
 
 /** The word of the moment, bottom left, as on TV. */

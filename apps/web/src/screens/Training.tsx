@@ -110,6 +110,7 @@ export function Training({ me }: { me: Player }) {
               <p className="big-score">
                 {attested.hits} / {attested.rounds} · <strong>+{attested.points}</strong> {skillName(ticket.skill)}
               </p>
+              {attested.points > 0 && <SkillGain name={skillName(ticket.skill)} from={me.skills[ticket.skill]} by={attested.points} />}
             </div>
             <p className={left < TRAIN_CUTOFF_MS ? "err" : "note"}>
               The relay signed your score. Submit it before this match day ends{Number.isFinite(left) ? `, in ${minutes(left)}` : ""}.
@@ -323,3 +324,28 @@ export function TrainingPage() {
 }
 
 const positionName = (p: string) => ({ Gk: "keeper", Df: "defender", Mf: "midfielder", Fw: "forward" })[p] ?? "player";
+
+/** The skill's bar fills from what it was to what it will be, and the points pop out. */
+function SkillGain({ name, from, by }: { name: string; from: number; by: number }) {
+  const to = Math.min(99, from + by);
+  const [at, setAt] = useState(from);
+  useEffect(() => {
+    // One point at a time, after the card has opened.
+    if (at >= to) return;
+    const t = setTimeout(() => setAt((v) => v + 1), at === from ? 600 : 420);
+    return () => clearTimeout(t);
+  }, [at, to, from]);
+  return (
+    <div className="skill-gain" role="img" aria-label={`${name}: ${from} to ${to}`}>
+      <span className="skill-gain-name">{name}</span>
+      <span className="skill-gain-bar">
+        <i style={{ width: `${from}%` }} />
+        <b style={{ left: `${from}%`, width: `${at - from}%` }} />
+      </span>
+      <span key={at} className={`skill-gain-n${at > from ? " up" : ""}`}>
+        {at}
+      </span>
+      {at >= to && <em className="skill-gain-plus">+{to - from}</em>}
+    </div>
+  );
+}

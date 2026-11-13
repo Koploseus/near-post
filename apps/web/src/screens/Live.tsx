@@ -2,6 +2,7 @@ import { CoachFace } from "../floodlight/art.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
 import { Wall } from "./Wall.js";
+import { play, setSound, soundOn } from "../lib/sound.js";
 import { serverNow } from "../lib/time.js";
 import { type Clock, HALF_SECONDS, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
 import { frameAt, keyframes, positions } from "../lib/flow.js";
@@ -229,12 +230,65 @@ export function MatchView({
       else if (set && (e.kind === "saved" || e.kind === "missed")) kind = `${set}_${e.kind}`;
       if (kind) {
         const side = e.home !== (e.kind === "own_goal") ? m.home : m.away;
-        setReplay({ kind, name: name(e), team: clubName(names.get(e.kind === "own_goal" ? (e.home ? m.away : m.home) : side) ?? ""), seed: e.second * 7 + e.player });
+        // Your own footballer: his slot in the eleven of his side, this half.
+        const eleven = e.home ? 0 : 1;
+        const who = (e.half === 1 ? m.elevens[2 + eleven] : undefined)?.[e.player] || m.elevens[eleven]?.[e.player];
+        const yours = !!me && who === me.token_id;
+        setReplay({ kind, name: name(e), team: clubName(names.get(e.kind === "own_goal" ? (e.home ? m.away : m.home) : side) ?? ""), seed: e.second * 7 + e.player, ...(yours ? { mine: true } : {}) });
+        if (kind.endsWith("goal")) play(yours && kind !== "own_goal" ? "my_goal" : "goal");
         break;
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown.length, syncing]);
+  // (A test that looks at a replay sets `window.__npPitch` first, then calls `window.__npReplay`.)
+  useEffect(() => {
+    const w = window as unknown as { __npPitch?: unknown; __npReplay?: (r: HighlightMoment) => void };
+    if ("__npPitch" in w) w.__npReplay = setReplay;
+  }, []);
+  // The referee's whistle at each kick-off and each stop, and a tune for how it ended for you.
+  const lastPhase = useRef<string | null>(null);
+  useEffect(() => {
+    const was = lastPhase.current;
+    lastPhase.current = c.phase;
+    if (was === null || was === c.phase || final || syncing) return;
+    if (c.phase === "first_half" || c.phase === "second_half" || c.phase === "half_time") play("whistle");
+    else if (c.phase === "full_time") {
+      play("full_time");
+      const mine = clubId === m.home ? m.home_goals - m.away_goals : clubId === m.away ? m.away_goals - m.home_goals : null;
+      setTimeout(() => play(mine === null ? "draw" : mine > 0 ? "win" : mine < 0 ? "lose" : "draw"), 1200);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.phase]);
+  // What came into your wallet over this match: your balance at the first whistle you saw, against the one after the last.
+  const { balance, refresh, session } = useGame();
+  const [gain, setGain] = useState(0);
+  useEffect(() => {
+    if (!session || final) return;
+    const key = `near-post.balance-at-kickoff.${session.accountId}.${day}`;
+    try {
+      const early = c.phase === "before" || c.phase === "first_half";
+      if (early && sessionStorage.getItem(key) === null) sessionStorage.setItem(key, balance);
+      if (c.phase !== "full_time") return setGain(0);
+      const at = sessionStorage.getItem(key);
+      const won = at === null ? 0n : (BigInt(balance) - BigInt(at)) / 1_000_000n;
+      setGain(won > 0n ? Number(won) : 0);
+    } catch {
+      setGain(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.phase, balance, session?.accountId, day]);
+  useEffect(() => {
+    // The whistle has gone: read the wallet again (twice: the chain may be a block behind).
+    if (c.phase !== "full_time" || final) return;
+    refresh();
+    const again = setTimeout(refresh, 6000);
+    return () => clearTimeout(again);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.phase]);
+  useEffect(() => {
+    if (gain > 0) play("gain");
+  }, [gain]);
   const count = (home: boolean, kinds: MatchEvent["kind"][]) => shown.filter((e) => e.home === home && kinds.includes(e.kind)).length;
   const half1 = m.possession.slice(0, 2);
   const poss = c.phase === "full_time" ? [m.stats.home_possession, m.stats.away_possession] : half1.length === 2 && c.phase !== "first_half" ? half1.map((v) => Math.round((100 * v) / (half1[0]! + half1[1]! || 1))) : null;
@@ -296,7 +350,8 @@ export function MatchView({
         <div className="match-bar" aria-hidden="true">
           <span style={{ width: `${c.progress * 100}%` }} />
         </div>
-        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} players={players} names={names} />)}
+        {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} players={players} names={names} gain={gain} />)}
+        {!final && <SoundToggle />}
         {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
@@ -394,7 +449,25 @@ export function MatchView({
 }
 
 /** A small pitch: 22 players in their formations, and the ball going where the play is. */
-function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player>; names: Map<string, string> }) {
+/** The match's sounds: off until you turn them on. */
+function SoundToggle() {
+  const [on, setOn] = useState(soundOn);
+  return (
+    <button
+      type="button"
+      className={`chip sound-toggle${on ? " on" : ""}`}
+      aria-pressed={on}
+      onClick={() => {
+        setSound(!on);
+        setOn(!on);
+      }}
+    >
+      {on ? "SOUND ON" : "SOUND OFF"}
+    </button>
+  );
+}
+
+function Pitch({ m, shown, c, players, names, gain }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player>; names: Map<string, string>; gain: number }) {
   const { me, clubId } = useGame();
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
@@ -436,7 +509,7 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
     <>
     {/* The TV broadcast (camera on the ball); the small pitch of dots when motion is reduced. */}
     {!REDUCED ? (
-      <TvPitch m={m} shown={shown} c={c} players={players} shirts={[shirts[0]!, shirts[1]!]} mine={me?.token_id} myClub={clubId} />
+      <TvPitch m={m} shown={shown} c={c} players={players} shirts={[shirts[0]!, shirts[1]!]} mine={me?.token_id} myClub={clubId} gain={gain} />
     ) : (
     <div className="mini-pitch" aria-hidden="true">
       <span className="mp-line mp-half" />
