@@ -165,15 +165,17 @@ export function ClubHouse({ clubId }: { clubId: string }) {
   );
 }
 
-/** The club house as a page: your club's, your season ticket's, or any club's to look at. */
+/** The club house as a page: your club's and no other when you play for one; otherwise your season ticket's, or any club's to look at. */
 export function ClubHousePage() {
   const { session, clubId, schedule } = useGame();
   const { data: table } = useData(() => league<Club[]>("table"), []);
   const { data: tickets } = useData(() => (session ? ticketsOf(session.accountId).catch(() => [] as SeasonTicket[]) : Promise.resolve([] as SeasonTicket[])), [session?.accountId]);
   const [picked, setPicked] = useState<string | null>(null);
   const ticketClub = tickets?.find((t) => t.season === schedule?.season)?.club ?? null;
-  const id = picked ?? clubId ?? ticketClub ?? table?.[0]?.manager ?? null;
+  // A player in a club is in his own club house: the others' are not his to walk into.
+  const id = clubId ?? picked ?? ticketClub ?? table?.[0]?.manager ?? null;
   if (!id || !table) return <p className="sub">Opening the club house…</p>;
+  if (clubId) return <div className="clubhouse-page"><ClubHouse clubId={clubId} /></div>;
   return (
     <div className="clubhouse-page">
       <label className="seg-select">

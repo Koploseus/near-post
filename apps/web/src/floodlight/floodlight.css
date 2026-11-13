@@ -954,7 +954,10 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 @media (min-width: 1000px) { .live-split.with-room .live-room { grid-column: 1 / -1; } }
 @media (min-width: 1200px) {
   .live-split.with-room { grid-template-columns: 290px minmax(0, 1fr) 330px; gap: 22px; }
-  .live-split.with-room .live-room { order: 0; grid-column: auto; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+  /* (In its own cell, not stuck to the top of the screen: stuck, it slid over the other matches under the grid.) */
+  .live-split.with-room .live-room { order: 0; grid-column: 1; grid-row: 1; align-self: start; }
+  .live-split.with-room .live-left { grid-column: 2; grid-row: 1; }
+  .live-split.with-room .live-right { grid-column: 3; grid-row: 1; }
 }
 /* Whose words: his club's name, with a bar in its colour. */
 .club-tag { display: inline-block; margin-left: 8px; padding: 1px 6px; border-left: 4px solid var(--np-muted-2); background: var(--np-night-deep); color: var(--np-muted-2); font: 700 11px/1.5 "Archivo", sans-serif; letter-spacing: .3px; vertical-align: middle; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
