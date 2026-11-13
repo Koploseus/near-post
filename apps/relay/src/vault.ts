@@ -42,6 +42,15 @@ export class Vaults {
     return this.data[accountId] ?? [];
   }
 
+  /** The account whose backup has this id, and the backup: a recovery key names its own (the id is a hash of the key). */
+  find(credentialId: string): { account_id: string; entry: VaultEntry } | null {
+    for (const [account_id, list] of Object.entries(this.data)) {
+      const entry = list.find((e) => e.credential_id === credentialId);
+      if (entry) return { account_id, entry };
+    }
+    return null;
+  }
+
   put(accountId: string, entry: VaultEntry) {
     const list = this.get(accountId).filter((e) => e.credential_id !== entry.credential_id);
     list.push(entry);
