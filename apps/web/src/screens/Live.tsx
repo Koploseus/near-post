@@ -219,11 +219,14 @@ export function MatchView({
     }
     const fresh = shown.slice(seenEvents.current);
     seenEvents.current = shown.length;
-    // The referee for what just happened (a goal has its own sound with its replay, below).
+    // The referee and the stand for what just happened (a goal has its own sound with its replay, below).
     for (const e of fresh) {
+      const prev = shown[shown.indexOf(e) - 1];
+      const set = prev && prev.home === e.home && prev.player === e.player && (prev.kind === "penalty" || prev.kind === "free_kick");
       if (e.kind === "foul") play("foul");
       else if (e.kind === "yellow" || e.kind === "red") play("card");
       else if (e.kind === "penalty") play("penalty");
+      else if ((e.kind === "saved" || e.kind === "missed") && !set) play("near");
     }
     for (let i = shown.length - 1; i >= shown.length - fresh.length; i--) {
       const e = shown[i]!;
