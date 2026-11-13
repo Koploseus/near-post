@@ -134,7 +134,10 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
     let i = keys.length - 1;
     while (i > 0 && keys[i - 1]!.side === cur.side) i--;
     const att = cur.side === side ? within(0, 1, (t - keys[i]!.t) / real(1.6)) : 0;
-    const out = positions(f[side], side, cur.ball, cur.side, undefined, { free: true, attack: att });
+    // (The elevens follow the ball with a delay: the block is around where the ball was a moment ago.)
+    const was = frameAt(keys, Math.max(start, t - real(1.3))).ball;
+    const block: V = side === cur.side ? was : [side === 0 ? Math.min(was[0], cur.ball[0]) : Math.max(was[0], cur.ball[0]), was[1]];
+    const out = positions(f[side], side, cur.ball, cur.side, undefined, { free: true, attack: att, block });
     const p = within(0, 1, (t - kickoff.t - real(0.7)) / real(3.5));
     if (p >= 1) return out;
     const lined = positions(f[side], side, [50, 50], kickoff.side, undefined, { restart: "kickoff" });
@@ -247,22 +250,29 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
         const now = placed(s, cur.t);
         const then = shape(s, want, s);
         const spots = now.map((v, k) => mixV(v, then[k]!, 0.5));
+        // He holds it a moment; the ball is then played into a team-mate's run, a step ahead of him and
+        // no further from where he is now than he can run before it gets there.
+        const hold = cur.dead ? 0 : real(wall ? 0.35 : zone.hold[0]! + noise(seed + 2) * zone.hold[1]!);
+        const run = 3 + (7 / rate) * (Math.min(hold, real(1.3)) + real(0.6));
+        const meet = (k: number): V => {
+          const m = wall ? want : mixV(spots[k]!, want, 0.4);
+          return toward(now[k]!, [within(3, 97, m[0] + (centre ? 0 : dir * 2.5)), m[1]], run);
+        };
         let best = -1;
         let score = Infinity;
+        // (With two balls to go, the next one goes to the one credited with the last pass.)
         if (n === 2 && via > 0 && via !== c && here(s, via, cur.t)) best = via;
         else if (wall) best = gave!.k;
         else
           for (let k = 1; k < 11; k++) {
             if (k === c || k === o.final || !here(s, k, cur.t)) continue;
-            const len = dist(cur.ball, mixV(spots[k]!, want, 0.4));
-            const sc = dist(spots[k]!, want) + noise(seed + k * 7.3) * 8 + (len < 12 ? (12 - len) * 4 : 0) + (len > 36 && !swap ? len - 36 : 0);
+            const p = meet(k);
+            const len = dist(cur.ball, p);
+            const sc = dist(p, want) + noise(seed + k * 7.3) * 8 + (len < 12 ? (12 - len) * 4 : 0) + (len > 36 && !swap ? len - 36 : 0);
             if (sc < score) (score = sc), (best = k);
           }
         if (best >= 0) {
-          // Played into his run, a step ahead of him.
-          const meet = wall ? want : mixV(spots[best]!, want, 0.4);
-          const at: V = [within(3, 97, meet[0] + (centre ? 0 : dir * 2.5)), meet[1]];
-          const hold = cur.dead ? 0 : real(wall ? 0.35 : zone.hold[0]! + noise(seed + 2) * zone.hold[1]!);
+          const at = meet(best);
           const from = toward(cur.ball, [cur.ball[0] + dir * 20, mix(cur.ball[1], at[1], 0.5)], Math.min((zone.pace / rate) * hold, Math.max(0, dist(cur.ball, at) - 10)));
           const flight = Math.max(real(0.35), dist(from, at) / pace(dist(from, at)));
           if (cur.t + hold + flight <= until - real(1.2)) {
@@ -270,7 +280,6 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
             gave = { k: c, from: last().ball };
             ran = false;
             passTo(last().t + flight, at, s, best);
-            direct = best === via;
             continue;
           }
         }
@@ -280,7 +289,7 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
         carryTo(until, toward(cur.ball, to, CARRY * left));
         return;
       }
-      if (!o.lose && !direct && via > 0 && via !== c && here(s, via, cur.t) && left >= real(1.3)) {
+      if (!o.lose && !direct && via > 0 && via !== c && here(s, via, cur.t) && left >= real(0.8)) {
         // Through the one who is credited with the last pass.
         const mid = mixV(placed(s, cur.t)[via]!, mixV(cur.ball, to, 0.5), 0.5);
         passTo(cur.t + Math.max(real(0.35), Math.min(left * 0.45, dist(cur.ball, mid) / pace(dist(cur.ball, mid)))), mid, s, via);
@@ -299,7 +308,12 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
         // Cut out by the one of the other side who is nearest to where it was going.
         const j = closest(other, to, cur.t);
         passTo(until, mixV(to, placed(other, cur.t)[j]!, 0.7), other, j);
-      } else passTo(until, to, s, o.final ?? closest(s, to, cur.t, c));
+      } else if (o.final !== undefined) passTo(until, to, s, o.final);
+      else {
+        // To the one who is nearest to there, as far that way as he can get in the time.
+        const j = closest(s, to, cur.t, c);
+        passTo(until, toward(placed(s, cur.t)[j]!, to, 3 + (7 / rate) * Math.min(left, real(1.9))), s, j);
+      }
       return;
     }
   };
@@ -450,7 +464,14 @@ export function keyframes(list: MatchEvent[], start: number, end: number, kickOf
         const box: V = quick ? [ahead(s, 5 + noise(t + 9) * 3), top ? 36 + noise(t + 9.5) * 6 : 58 + noise(t + 9.5) * 6] : [ahead(s, 7 + noise(t + 9) * 5), 42 + noise(t + 9.5) * 16];
         push({ t: leave, ball: flag, side: s, carrier: e.player, dead: true, set: "corner" });
         if (header) passTo(land, box, s, next!.player);
-        else passTo(land, box, def, nearestOf(def, [ahead(s, 14), 50], t, s));
+        else {
+          // Headed away by the defender who is nearest to it in the box.
+          const lined = positions(f[def], def, flag, s, undefined, { set: "corner" });
+          let j = 1;
+          let d = Infinity;
+          for (let n = 1; n < 11; n++) if (here(def, n, t) && dist(lined[n]!, box) < d) (d = dist(lined[n]!, box)), (j = n);
+          passTo(land, mixV(box, lined[j]!, 0.6), def, j);
+        }
         break;
       }
       case "foul": {
@@ -536,7 +557,7 @@ export function frameAt(keys: Key[], s: number): Frame {
     if (a.carrier !== undefined) k.carrier = a.carrier;
     // He is about to pass: the one he will find is already on the move.
     const c = keys[lo + 1];
-    if (b.move === "pass" && c && c.carrier !== undefined && c.t - s < 12) k.next = { side: c.side, k: c.carrier, at: c.ball, in: c.t - s };
+    if (b.move === "pass" && c && c.carrier !== undefined && c.t - s < 16) k.next = { side: c.side, k: c.carrier, at: c.ball, in: c.t - s };
   }
   return k;
 }
