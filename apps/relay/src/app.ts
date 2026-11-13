@@ -826,9 +826,15 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
   });
 
   /** The terrace: one chat for the whole league, anyone reads it. */
-  app.get("/v1/people/chat", (c) => {
+  app.get("/v1/people/chat", async (c) => {
     c.header("cache-control", "no-store");
-    return c.json({ lines: people.chat() });
+    // Each line says whose it is: his club, and whether he is one of the AI agents.
+    const by = new Map((await directory().catch(() => [] as Person[])).map((p) => [p.account, p]));
+    const lines = people.chat().map((l) => {
+      const p = by.get(l.account) ?? met.get(l.account) ?? coachCard(l.account);
+      return { ...l, club: p?.club ?? null, club_name: p?.club_name ?? null, ...(deps.agents?.roster.some((a) => a.account === l.account) ? { ai: true } : {}) };
+    });
+    return c.json({ lines });
   });
 
   const socialReads = new Limiter(60, 60_000, now);
