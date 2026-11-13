@@ -410,10 +410,7 @@ export function PenaltyGame3D({ setup, onDone, shirt }: { setup: PenaltySetup; o
       const after = shot && landed >= 1 ? t - shot.up - shot.flight : -1;
       const scored = !!shot && after >= 0 && shot.result === "goal";
       if (shot) once(`pen:${i}:kick`, "kick", (shot.speed - 13) / 17);
-      if (shot && after >= 0) {
-        const end = shot.result === "goal" ? "net" : shot.result === "saved" ? "save" : shot.result === "post" ? "post" : null;
-        if (end) once(`pen:${i}:end`, end);
-      }
+      if (shot && after >= 0) once(`pen:${i}:end`, shot.result === "goal" ? "net" : shot.result === "saved" ? "save" : shot.result === "post" ? "post" : "miss");
 
       // Keeper: sways on his line, then dives towards where he reads it.
       const p = setup.kicks[Math.min(i, setup.kicks.length - 1)]!;
