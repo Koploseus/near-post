@@ -1,7 +1,10 @@
 // A footballer who changed club while his person was away: the app tells him when he comes back.
 // What it knew last is kept in this browser, by account; nothing here is needed for the game to work.
 
-const KEY = "np:club:";
+import { LEAGUE } from "./config.js";
+
+// By league: a new league starts everyone again, and its clubs can keep their accounts.
+const KEY = `np:club:${LEAGUE}:`;
 
 /** The club this browser last saw the account's footballer at ("" for a free agent), or null if it never looked. */
 export function lastClub(account: string): string | null {

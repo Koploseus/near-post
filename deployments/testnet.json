@@ -1,37 +1,37 @@
 {
   "network": "testnet",
-  "version": "v12",
-  "deployed_at": "2026-11-12T23:11:19.190Z",
+  "version": "v13",
+  "deployed_at": "2026-11-13T13:53:17.816Z",
   "contracts": {
     "league": {
-      "account_id": "league-v12.near-post.testnet",
-      "wasm_sha256": "659543e7a92f12fb4d540d07ca5bc652716b806c31514f2fe0843e038af1f111",
-      "deploy_tx": "GP4xFKKLCopZcAuvqLpd8hYqxy1GkFSZQdaNCmTGprUn",
-      "init_tx": "31zb89qm5RsfzGttXhf6DwMhyzSywBZc4AeVbDjUjsyF"
+      "account_id": "league-v13.near-post.testnet",
+      "wasm_sha256": "69595ab493735296bf1b16f64311452dde8e45a2c7c51eaf0305fbda540f51ed",
+      "deploy_tx": "EJqJ3hn4rU9iSbmBV8quFWinH7ZrhQZvD8QnLYVfUkqN",
+      "init_tx": "AyF9XjvVSrPukeS2PpNmJRxPuPoKXsQ4Atwdofnagbdv"
     },
     "goalars": {
-      "account_id": "goalars-v12.near-post.testnet",
+      "account_id": "goalars-v13.near-post.testnet",
       "wasm_sha256": "203f01a4c70b626ef034a697a1e0c611fa37c68f5cee0313ca8ad267b3099ba7",
-      "deploy_tx": "5P2nP8AvJhYyNQB8tsTTMNrvcCQrUvQoFUNHPwwhcc8E",
-      "init_tx": "BnE98eSJVq6sXKi4nWi4s6oZrteSzCLmHJAFa2SWXQED"
+      "deploy_tx": "8G5Y3Wn5ZKVB2TnLMMuGh49CFqpCJWc2HmxdHEwYLT1t",
+      "init_tx": "AniJbuortYTDQ22CYgusXN1satdJfvUw4cHzk92yVwup"
     },
     "players": {
-      "account_id": "players-v12.near-post.testnet",
+      "account_id": "players-v13.near-post.testnet",
       "wasm_sha256": "33d405921724217ab528ed7b4e2c1c83b49dea6c9153f868985a682bd43a1e7a",
-      "deploy_tx": "4Wtyswz5Ja5X56QdNtM6svsZ66jVXHWYd5y5nN6Go6dA",
-      "init_tx": "2R994QCDRY5P6wSHiT9rSGkpBDHyDEri1uMBHauGErEQ"
+      "deploy_tx": "4gk6oi1MhnM3kZ8tgkP5Mqpg9DszdJjSapuQxkxmbV6d",
+      "init_tx": "Dbu84ugPiVxBgmujoWqP1a4JkQeGkXATC9Uf2BSrJjjm"
     },
     "items": {
-      "account_id": "items-v12.near-post.testnet",
+      "account_id": "items-v13.near-post.testnet",
       "wasm_sha256": "87c567ba64fce0aa45f45d663a831dd28b6bff106b044e8069b09dab91bd4bbc",
-      "deploy_tx": "3XxbhGxyqWwYyFbTj3LGqnKHtTZmw6jQtZmXvrPkraXM",
-      "init_tx": "C3iA11rBrmeFysT1UEPjxLUFPUwvRVscSuaaYKymWkwT"
+      "deploy_tx": "J8siJYuXKhegPE2kk58RSYhvcqmmQCDbiH4LmeS5zPBn",
+      "init_tx": "GzDRUvVM1aEtKbz8zWn3S4c5RR8h56Yvrw5L17PcFMVp"
     },
     "tickets": {
-      "account_id": "tickets-v12.near-post.testnet",
+      "account_id": "tickets-v13.near-post.testnet",
       "wasm_sha256": "8d60896a16508636fc154864d2a368c16c7b47e60cddb24a32f1221806b3d5b4",
-      "deploy_tx": "GBMmawmbaAGDSG1LESJobJwx4r83DKoKYzCcWU3xEArk",
-      "init_tx": "BuvZc37nnQRs3XgmBWsVCG4srNqL4nyBYoiXHCcJqvEq"
+      "deploy_tx": "Eaa1xdLGJLaJbavUHsrBWd11NQLnTRVRTg3x7U7G6L45",
+      "init_tx": "BGuNNYdCWqHSrdNxC46SHmvnM5Vb4CTUVnEHg1rsTkvR"
     }
   },
   "attester": "ed25519:4cqYajyLcamJ9VPFLbNff3hqdwedoTQwkenqWEqsJLpc"
