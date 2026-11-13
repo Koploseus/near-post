@@ -1624,7 +1624,9 @@ impl League {
 
     /// The owner of a player sells his registration to an open offer by
     /// approving the league on the players contract:
-    /// `nft_approve(token_id, league, msg: {"accept": <offer id>})`. The league
+    /// `nft_approve(token_id, league, msg: {"accept": <offer id>})`. A player
+    /// a person plays is sold only to the club he gave his word to (`sign_for`):
+    /// nobody is moved without agreeing. The league
     /// then transfers the NFT with its NEP-199 payout and shares the price:
     /// 10% to the training club, 2% to each of his last 3 clubs, 5% to the
     /// person who plays him, 3% burned, the rest to the seller.
@@ -1656,6 +1658,19 @@ impl League {
         );
         require!(offer.state == OfferState::Open, "that offer is not open");
         require!(offer.buyer != owner_id, "you cannot sell to yourself");
+        // A person moves only if he agreed: his word (`sign_for`) to the buyer.
+        let played = self
+            .players
+            .get(&token_id)
+            .is_some_and(|p| p.controller.is_some());
+        require!(
+            !played
+                || self
+                    .signings
+                    .get(&token_id)
+                    .is_some_and(|s| s.club == offer.buyer),
+            "he has not given his word to that club: a person moves only if he agrees"
+        );
         offer.state = OfferState::Accepting;
         let (buyer, price, id) = (offer.buyer.clone(), offer.price, offer.id);
         PromiseOrValue::Promise(
