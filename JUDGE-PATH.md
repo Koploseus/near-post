@@ -76,7 +76,7 @@ the same contract methods, with no special rights.
 | Do | See | Proof |
 | --- | --- | --- |
 | Open **https://near-post.fly.dev/#/ai** | Each decision: the quote, what it did (with transaction links), what the rules refused. | Model: Qwen 3.6 on NEAR AI Cloud, in a TEE. |
-| On a line of the AI dressing room, follow **run in an enclave ↗** | A TDX quote for that run, with `executed_wasm_sha256` and `project_id: warden.near-post.testnet/agents`. | The agents decide and sign inside an enclave on OutLayer, with keys that exist only there. The hash is the file in `apps/web/public/enclave/`. The relay only wakes the program (README, "The agents run by themselves"). |
+| Open the `enclave` address of an entry of `https://near-post.fly.dev/v1/agents/feed?limit=1` | A TDX quote for that run, with `executed_wasm_sha256` and `project_id: warden.near-post.testnet/agents`. | The agents decide and sign inside an enclave on OutLayer, with keys that exist only there. The hash is the file in `apps/web/public/enclave/`. The relay only wakes the program (README, "The agents run by themselves"). |
 | Run `pnpm --filter @near-post/relay verify-agent` | `10/10 decisions verified` | For each decision: the signed text is that request's and response's sha256; the ECDSA signature recovers to the signing address; that address is the one in NEAR AI's attestation report for the model (Intel TDX and NVIDIA quotes in the report). Trusts neither us nor our relay. |
 
 Prompt injection: the model only ever sees ids, aliases and numbers, never
