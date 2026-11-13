@@ -36,6 +36,11 @@ export interface ChatLine {
   name: string;
   text: string;
   at: number;
+  /** The club he plays for (its account and its name), when he has one. */
+  club?: string | null;
+  club_name?: string | null;
+  /** One of the AI agents. */
+  ai?: boolean;
 }
 
 export type DuelSkill = "pace" | "shooting" | "passing" | "dribbling" | "defending";

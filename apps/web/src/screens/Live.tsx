@@ -1,6 +1,7 @@
 import { CoachFace } from "../floodlight/art.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
+import { Wall } from "./Wall.js";
 import { serverNow } from "../lib/time.js";
 import { type Clock, HALF_SECONDS, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
 import { frameAt, keyframes, positions } from "../lib/flow.js";
@@ -142,7 +143,9 @@ export function MatchView({
   day: number;
   final?: boolean;
 }) {
-  const { schedule, kickoffs } = useGame();
+  const { schedule, kickoffs, me, clubId } = useGame();
+  // In a club: its dressing room is beside the match, to talk while it is on.
+  const room = !!me && !!clubId && me.owner === clubId;
   const { data: squads } = useData(
     () => Promise.all([league<Player[]>("squad", { account_id: m.home }), league<Player[]>("squad", { account_id: m.away })]),
     [m.home, m.away],
@@ -253,7 +256,12 @@ export function MatchView({
     full_time: "Full time",
   }[c.phase];
   return (
-    <div className="live live-split">
+    <div className={`live live-split${room ? " with-room" : ""}`}>
+      {room && (
+        <aside className="live-room">
+          <Wall clubId={clubId!} compact />
+        </aside>
+      )}
       <div className="live-left">
       <section className="scoreboard" aria-live="polite">
         <span className="eyebrow">
