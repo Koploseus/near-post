@@ -36,7 +36,7 @@ No wallet, no key, no install. Each line says what you should see.
 | `node scripts/verify.mjs` (after cloning) | The last match days replayed from the chain, every mint and burn checked against the rules, ending in `✓ N checks passed, 0 failed`. |
 | `node scripts/numbers.mjs` (after cloning) | The numbers below, read from the chain as you run it. |
 
-**Numbers, read from the chain on 13 November 2026 at 22:10 UTC.** The
+**Numbers, read from the chain on 13 November 2026 at 22:30 UTC.** The
 league live today (v13, started that afternoon): 16 match days, 192 matches
 and 679 goals played by the contract, 320 footballers and 43 season tickets
 minted as NFTs, 76M G in circulation. Since the first league on 1 November,
