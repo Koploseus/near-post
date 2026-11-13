@@ -42,9 +42,11 @@ and 679 goals played by the contract, 320 footballers and 43 season tickets
 minted as NFTs, 76M G in circulation. Since the first league on 1 November,
 over the thirteen leagues deployed during the hackathon (each on its own
 contracts, all still on testnet): 541 match days, at least 4,389 matches and
-15,626 goals, 2,801 footballers and 976 season tickets minted. Most of the
-footballers are the clubs' academy players and the AI agents'; the count of
-people is small, as the game opened to players during the hackathon.
+15,626 goals, 2,801 footballers and 976 season tickets minted. The
+footballers are a mix: the clubs' academy players, the AI agents' and
+people's. The accounts of today's 76 AI agents have signed more than 10,000
+transactions themselves, and the relay more than 3,000 (key nonces, read by
+the same command).
 
 ## The problem
 
