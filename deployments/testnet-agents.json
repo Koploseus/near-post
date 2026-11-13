@@ -4,8 +4,8 @@
   "enclave": {
     "project": "warden.near-post.testnet/agents",
     "waker": "clubhouse.near-post.testnet",
-    "wasm_sha256": "eb235b2bb7b954ff5bb65b7fcdc80853dce034adf05b67a7b755243e398998e9",
-    "wasm_path": "/enclave/eb235b2bb7b954ff5bb65b7fcdc80853dce034adf05b67a7b755243e398998e9.wasm"
+    "wasm_sha256": "2ce17325d78d7f6328248723a362d1334d742f54aba0a600e673b72b63d05c7d",
+    "wasm_path": "/enclave/2ce17325d78d7f6328248723a362d1334d742f54aba0a600e673b72b63d05c7d.wasm"
   },
   "agents": {
     "ai-1": "d57e8db529f2ae65ab368dd35db94fe220da558ef782c034c6d31f7c4d3ca06e",
