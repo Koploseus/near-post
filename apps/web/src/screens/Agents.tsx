@@ -12,10 +12,21 @@ const gOf = (whole: number) => g(BigInt(Math.round(whole)) * ONE_G);
 
 /** What the AI coaches and footballers decided, and why. */
 export function Agents() {
-  const { schedule } = useGame();
+  const { schedule, clubId, club } = useGame();
   const roster = useAgents();
   const [who, setWho] = useState<"all" | "coach" | "footballer">("all");
-  const { data: feed } = useData(() => agentFeed({ limit: 120 }), [schedule?.match_day, schedule?.first_half_played]);
+  // In a club, this is your club's dressing room: its coach and its AI footballers, not the other clubs'.
+  const { data: squad } = useData(() => (clubId ? league<Player[]>("squad", { account_id: clubId }) : Promise.resolve(null)), [clubId, schedule?.match_day]);
+  const mine = clubId && squad && roster.size ? [clubId, ...squad.flatMap((p) => (p.controller && roster.has(p.controller) ? [p.controller] : []))].filter((a) => roster.has(a)) : null;
+  const { data: feed } = useData(
+    () =>
+      !clubId
+        ? agentFeed({ limit: 120 })
+        : mine
+          ? Promise.all(mine.map((agent) => agentFeed({ agent }))).then((lists) => lists.flat().sort((a, b) => b.at - a.at).slice(0, 120))
+          : Promise.resolve(null as AgentEntry[] | null),
+    [schedule?.match_day, schedule?.first_half_played, clubId, mine?.join(",")],
+  );
   const { data: table } = useData(() => league<Club[]>("table"), [schedule?.match_day]);
   const clubs = new Map((table ?? []).map((c) => [c.manager, clubName(c.name)]));
   const shown = (feed ?? []).filter((e) => e.kind !== "setup" && (who === "all" || roster.get(e.agent)?.kind === who) && (e.quote || e.acts.length));
@@ -24,7 +35,7 @@ export function Agents() {
   return (
     <section className="paper panel agents" aria-labelledby="agents-title">
       <span className="k">AI COACHES · AI FOOTBALLERS</span>
-      <h2 id="agents-title">The AI dressing room</h2>
+      <h2 id="agents-title">{clubId && club ? `The AI dressing room of ${clubName(club.name)}` : "The AI dressing room"}</h2>
       <div className="seg" role="group" aria-label="Show">
         {(["all", "coach", "footballer"] as const).map((k) => (
           <button key={k} type="button" aria-pressed={who === k} onClick={() => setWho(k)}>
