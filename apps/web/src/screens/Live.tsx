@@ -2,7 +2,7 @@ import { CoachFace } from "../floodlight/art.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useGame } from "../lib/game.js";
 import { Wall } from "./Wall.js";
-import { play, setSound, soundOn } from "../lib/sound.js";
+import { excite, holdAmbience, play } from "../lib/sound.js";
 import { serverNow } from "../lib/time.js";
 import { type Clock, HALF_SECONDS, clock, eleven, liveDay, minuteLabel, scoreOf, visible } from "../lib/live.js";
 import { frameAt, keyframes, positions } from "../lib/flow.js";
@@ -219,6 +219,16 @@ export function MatchView({
     }
     const fresh = shown.slice(seenEvents.current);
     seenEvents.current = shown.length;
+    // The referee and the stand for what just happened (a goal has its own sound with its replay, below).
+    for (const e of fresh) {
+      const prev = shown[shown.indexOf(e) - 1];
+      const set = prev && prev.home === e.home && prev.player === e.player && (prev.kind === "penalty" || prev.kind === "free_kick");
+      if (e.kind === "foul") play("foul");
+      else if (e.kind === "yellow" || e.kind === "red") play("card");
+      else if (e.kind === "penalty") play("penalty");
+      else if ((e.kind === "saved" || e.kind === "missed") && !set) play("near");
+      else if (e.kind === "corner" || e.kind === "free_kick") excite(0.5);
+    }
     for (let i = shown.length - 1; i >= shown.length - fresh.length; i--) {
       const e = shown[i]!;
       const prev = shown[i - 1];
@@ -246,6 +256,9 @@ export function MatchView({
     const w = window as unknown as { __npPitch?: unknown; __npReplay?: (r: HighlightMoment) => void };
     if ("__npPitch" in w) w.__npReplay = setReplay;
   }, []);
+  // The stand's murmur while the ball is in play.
+  const inPlay = !final && (c.phase === "first_half" || c.phase === "second_half");
+  useEffect(() => (inPlay ? holdAmbience() : undefined), [inPlay]);
   // The referee's whistle at each kick-off and each stop, and a tune for how it ended for you.
   const lastPhase = useRef<string | null>(null);
   useEffect(() => {
@@ -351,7 +364,6 @@ export function MatchView({
           <span style={{ width: `${c.progress * 100}%` }} />
         </div>
         {!final && (replay ? <Highlight m={replay} onEnd={() => setReplay(null)} /> : <Pitch m={m} shown={shown} c={c} players={players} names={names} gain={gain} />)}
-        {!final && <SoundToggle />}
         {!final && <Moment shown={shown} name={name} names={names} m={m} />}
         {(c.phase === "half_time" || c.phase === "waiting_second_half") && (
           <a className="cta small" href="#/team">
@@ -449,24 +461,6 @@ export function MatchView({
 }
 
 /** A small pitch: 22 players in their formations, and the ball going where the play is. */
-/** The match's sounds: off until you turn them on. */
-function SoundToggle() {
-  const [on, setOn] = useState(soundOn);
-  return (
-    <button
-      type="button"
-      className={`chip sound-toggle${on ? " on" : ""}`}
-      aria-pressed={on}
-      onClick={() => {
-        setSound(!on);
-        setOn(!on);
-      }}
-    >
-      {on ? "SOUND ON" : "SOUND OFF"}
-    </button>
-  );
-}
-
 function Pitch({ m, shown, c, players, names, gain }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player>; names: Map<string, string>; gain: number }) {
   const { me, clubId } = useGame();
   const second = c.phase === "second_half" || c.phase === "full_time";

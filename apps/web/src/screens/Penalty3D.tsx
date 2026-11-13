@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { drillSounds, holdAmbience, once } from "../lib/sound.js";
 import { BALL, GOAL_M, type Kick, type PenaltySetup, type Press, penalties, sway, toScreen } from "../../../relay/src/penalty.js";
 
 /**
@@ -208,6 +209,11 @@ export function PenaltyGame3D({ setup, onDone, shirt }: { setup: PenaltySetup; o
   const [score, setScore] = useState<(boolean | null)[]>(Array(setup.kicks.length).fill(null));
   const [verdict, setVerdict] = useState<{ text: string; goal: boolean; key: number } | null>(null);
   const [hint, setHint] = useState("Press on the ball, drag to your target, release");
+  // The stand's murmur and the kicks' sounds while the drill is on screen.
+  useEffect(() => {
+    const [stand, sounds] = [holdAmbience(), drillSounds()];
+    return () => (stand(), sounds());
+  }, []);
 
   useEffect(() => {
     const el = host.current!;
@@ -406,6 +412,8 @@ export function PenaltyGame3D({ setup, onDone, shirt }: { setup: PenaltySetup; o
       const landed = shot ? Math.min(1, (t - shot.up) / shot.flight) : 0;
       const after = shot && landed >= 1 ? t - shot.up - shot.flight : -1;
       const scored = !!shot && after >= 0 && shot.result === "goal";
+      if (shot) once(`pen:${i}:kick`, "kick", (shot.speed - 13) / 17);
+      if (shot && after >= 0) once(`pen:${i}:end`, shot.result === "goal" ? "net" : shot.result === "saved" ? "save" : shot.result === "post" ? "post" : "miss");
 
       // Keeper: sways on his line, then dives towards where he reads it.
       const p = setup.kicks[Math.min(i, setup.kicks.length - 1)]!;

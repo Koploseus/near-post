@@ -3,6 +3,7 @@
  * banners and the players seen from behind, from the front, from the side
  * and from above. Everything is drawn on a 1000 × 600 logical screen.
  */
+import { word } from "../lib/sound.js";
 import { SKINS, type View, faceOf, headCanvas } from "../lib/face.js";
 import { BACK_RUN_CYCLE, itemPaint, type Pose, RUN_CYCLE, pixelGrid } from "../floodlight/PixelPlayer.js";
 
@@ -129,6 +130,7 @@ export function ball(g: G, x: number, y: number, r: number, spin: number, ground
 
 /** The big word after each round, popping in. */
 export function banner(g: G, text: string, good: boolean, since: number, y = 250) {
+  word(text, good, since);
   const pop = Math.min(1, since / 220);
   g.save();
   g.translate(W / 2, y);

@@ -4,6 +4,7 @@ import { GameProvider, useGame } from "./lib/game.js";
 import { TransferNews } from "./screens/TransferNews.js";
 import { useHeartbeat } from "./lib/social.js";
 import { Toasts } from "./lib/toast.js";
+import { setSound, soundOn } from "./lib/sound.js";
 import { Agents } from "./screens/Agents.js";
 import { ClubHousePage } from "./screens/ClubHouse.js";
 import { Album } from "./screens/Album.js";
@@ -324,6 +325,29 @@ function Online() {
   );
 }
 
+/** The game's sounds, on or off for this device (on unless you turn them off). */
+function SoundButton() {
+  const [on, setOn] = useState(soundOn);
+  return (
+    <button
+      type="button"
+      className={`sound-btn${on ? " on" : ""}`}
+      aria-pressed={on}
+      aria-label={on ? "Sound on: turn it off" : "Sound off: turn it on"}
+      title={on ? "Sound on" : "Sound off"}
+      onClick={() => {
+        setSound(!on);
+        setOn(!on);
+      }}
+    >
+      <svg viewBox="0 0 16 16" width="22" height="22" shapeRendering="crispEdges" aria-hidden="true">
+        <path d="M2 6h3l4-3v10l-4-3H2z" fill="currentColor" />
+        {on ? <path d="M11 6h1v4h-1zM13 4h1v8h-1z" fill="currentColor" /> : <path d="M11 6h1v1h1v1h1v1h-1v1h-1v1h-1v-1h1V9h-1V8h1V7h-1zM14 6h1v1h-1zM14 10h1v1h-1z" fill="currentColor" />}
+      </svg>
+    </button>
+  );
+}
+
 function Header({ tab, people }: { tab: Tab; people: number }) {
   return (
     <header className="top-band">
@@ -340,6 +364,7 @@ function Header({ tab, people }: { tab: Tab; people: number }) {
             <img src="/art/icons/help.webp" alt="" width="30" height="30" />
             <b>How to play</b>
           </a>
+          <SoundButton />
           <Online />
           <Balance />
           <Me current={tab} />

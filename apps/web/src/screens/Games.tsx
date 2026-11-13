@@ -19,6 +19,7 @@ import {
   sprints,
   tackles,
 } from "../../../relay/src/games.js";
+import { drillSounds, holdAmbience, once } from "../lib/sound.js";
 import { BLUE, H, INK, PAPER, RED, W, YELLOW, artReady, ball, banner, easeOut, figure, grass, hint, sideRunner, stands, topPlayer } from "./art.js";
 
 type G = CanvasRenderingContext2D;
@@ -52,6 +53,12 @@ function CanvasGame(props: {
   const [start] = useState(() => performance.now());
   const [dots, setDots] = useState<(boolean | null)[]>(Array(props.rounds).fill(null));
   const now = () => Math.round(performance.now() - start);
+
+  // The stand's murmur and the drill's sounds while it is on screen.
+  useEffect(() => {
+    const [stand, words] = [holdAmbience(), drillSounds()];
+    return () => (stand(), words());
+  }, []);
 
   useEffect(() => {
     canvas.current?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -155,6 +162,7 @@ export function PassesGame({ setup, onDone }: { setup: PassRound[]; onDone: (tra
     const round = setup[i]!;
     const ms = Math.max(0, t - p.start);
     const pass = p.pass && t >= p.pass.up.t ? p.pass : null;
+    if (pass) once(`pass:${p.start}`, "kick", (pass.speed - 0.45) / 0.85);
     const resolveAt = (q: (typeof plays)[number]) => (q.pass ? q.pass.up.t + q.pass.flight * q.pass.cutF : q.end);
     const dots = plays.map((q, k) => (t >= resolveAt(q) || t >= q.end ? q.pass?.result === "received" : k < i ? false : null));
 
