@@ -156,7 +156,7 @@ export const artReady = () => (loadParts(), loaded);
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
 
-/** One view of a part, on its own canvas, repainted: "skin" to a tone, "tint" to a hair colour. */
+/** One cell of a part (a view; for haircuts and beards, a face's view), on its own canvas, repainted: "skin" to a tone, "tint" to a hair colour. */
 function part(name: string, view: number, mode: "skin" | "tint", colour: string): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = c.height = FRAME;
@@ -196,120 +196,13 @@ function part(name: string, view: number, mode: "skin" | "tint", colour: string)
   return c;
 }
 
-// ---- Fitting a haircut to a face
+// ---- Haircuts and beards, fitted to each face
 //
-// The faces do not all have the same skull (their tops go from y = 30 to 53)
-// and each haircut was drawn on its own mannequin, some smaller than the
-// heads and four of them facing the other way in the side view. So a haircut
-// is measured and placed on the face it goes on: scaled so its back view is
-// as wide as that cut should be on that skull, its crown centred on the
-// skull, and its top where the scalp is, less what the cut stands above it.
-
-/** By cut: its back view's width as a share of the skull's (0: keep its size), and how far it stands above the scalp, in its own pixels. */
-const CUT_FIT: Record<string, [number, number]> = {
-  short: [1.2, 4],
-  side: [1.18, 4],
-  curly: [1.24, 6],
-  buzz: [1.1, 1],
-  spiky: [1.14, 6],
-  long: [1.2, 4],
-  quiff: [1.08, 10],
-  afro: [1.45, 12],
-  ponytail: [1.14, 4],
-  bun: [1.1, 4],
-  dreads: [1.24, 5],
-  flattop: [1.12, 7],
-  fire: [1.14, 9],
-  mohawk: [0, 12],
-};
-/** Cuts whose side view was drawn facing left (the faces look right). */
-const SIDE_FLIPPED = new Set(["long", "quiff", "dreads", "curly"]);
-/** A little further back in the side view, in the cut's own pixels. */
-const SIDE_BACK: Record<string, number> = { long: 4, dreads: 3, ponytail: 3 };
-
-interface Box {
-  l: number;
-  t: number;
-  r: number;
-  b: number;
-}
-const SOLID = 40;
-const ALPHA = new Map<string, Uint8ClampedArray>();
-/** The alpha of one view of a part, FRAME x FRAME (mirrored when asked). */
-function alphaOf(name: string, view: number, mirrored = false): Uint8ClampedArray {
-  const key = `${name}|${view}|${mirrored ? 1 : 0}`;
-  let a = ALPHA.get(key);
-  if (!a) {
-    const c = document.createElement("canvas");
-    c.width = c.height = FRAME;
-    const x = c.getContext("2d", { willReadFrequently: true })!;
-    if (mirrored) {
-      x.translate(FRAME, 0);
-      x.scale(-1, 1);
-    }
-    x.drawImage(PARTS.get(name)!, view * FRAME, 0, FRAME, FRAME, 0, 0, FRAME, FRAME);
-    const d = x.getImageData(0, 0, FRAME, FRAME).data;
-    a = new Uint8ClampedArray(FRAME * FRAME);
-    for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3]!;
-    ALPHA.set(key, a);
-  }
-  return a;
-}
-/** The box of what is drawn between rows `from` and `to`, or null when nothing is. */
-function boxOf(a: Uint8ClampedArray, from = 0, to = FRAME): Box | null {
-  let l = FRAME;
-  let r = -1;
-  let t = -1;
-  let b = -1;
-  for (let y = from; y < to; y++)
-    for (let x = 0; x < FRAME; x++)
-      if (a[y * FRAME + x]! > SOLID) {
-        if (t < 0) t = y;
-        b = y + 1;
-        if (x < l) l = x;
-        if (x + 1 > r) r = x + 1;
-      }
-  return r < 0 ? null : { l, t, r, b };
-}
-/** A face's skull in one view: its left and right a fifth of the way down (above the ears), and its top. */
-function skullOf(kind: number, view: number): { l: number; r: number; top: number } {
-  const a = alphaOf(`face-${kind}`, view);
-  const all = boxOf(a) ?? { l: 39, t: 46, r: 90, b: 116 };
-  const y = all.t + Math.round((all.b - all.t) * 0.22);
-  const row = boxOf(a, y, y + 1) ?? all;
-  return { l: row.l, r: row.r, top: all.t };
-}
-
-const FITS = new Map<string, [number, number, number, boolean]>();
-/** Where a haircut goes on a face, in one view: x, y, the size of its frame, and whether it is mirrored. */
-function hairFit(kind: number, cut: string, view: number): [number, number, number, boolean] {
-  const key = `${kind}|${cut}|${view}`;
-  let f = FITS.get(key);
-  if (!f) {
-    const [share, lift] = CUT_FIT[cut] ?? [1.15, 4];
-    const flip = view === 1 && SIDE_FLIPPED.has(cut);
-    const boxes = [0, 1, 2].map((v) => boxOf(alphaOf(`hair-${cut}`, v, v === 1 && SIDE_FLIPPED.has(cut))));
-    const mine = boxes[view];
-    const back = boxes[2];
-    const skull = skullOf(kind, view);
-    if (!mine || !back) f = [0, 0, FRAME, flip];
-    else {
-      const backSkull = skullOf(kind, 2);
-      const scale = share === 0 ? 1 : Math.max(0.85, Math.min(1.4, ((backSkull.r - backSkull.l) * share) / (back.r - back.l)));
-      // The mannequin's scalp: the highest any view of the cut goes, less what it stands above it.
-      const scalp = Math.min(...boxes.filter((b): b is Box => !!b).map((b) => b.t)) + lift;
-      // From the side, a cut is centred by its crown (its top third): a tail or a fringe must not pull it.
-      let centre = (mine.l + mine.r) / 2;
-      if (view === 1) {
-        const crown = boxOf(alphaOf(`hair-${cut}`, 1, flip), mine.t, mine.t + Math.max(4, Math.round((mine.b - mine.t) * 0.34))) ?? mine;
-        centre = (crown.l + crown.r) / 2 + (SIDE_BACK[cut] ?? 0);
-      }
-      f = [Math.round((skull.l + skull.r) / 2 - centre * scale), Math.round(skull.top - scalp * scale), Math.round(FRAME * scale), flip];
-    }
-    FITS.set(key, f);
-  }
-  return f;
-}
+// The eight faces do not share a skull, a jaw or a mouth, so each haircut and
+// each beard was fitted to each face beforehand (the green mannequin it was
+// drawn on laid over that face's outline, in each view), then cut: a beard
+// stays on the face and leaves the mouth clear, a fringe stops at the
+// eyebrows. Their strips hold 8 faces x 3 views: the cell is kind * 3 + view.
 
 const DRAWN = new Map<string, HTMLCanvasElement>();
 /** The whole head, one view, FRAME x FRAME. Call only when artReady(). */
@@ -322,20 +215,10 @@ function drawnHead(face: Face, view: View, item?: string | null): HTMLCanvasElem
     c = document.createElement("canvas");
     c.width = c.height = FRAME;
     const x = c.getContext("2d")!;
-    x.drawImage(part(`face-${face.kind % KINDS}`, v, "skin", SKINS[face.skin] ?? SKINS[1]!), 0, 0);
-    if (face.beard > 0) x.drawImage(part(`beard-${face.beard}`, v, "tint", colour), 0, 0);
-    if (cut !== "bald") {
-      const [dx, dy, size, flip] = hairFit(face.kind % KINDS, cut, v);
-      const hair = part(`hair-${cut}`, v, "tint", colour);
-      x.imageSmoothingEnabled = false;
-      if (flip) {
-        x.save();
-        x.translate(dx + size, dy);
-        x.scale(-1, 1);
-        x.drawImage(hair, 0, 0, size, size);
-        x.restore();
-      } else x.drawImage(hair, dx, dy, size, size);
-    }
+    const kind = face.kind % KINDS;
+    x.drawImage(part(`face-${kind}`, v, "skin", SKINS[face.skin] ?? SKINS[1]!), 0, 0);
+    if (face.beard > 0) x.drawImage(part(`beard-${face.beard}`, kind * 3 + v, "tint", colour), 0, 0);
+    if (cut !== "bald") x.drawImage(part(`hair-${cut}`, kind * 3 + v, "tint", colour), 0, 0);
     DRAWN.set(key, c);
   }
   return c;

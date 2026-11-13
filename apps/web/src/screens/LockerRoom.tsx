@@ -12,7 +12,6 @@ import type { Club, Player, Position, Rules } from "../lib/types.js";
 import { PasskeyIcon, RecoveryKeySetup, SignIn } from "./SignIn.js";
 import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.js";
 import { Sticker } from "./Sticker.js";
-import { Training } from "./Training.js";
 import { Wardrobe } from "./Wardrobe.js";
 import { FaceEditor } from "./FaceEditor.js";
 import { Life } from "./Life.js";
@@ -369,7 +368,11 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
         </span>
       </a>
       <div className="locker-work">
-        <Training me={me} />
+        <a className="paper panel training-door" href="#/training">
+          <span className="k">TRAINING</span>
+          <b>{me.last_trained_day >= day ? "Trained today. Back next match day." : "Today's session is waiting: up to +3 on a skill."}</b>
+          <span className="cta small">{me.last_trained_day >= day ? "THE DRILLS" : "TRAIN"}</span>
+        </a>
         <Life me={me} />
         <FaceEditor me={me} shirt={crestOf(club.manager).main} />
         <Wardrobe me={me} />

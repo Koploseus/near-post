@@ -13,6 +13,7 @@ import type { Champion, Club, Lineup, MatchResult, Stand } from "../lib/types.js
 import { SkillBars } from "./Sticker.js";
 import { Avatar, faceNumber } from "./Look.js";
 import { Wall } from "./Wall.js";
+import { ICON, Tile } from "./Icon.js";
 
 function useNow(ms = 1000) {
   const [now, setNow] = useState(serverNow());
@@ -72,7 +73,7 @@ export function Dashboard() {
   else if (halfTime) next = { eyebrow: "HALF-TIME", title: "Change the game", text: "Vote the strategy for the second half, or move to another slot.", href: "#/team", cta: "TEAM SHEET" };
   else if (ld?.state === "live") next = { eyebrow: "LIVE", title: "Your match is on", text: "Every action, revealed as it happens.", href: "#/live", cta: "WATCH LIVE" };
   else if (!chose) next = { eyebrow: "BEFORE KICK-OFF", title: "Take your slot", text: role ? `For now you play ${role}. Pick the position you want.` : "Pick the position you want in the eleven.", href: "#/team", cta: "TEAM SHEET" };
-  else if (!trained) next = { eyebrow: "BEFORE KICK-OFF", title: "Train a skill", text: "One session per match day: a football mini-game, up to +3.", href: "#/locker", cta: "TRAIN" };
+  else if (!trained) next = { eyebrow: "BEFORE KICK-OFF", title: "Train a skill", text: "One session per match day: a football mini-game, up to +3.", href: "#/training", cta: "TRAIN" };
   else if (owed > 0n) next = { eyebrow: "YOUR WALLET", title: `Collect ${g(owed)}`, text: "Your goals and your salary are waiting.", href: "#/locker", cta: "COLLECT" };
   else next = { eyebrow: "ALL SET", title: "Fill the stand", text: "Bring your club's fans in: a full stand pays every fan.", href: "#/stands", cta: "THE STANDS" };
 
@@ -98,7 +99,7 @@ export function Dashboard() {
   const checklist = club && me
     ? [
         { text: chose ? `You start: ${role}` : "Take your slot", href: "#/team", done: chose },
-        { text: trained ? "Trained today" : "Train a skill (up to +3)", href: "#/locker", done: trained },
+        { text: trained ? "Trained today" : "Train a skill (up to +3)", href: "#/training", done: trained },
         {
           text: data?.stand?.full_house
             ? "Tifo complete"
@@ -129,6 +130,32 @@ export function Dashboard() {
   const season = schedule?.season ?? 1;
   const { data: champs } = useData(() => (season > 1 ? league<Champion[]>("champions", { before: null, limit: 1 }) : Promise.resolve([])), [season]);
 
+  const peopleNew = (box?.unread ?? 0) + (box?.requests.length ?? 0) + duels;
+  const ord = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
+  const place = clubId && mine.length ? `${ord(at + 1)} of ${mine.length} in division ${division}` : null;
+  const doors: { href: string; tone: string; icon: string; title: string; line: string; hot?: boolean; cab?: string }[] = [
+    {
+      href: "#/training",
+      tone: "green",
+      icon: ICON.training,
+      cab: me ? DRILL_SKILL[me.position as keyof typeof DRILL_SKILL] : "shooting",
+      title: "Training",
+      line: !me ? "Five football mini-games, one session a match day" : trained ? "Done today. Back next match day" : `Today: ${DRILL_TITLE[me.position as keyof typeof DRILL_TITLE]}, up to +3 ${DRILL_SKILL[me.position as keyof typeof DRILL_SKILL]}`,
+      hot: !!me && !!club && !trained,
+    },
+    { href: "#/team", tone: "paper", icon: ICON.club, title: "My club", line: club ? `${club.name}${place ? ` · ${place}` : ""}` : "Sign for a club: eleven and one more, everyone plays" },
+    { href: "#/people", tone: "pink", icon: ICON.people, title: "People", line: peopleNew ? `${peopleNew} new: messages, friends, duels` : "Terrace, friends, messages, duels", hot: peopleNew > 0 },
+    { href: "#/ranks", tone: "gold", icon: ICON.ranks, title: "Rankings", line: "The best players and clubs of the league" },
+    {
+      href: "#/stands",
+      tone: "sky",
+      icon: ICON.stands,
+      title: "Stands & market",
+      line: data?.stand && data.stand.target > 0 ? `Your stand: ${data.stand.present} of ${data.stand.target} fans for a full house` : "Fans make the money: fill a stand",
+    },
+    { href: "#/rules", tone: "yellow", icon: ICON.help, title: "How to play", line: "The rules in two minutes" },
+  ];
+
   const nextCard = (
     <a className={`next-card${session ? "" : " landing"}${!me ? " with-art" : ""}`} href={next.href}>
       <span className="k">{next.eyebrow}</span>
@@ -142,6 +169,12 @@ export function Dashboard() {
     <div className={`today${session ? " signed" : ""}${me ? " has-player" : ""}`}>
       {session && <PlayerColumn />}
       <section className="today-main">
+        {me && (
+          <p className="greeting">
+            Hi <b>{me.name.split(" ")[0]}</b>
+            {schedule ? ` · match day ${schedule.season_day ?? schedule.match_day} of ${schedule.season_days ?? 26}, season ${schedule.season ?? 1}` : ""}
+          </p>
+        )}
         {/* Logged out, what the game is comes first; logged in, the match does. */}
         {!session && nextCard}
         {!session && (
@@ -174,37 +207,22 @@ export function Dashboard() {
 
         {session && nextCard}
 
-        {/* Your stand: how full it is now, in cells, and the way in. */}
-        {clubId && club && data?.stand && data.stand.target > 0 && (
-          <a className="paper panel stand-card" href="#/stands">
-            <span className="k">YOUR STAND · {club.name.toUpperCase()}</span>
-            <span className="stand-count">
-              {data.stand.present} / {data.stand.target} fans
-            </span>
-            <span className="stand-cells" aria-label={`${data.stand.present} of ${data.stand.target} fans for a full house`}>
-              {Array.from({ length: Math.max(1, data.stand.target) }, (_, i) => (
-                <i key={i} className={i < data.stand!.present ? "in" : ""} />
-              ))}
-            </span>
-            <span className="note">{data.stand.full_house ? "Full house: every fan in is paid at the whistle." : `Full house at ${data.stand.target}: every fan in is paid at the whistle.`}</span>
-            <span className="cta small">{data.stand.full_house ? "THE STAND" : "TAKE YOUR SEAT"}</span>
-          </a>
-        )}
-
-        {/* The drill of the day, as its arcade cabinet. */}
-        {me && !trained && (
-          <a className="paper panel drill-card" href="#/locker">
-            <Cabinet skill={DRILL_SKILL[me.position]} className="drill-card-cab" />
-            <span>
-              <span className="arcade-tag">TODAY'S DRILL</span>
-              <b className="arcade-title">{DRILL_TITLE[me.position]}</b>
-              <span className="note">
-                Up to +3 {DRILL_SKILL[me.position]} · {me.free_trainings > 0 ? "free session" : "400k G"}
+        {/* The places of the game, as on the menu: what each one holds for you now. */}
+        <nav className="doors" aria-label="Where to go">
+          {doors.map((d) => (
+            <a key={d.href} href={d.href} className={`door tone-${d.tone}${d.hot ? " hot" : ""}`}>
+              {d.cab ? <Cabinet skill={d.cab} className="door-cab" /> : <Tile d={d.icon} />}
+              <span className="door-text">
+                <b>{d.title}</b>
+                <span>{d.line}</span>
               </span>
-            </span>
-            <span className="cta small">TRAIN</span>
-          </a>
-        )}
+              <span className="door-arrow" aria-hidden="true">
+                ›
+              </span>
+            </a>
+          ))}
+        </nav>
+
         {!session && (
           <ul className="pitch-points">
             <li>

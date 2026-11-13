@@ -22,42 +22,92 @@ import { Try } from "./screens/Try.js";
 import { People } from "./screens/People.js";
 import { Rankings } from "./screens/Rankings.js";
 import { About, Faq, Footer, Privacy, Terms } from "./screens/Pages.js";
+import { Rules } from "./screens/Rules.js";
+import { TrainingPage } from "./screens/Training.js";
+import { inbox } from "./lib/people.js";
+import { ICON, Tile } from "./screens/Icon.js";
 
-/** Every screen, by hash. `tab` is the section of the nav it belongs to. */
+/** Every screen, by hash. `tab` is the entry of the menu it belongs to. */
 const ROUTES = {
   home: { tab: "home", view: Dashboard },
   live: { tab: "live", view: Live },
-  team: { tab: "team", view: Lineup },
+  match: { tab: "live", view: Match },
+  seasons: { tab: "live", view: Seasons },
+  game: { tab: "live", view: Game },
+  training: { tab: "training", view: TrainingPage },
+  locker: { tab: "me", view: LockerRoom },
+  account: { tab: "me", view: AccountPage },
+  team: { tab: "club", view: Lineup },
+  album: { tab: "club", view: Album },
+  house: { tab: "club", view: ClubHousePage },
+  ai: { tab: "club", view: Agents },
+  people: { tab: "people", view: People },
+  ranks: { tab: "ranks", view: Rankings },
   stands: { tab: "stands", view: Stands },
   g: { tab: "stands", view: Goalars },
   tickets: { tab: "stands", view: SeasonTickets },
-  match: { tab: "club", view: Match },
-  seasons: { tab: "club", view: Seasons },
-  album: { tab: "club", view: Album },
-  market: { tab: "club", view: Market },
-  house: { tab: "club", view: ClubHousePage },
-  ai: { tab: "club", view: Agents },
-  game: { tab: "club", view: Game },
-  locker: { tab: "me", view: LockerRoom },
-  account: { tab: "me", view: AccountPage },
+  market: { tab: "stands", view: Market },
+  rules: { tab: "help", view: Rules },
   try: { tab: "home", view: Try },
-  people: { tab: "club", view: People },
-  ranks: { tab: "club", view: Rankings },
-  about: { tab: "home", view: About },
-  faq: { tab: "home", view: Faq },
-  terms: { tab: "home", view: Terms },
-  privacy: { tab: "home", view: Privacy },
+  about: { tab: "help", view: About },
+  faq: { tab: "help", view: Faq },
+  terms: { tab: "help", view: Terms },
+  privacy: { tab: "help", view: Privacy },
 } as const;
 type Route = keyof typeof ROUTES;
 type Tab = (typeof ROUTES)[Route]["tab"];
 
-/** The five sections: today, the live match, the team sheet, the stands, the club. */
+
+/** The menu: eight places, named for what is in them. */
 const TABS: { tab: Tab; href: string; label: string; icon: string; tone: string }[] = [
-  { tab: "home", href: "#/home", label: "Today", icon: "M4 11 12 4l8 7v9h-5v-6H9v6H4z", tone: "yellow" },
-  { tab: "live", href: "#/live", label: "Live", icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4 3.5 2.5-1.3 4h-4.4l-1.3-4Z", tone: "red" },
-  { tab: "team", href: "#/team", label: "Team", icon: "M3 5h18v14H3zM12 5v14M3 9h3v6H3M21 9h-3v6h3", tone: "green" },
-  { tab: "stands", href: "#/stands", label: "Stands", icon: "M3 20h18M5 16h14M7 12h10M9 8h6", tone: "blue" },
-  { tab: "club", href: "#/match", label: "Club", icon: "M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z", tone: "paper" },
+  { tab: "home", href: "#/home", label: "Home", icon: ICON.home, tone: "yellow" },
+  { tab: "live", href: "#/live", label: "Live", icon: ICON.live, tone: "red" },
+  { tab: "training", href: "#/training", label: "Training", icon: ICON.training, tone: "green" },
+  { tab: "me", href: "#/locker", label: "My player", icon: ICON.me, tone: "blue" },
+  { tab: "club", href: "#/team", label: "My club", icon: ICON.club, tone: "paper" },
+  { tab: "people", href: "#/people", label: "People", icon: ICON.people, tone: "pink" },
+  { tab: "ranks", href: "#/ranks", label: "Rankings", icon: ICON.ranks, tone: "gold" },
+  { tab: "stands", href: "#/stands", label: "Stands & market", icon: ICON.stands, tone: "sky" },
+];
+
+/** The pages of each menu entry that has more than one, as tabs at the top of the page. */
+const SECTIONS: Partial<Record<Tab, { label: string; pages: [Route, string][] }>> = {
+  live: { label: "Matches", pages: [["live", "Live"], ["match", "Results"], ["seasons", "Seasons"]] },
+  me: { label: "My player", pages: [["locker", "Locker room"], ["account", "Account"]] },
+  club: { label: "My club", pages: [["team", "Team sheet"], ["album", "Squad album"], ["house", "Club house"], ["ai", "AI agents"]] },
+  stands: { label: "Stands and market", pages: [["stands", "Stand"], ["g", "Goalars"], ["tickets", "Season tickets"], ["market", "Market"]] },
+  help: { label: "Help", pages: [["rules", "How to play"], ["faq", "Questions"], ["about", "About"]] },
+};
+
+/** Which part of "How to play" explains each page (the "?" next to its tabs). */
+const HELP: Partial<Record<Route, string>> = {
+  live: "match",
+  match: "match",
+  seasons: "season",
+  game: "match",
+  training: "training",
+  locker: "player",
+  team: "club",
+  album: "club",
+  house: "club",
+  ai: "agents",
+  people: "life",
+  ranks: "season",
+  stands: "money",
+  g: "money",
+  tickets: "money",
+  market: "money",
+};
+
+/** The menu on a phone, behind "Menu": every page, in groups. */
+const GROUPS: { title: string; tone: string; icon: string; links: [string, string][] }[] = [
+  { title: "Play", tone: "red", icon: ICON.live, links: [["#/live", "Live match"], ["#/training", "Training"], ["#/match", "Results"], ["#/seasons", "Seasons"]] },
+  { title: "My player", tone: "blue", icon: ICON.me, links: [["#/locker", "Locker room"], ["#/account", "Account"]] },
+  { title: "My club", tone: "paper", icon: ICON.club, links: [["#/team", "Team sheet"], ["#/album", "Squad album"], ["#/house", "Club house"], ["#/ai", "AI agents"]] },
+  { title: "People", tone: "pink", icon: ICON.people, links: [["#/people/terrace", "Terrace"], ["#/people/messages", "Messages"], ["#/people/friends", "Friends"], ["#/people/duels", "Duels"]] },
+  { title: "Rankings", tone: "gold", icon: ICON.ranks, links: [["#/ranks", "Rankings"]] },
+  { title: "Stands and market", tone: "sky", icon: ICON.stands, links: [["#/stands", "Stand"], ["#/g", "Goalars"], ["#/tickets", "Season tickets"], ["#/market", "Market"]] },
+  { title: "Help", tone: "yellow", icon: ICON.help, links: [["#/rules", "How to play"], ["#/faq", "Questions"], ["#/about", "About"]] },
 ];
 
 /** "#/game/3/1" → "game"; the rest of the hash is read by the screen. */
@@ -79,20 +129,129 @@ function useRoute() {
   return r;
 }
 
-function TabLinks({ current, className }: { current: Tab; className: string }) {
+const TabIcon = Tile;
+
+/** New messages, friend requests and duels to play: the red badge on People. */
+function usePeopleCount() {
+  const { session, me } = useGame();
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!session || !me) return setN(0);
+    let live = true;
+    const load = () =>
+      inbox(session)
+        .then((b) => live && setN(b.unread + b.requests.length + b.duels.filter((d) => d.mine === null && !d.result).length))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 90_000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [session?.accountId, me?.token_id]);
+  return n;
+}
+
+/** The menu on a wide screen: eight big tiles, a word under each. */
+function MainNav({ current, people }: { current: Tab; people: number }) {
   return (
-    <nav className={className} aria-label="Main">
+    <nav className="mainnav" aria-label="Main">
       {TABS.map((t) => (
         <a key={t.tab} href={t.href} aria-current={t.tab === current ? "page" : undefined} className={`tone-${t.tone}`}>
-          <span className="tile" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path d={t.icon} />
-            </svg>
-          </span>
+          <TabIcon d={t.icon} />
           <span className="tab-label">{t.label}</span>
+          {t.tab === "people" && people > 0 && <span className="count-badge">{people}</span>}
         </a>
       ))}
     </nav>
+  );
+}
+
+/** The menu on a phone: four places and "Menu", which opens every page. */
+function BottomBar({ current, people, open, onMenu }: { current: Tab; people: number; open: boolean; onMenu: () => void }) {
+  const main = TABS.slice(0, 4);
+  const inMenu = !main.some((t) => t.tab === current);
+  return (
+    <nav className="bottombar" aria-label="Main">
+      {main.map((t) => (
+        <a key={t.tab} href={t.href} aria-current={!open && t.tab === current ? "page" : undefined} className={`tone-${t.tone}`}>
+          <TabIcon d={t.icon} />
+          <span className="tab-label">{t.label}</span>
+        </a>
+      ))}
+      <button type="button" className={`tone-paper${open || inMenu ? " on" : ""}`} aria-expanded={open} aria-controls="menu-sheet" onClick={onMenu}>
+        <TabIcon d={open ? "M6 6l12 12M18 6 6 18" : ICON.menu} plain={open} />
+        <span className="tab-label">{open ? "Close" : "Menu"}</span>
+        {people > 0 && !open && <span className="count-badge">{people}</span>}
+      </button>
+    </nav>
+  );
+}
+
+/** Every page, in groups, over the screen (phone). */
+function MenuSheet({ onClose, people }: { onClose: () => void; people: number }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    addEventListener("keydown", key);
+    document.body.classList.add("menu-open");
+    (document.querySelector("#menu-sheet a") as HTMLElement | null)?.focus();
+    return () => {
+      removeEventListener("keydown", key);
+      document.body.classList.remove("menu-open");
+    };
+  }, []);
+  return (
+    <div id="menu-sheet" className="menu-sheet" role="dialog" aria-modal="true" aria-label="Menu">
+      <a className="menu-rules" href="#/rules">
+        <TabIcon d={ICON.help} />
+        <span>
+          <b>How to play</b>
+          <span>The rules in two minutes</span>
+        </span>
+      </a>
+      {GROUPS.map((gr) => (
+        <section key={gr.title} className={`menu-group tone-${gr.tone}`}>
+          <h2>
+            <TabIcon d={gr.icon} />
+            {gr.title}
+            {gr.title === "People" && people > 0 && <span className="count-badge">{people}</span>}
+          </h2>
+          <div className="menu-links">
+            {gr.links.map(([href, label]) => (
+              <a key={href} href={href}>
+                {label}
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** The pages of this menu entry, and the "?" to the rules that explain it. */
+function SectionTabs({ r }: { r: Route }) {
+  const sec = SECTIONS[ROUTES[r].tab];
+  const help = HELP[r];
+  if (!sec && !help) return null;
+  return (
+    <div className={`section-bar${sec ? "" : " solo"}`}>
+      {sec && (
+        <nav className="sub-tabs" aria-label={sec.label}>
+          {sec.pages.map(([k, label]) => (
+            <a key={k} href={`#/${k}`} aria-current={k === r || (r === "game" && k === "match") ? "page" : undefined}>
+              {label}
+            </a>
+          ))}
+        </nav>
+      )}
+      {help && (
+        <a className="help-link" href={`#/rules/${help}`} title="How this works" aria-label="How this works">
+          <span aria-hidden="true">?</span>
+          {!sec && <b>How it works</b>}
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -164,7 +323,7 @@ function Online() {
   );
 }
 
-function Header({ tab }: { tab: Tab }) {
+function Header({ tab, people }: { tab: Tab; people: number }) {
   return (
     <header className="top-band">
       <div className="wrap top">
@@ -175,74 +334,54 @@ function Header({ tab }: { tab: Tab }) {
             <em>The star is you!</em>
           </span>
         </a>
-        <TabLinks current={tab} className="nav" />
         <div className="top-right">
+          <a className="rules-pill" href="#/rules" aria-current={tab === "help" ? "page" : undefined}>
+            <img src="/art/icons/help.webp" alt="" width="30" height="30" />
+            <b>How to play</b>
+          </a>
           <Online />
           <Balance />
           <Me current={tab} />
           <AccountLink />
         </div>
       </div>
+      <div className="wrap">
+        <MainNav current={tab} people={people} />
+      </div>
     </header>
   );
 }
 
-/** Results, seasons, album, market, club house, people, rankings and the AI agents: the club's pages. */
-export function ClubTabs({ current }: { current: "match" | "seasons" | "album" | "market" | "house" | "ai" | "people" | "ranks" }) {
-  const tabs = [
-    ["match", "Results"],
-    ["seasons", "Seasons"],
-    ["album", "Album"],
-    ["market", "Market"],
-    ["house", "Club house"],
-    ["people", "People"],
-    ["ranks", "Rankings"],
-    ["ai", "AI agents"],
-  ] as const;
-  return (
-    <nav className="sub-tabs" aria-label="Club">
-      {tabs.map(([k, label]) => (
-        <a key={k} href={`#/${k}`} aria-current={k === current ? "page" : undefined}>
-          {label}
-        </a>
-      ))}
-    </nav>
-  );
-}
-
-/** The stand, the money it moves, and the season tickets: the fans' pages. */
-export function StandsTabs({ current }: { current: "stands" | "g" | "tickets" }) {
-  const tabs = [
-    ["stands", "Stand"],
-    ["g", "Goalars"],
-    ["tickets", "Season tickets"],
-  ] as const;
-  return (
-    <nav className="sub-tabs" aria-label="Stands">
-      {tabs.map(([k, label]) => (
-        <a key={k} href={`#/${k}`} aria-current={k === current ? "page" : undefined}>
-          {label}
-        </a>
-      ))}
-    </nav>
-  );
-}
-
 export function App() {
+  return (
+    <GameProvider>
+      <Shell />
+    </GameProvider>
+  );
+}
+
+function Shell() {
   const r = useRoute();
   const View = ROUTES[r].view;
   const tab = ROUTES[r].tab;
+  const people = usePeopleCount();
+  const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    const close = () => setMenu(false);
+    addEventListener("hashchange", close);
+    return () => removeEventListener("hashchange", close);
+  }, []);
   return (
-    <GameProvider>
-      <Header tab={tab} />
+    <>
+      <Header tab={tab} people={people} />
       <main className="wrap page">
-        {(r === "match" || r === "seasons" || r === "album" || r === "market" || r === "house" || r === "ai" || r === "people" || r === "ranks") && <ClubTabs current={r} />}
-        {(r === "stands" || r === "g" || r === "tickets") && <StandsTabs current={r} />}
+        <SectionTabs r={r} />
         <View />
         <Footer />
       </main>
-      <TabLinks current={tab} className="tabbar" />
+      {menu && <MenuSheet onClose={() => setMenu(false)} people={people} />}
+      <BottomBar current={tab} people={people} open={menu} onMenu={() => setMenu(!menu)} />
       <Toasts />
-    </GameProvider>
+    </>
   );
 }
