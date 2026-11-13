@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { type Key, type V, atBall, frameAt, keyframes, positions } from "../lib/flow.js";
+import { type Frame, type V, atBall, frameAt, keyframes, positions } from "../lib/flow.js";
 import { type Clock, HALF_SECONDS } from "../lib/live.js";
 import { BOT, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
 import { ball as drawBall, sprite } from "./art.js";
@@ -58,7 +58,11 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
     const evs = half === 0 ? m.events.slice(0, m.first_half_events) : m.events.slice(m.first_half_events);
     const start = half === 0 ? 0 : HALF_SECONDS;
     const end = m.half_ends[half] ?? start + HALF_SECONDS;
-    return keyframes(evs, start, end, half === 0 ? 0 : 1);
+    return keyframes(evs, start, end, half === 0 ? 0 : 1, {
+      formations: [m.formations[half * 2] ?? m.formations[0]!, m.formations[half * 2 + 1] ?? m.formations[1]!],
+      rate: RATE,
+      absent: (side, k) => half === 1 && m.elevens[2 + side]?.[k] === "",
+    });
   }, [m, half]);
   const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time" || c.phase === "before";
 
@@ -76,7 +80,7 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
       }),
     );
     // The ball belongs to a player: at his feet, or on its way to the next one.
-    let holder: { side: 0 | 1; k: number } | null = null;
+    let holder: { side: 0 | 1; k: number } = { side: 0, k: 1 };
     let wantHolder = { side: 0 as 0 | 1, k: 1, since: 0 };
     let bp: V = [50, 50];
     let flight = 0;
@@ -103,10 +107,11 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
       if (L.stopped || Math.abs(target - cur) > 14) cur = target;
       else cur = Math.min(target + 1, cur + dt * RATE * (cur < target - 3 ? 2 : 1));
 
-      const at: Key = L.stopped ? { t: cur, ball: [50, 50], side: 0, dead: true } : frameAt(L.keys, cur);
+      const at: Frame = L.stopped ? { t: cur, ball: [50, 50], side: 0, dead: true } : frameAt(L.keys, cur);
       const f = [L.m.formations[L.second ? 2 : 0] ?? L.m.formations[0]!, L.m.formations[L.second ? 3 : 1] ?? L.m.formations[1]!];
       // Stopped, or the ball on the centre spot for a kick-off: each eleven in its own half.
-      const restart = L.stopped ? ("rest" as const) : at.dead && Math.hypot(at.ball[0] - 50, at.ball[1] - 50) < 1.5 ? ("kickoff" as const) : undefined;
+      // (After a goal they go back to their half while the ball is fetched.)
+      const restart = L.stopped ? ("rest" as const) : at.set === "kickoff" || (at.dead && Math.hypot(at.ball[0] - 50, at.ball[1] - 50) < 1.5) ? ("kickoff" as const) : undefined;
       // The elevens read the play with a delay: a pass does not send twenty players running at once.
       if (!placed || restart) read = [at.ball[0], at.ball[1]];
       else read = [read[0] + (at.ball[0] - read[0]) * Math.min(1, dt / 1.5), read[1] + (at.ball[1] - read[1]) * Math.min(1, dt / 1.5)];
@@ -116,8 +121,20 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
         // A side takes a second or so to turn from defending to attacking: the blocks do not jump with the ball.
         const want = at.side === side ? 1 : 0;
         attack[side] = placed ? attack[side]! + (want - attack[side]!) * Math.min(1, dt / 1.4) : want;
-        const out = positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined, { attack: attack[side]!, block: blockOf(side), ...(at.set ? { set: at.set } : {}), ...(lastAtBall[side] !== undefined ? { prefer: lastAtBall[side]! } : {}), ...(restart ? { restart } : {}) });
-        if (!restart) lastAtBall[side] = atBall(out, at.ball);
+        // A ball on its way belongs to nobody: the side that has it lets it run, the other closes down the one it is going to.
+        const flying = !!at.flight && !at.dead;
+        // A dead ball is nobody's to chase, but the one who will play it.
+        const idle = !!at.dead && !(at.side === side && at.carrier !== undefined);
+        const out = positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined, {
+          attack: attack[side]!,
+          block: blockOf(side),
+          ...(at.set && at.set !== "kickoff" ? { set: at.set } : {}),
+          ...(lastAtBall[side] !== undefined ? { prefer: lastAtBall[side]! } : {}),
+          ...(restart ? { restart } : {}),
+          ...((flying && at.side === side) || idle ? { free: true } : {}),
+          ...(flying && at.side !== side && at.move === "pass" ? { press: at.flight!.to } : {}),
+        });
+        if (!restart && !flying) lastAtBall[side] = atBall(out, at.ball);
         return out;
       });
       const gone = (side: number, k: number) =>
@@ -164,7 +181,7 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
           } else if (e.kind === "goal" || e.kind === "own_goal") {
             if (d > -2 && d < 0) acts[o]![0] = "dive";
             if (d > -2.2 && d < 1) shot = true;
-            if (d >= 0 && d < 34) {
+            if (d >= 0 && d < 24 && at.dead) {
               // They run to the scorer and jump together.
               const sc = bodies[s]![e.kind === "goal" && e.player > 0 ? e.player : 9]!;
               for (let k = 1; k < 11; k++) {
@@ -191,6 +208,9 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
           else if (e.kind === "yellow" && d >= 0 && d < 6) caption = "YELLOW CARD";
           else if (e.kind === "red" && d >= 0 && d < 6) caption = "RED CARD";
         }
+
+      // The one the ball is going to (or is about to be played to) goes to meet it.
+      if (!L.stopped && at.next && !gone(at.next.side, at.next.k) && !(at.move === "shot" && at.next.k !== 0)) orders[at.next.side]![at.next.k] = [at.next.at[0], at.next.at[1]];
 
       // Everyone runs to his place, each in his own way.
       const time = now / 1000;
@@ -231,20 +251,27 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
         }
       placed = true;
 
-      // Who has the ball: the player of the side on it who is nearest to where the play is.
-      let nk = 1;
-      let nd = Infinity;
-      for (let k = at.carrier === 0 ? 0 : 1; k < 11; k++) {
-        if (gone(at.side, k)) continue;
-        const b = bodies[at.side]![k]!;
-        const dd = Math.hypot(b.x - at.ball[0], b.y - at.ball[1]) + (k === at.carrier ? -6 : 0);
-        if (dd < nd) [nd, nk] = [dd, k];
+      // Who has the ball: the player the move names; nobody while it is on its way.
+      const flying = !L.stopped && !!at.flight;
+      if (!flying) {
+        if (at.carrier !== undefined && !gone(at.side, at.carrier)) holder = { side: at.side, k: at.carrier };
+        else {
+          // Nobody named: the player of the side on it who is nearest to where the play is.
+          let nk = 1;
+          let nd = Infinity;
+          for (let k = 1; k < 11; k++) {
+            if (gone(at.side, k)) continue;
+            const b = bodies[at.side]![k]!;
+            const dd = Math.hypot(b.x - at.ball[0], b.y - at.ball[1]);
+            if (dd < nd) [nd, nk] = [dd, k];
+          }
+          if (wantHolder.side !== at.side || wantHolder.k !== nk) wantHolder = { side: at.side, k: nk, since: now };
+          if (holder.side !== wantHolder.side || now - wantHolder.since > 220) holder = { side: wantHolder.side, k: wantHolder.k };
+        }
       }
-      if (wantHolder.side !== at.side || wantHolder.k !== nk) wantHolder = { side: at.side, k: nk, since: now };
-      if (!holder || ((holder.side !== wantHolder.side || holder.k !== wantHolder.k) && now - wantHolder.since > 220)) holder = { side: wantHolder.side, k: wantHolder.k };
-      // A shot, a set piece or a ball out of play goes where the match says; otherwise it is played to feet.
+      // A pass, a shot, a set piece or a ball out of play goes where the match says; otherwise it is at his feet.
       const hb = bodies[holder.side]![holder.k]!;
-      const loose = L.stopped || at.dead || shot || at.ball[0] < 2.5 || at.ball[0] > 97.5 || Math.hypot(hb.x - at.ball[0], hb.y - at.ball[1]) > 16;
+      const loose = L.stopped || at.dead || shot || flying || at.ball[0] < 2.5 || at.ball[0] > 97.5 || Math.hypot(hb.x - at.ball[0], hb.y - at.ball[1]) > 16;
       const feet: V = [hb.x + hb.face * (1.3 + 0.5 * Math.sin(hb.phase * 1.6)) * Math.min(1, hb.v / 3 + 0.4), hb.y + 0.6];
       const dest: V = loose ? [at.ball[0], at.ball[1]] : feet;
       const gx = dest[0] - bp[0];
@@ -255,13 +282,15 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
       else bp = [bp[0] + (gx / gd) * speed * dt, bp[1] + (gy / gd) * speed * dt];
       placedBall = true;
       // In the air on the way: a pass skims, a long ball or a shot rises.
-      flight = gd > 2.5 ? Math.min(1, flight + dt * 5) : Math.max(0, flight - dt * 6);
+      flight = shot && gd > 2.5 ? Math.min(1, flight + dt * 5) : Math.max(0, flight - dt * 6);
+      const far = at.flight && at.move === "pass" ? Math.hypot(at.flight.to[0] - at.flight.from[0], at.flight.to[1] - at.flight.from[1]) : 0;
+      const arc = far > 0 ? Math.sin(Math.PI * at.flight!.p) * (far > 30 ? 26 : far > 20 ? 9 : 1.5) : 0;
       const owned = !loose && gd < 2.5;
       ballAt = bp;
       // For a test that watches a whole match (it sets `window.__npPitch` first): what is drawn, in pitch units.
       const watch = window as unknown as { __npPitch?: unknown };
       if ("__npPitch" in watch)
-        watch.__npPitch = { second: cur, stopped: L.stopped, side: at.side, dead: !!at.dead, key: at.ball, carrier: at.carrier ?? null, ball: bp, holder, loose, caption, match: L.m, half: L.half, read, targets, bodies: bodies.map((team, side) => team.map((b, k) => (gone(side, k) ? null : [b.x, b.y, b.v]))) };
+        watch.__npPitch = { second: cur, stopped: L.stopped, side: at.side, dead: !!at.dead, key: at.ball, carrier: at.carrier ?? null, move: at.move ?? null, flight: at.flight ?? null, next: at.next ?? null, ball: bp, holder, loose, caption, match: L.m, half: L.half, read, targets, bodies: bodies.map((team, side) => team.map((b, k) => (gone(side, k) ? null : [b.x, b.y, b.v]))) };
 
       // The camera: on the ball, a little ahead of it, closer near the goals.
       const lead = at.dead ? 0 : (at.side === 0 ? 1 : -1) * 4;
@@ -304,7 +333,7 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
           if (who.mine) myBody = b;
           list.push({ y: b.y, draw: () => player(g, P, b, k === 0, L.shirts[side], act, cheer, side, who, now) });
         }
-      const lift = flight * (shot ? 20 : 9) * (0.55 + 0.45 * Math.abs(Math.sin(now / 170)));
+      const lift = Math.max(arc, flight * 20 * (0.55 + 0.45 * Math.abs(Math.sin(now / 170))));
       list.push({
         y: bp[1] + 0.4,
         draw: () => {

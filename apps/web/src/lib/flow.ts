@@ -3,17 +3,23 @@ import type { EventKind, Formation, MatchEvent } from "./types.js";
 
 /**
  * The live pitch, drawn from the match's own events. The contract records
- * the moments that matter (shots, corners, fouls, cards, set pieces), each
- * with its second, its side and the player's slot; this module builds the
- * ball's path through them: a build-up toward each shot by the side that
- * takes it, the shot itself from the shooter's feet, the ball in the net or
- * in the keeper's hands, the corner from the flag, the free kick from where
- * the foul was. Between events the side that will act next has the ball, so
- * what is drawn leads to what happened. Both elevens follow the ball as
- * blocks; the keepers stay in their goal.
+ * the moments that matter (shots, corners, fouls, cards, tackles, set
+ * pieces), each with its second, its side and the player's slot; this module
+ * writes the football between them: who has the ball, where he takes it,
+ * whom he passes to, until the ball is where the next event happens, at the
+ * feet of the player the event names. A move is a chain of beats: a player
+ * carries the ball a second or two, then passes it to a team-mate standing
+ * where his formation puts him; the ball changes sides when a pass is cut
+ * out. A shot is struck from the shooter's feet, a corner comes in from the
+ * flag, a free kick is taken where the foul was.
+ *
+ * It is a picture only: nothing here changes a result, and every viewer sees
+ * the same (no randomness but a noise seeded by the match's seconds).
  *
  * Coordinates: x 0 to 100 from the home goal to the away goal (home attacks
- * to the right), y 0 to 100 across. Seconds are match seconds.
+ * to the right), y 0 to 100 across. Seconds are match seconds; the picture
+ * shows `rate` of them in a real second, and the speeds of the ball and of
+ * the man carrying it are set in real seconds, so they look right on screen.
  */
 
 export type V = [number, number];
@@ -24,12 +30,31 @@ export interface Key {
   ball: V;
   /** Who has the ball (or will take the set piece). */
   side: Side;
-  /** The player on the ball, by slot. */
+  /** The player on the ball, by slot (0: the keeper). */
   carrier?: number;
   /** The ball is dead (a goal, a foul, a set piece being placed). */
   dead?: boolean;
-  /** The set piece being placed: the elevens line up for it. */
-  set?: "corner" | "penalty" | "free_kick";
+  /** The set piece being placed: the elevens line up for it ("kickoff": after a goal, each goes back to its half). */
+  set?: "corner" | "penalty" | "free_kick" | "kickoff";
+  /** How the ball goes from this key to the next: at the carrier's feet, passed, or struck at goal. */
+  move?: "carry" | "pass" | "shot";
+}
+
+/** The ball at one moment (`frameAt`). */
+export interface Frame extends Key {
+  /** The ball is on its way between two players (or to the goal): from where, to where, how far along (0 to 1). */
+  flight?: { from: V; to: V; p: number };
+  /** The one the ball is going to, or is about to be passed to, and where he gets it. */
+  next?: { side: Side; k: number; at: V };
+}
+
+export interface Plan {
+  /** The formations of the home and away sides in this half. By default 4-4-2. */
+  formations?: [Formation, Formation];
+  /** Match seconds shown in a real second. */
+  rate?: number;
+  /** A slot nobody plays in this half. */
+  absent?: (side: Side, slot: number) => boolean;
 }
 
 /** A small deterministic noise from a number (no Math.random: every viewer sees the same). */
@@ -38,133 +63,386 @@ const noise = (n: number) => {
   return x - Math.floor(x);
 };
 
-/** How far a player with the ball gets in a match second, in pitch units (about 14 a second on the screen). */
-const REACH = 3;
-
 /** `d` from the goal side `s` attacks (side 0 attacks x = 100). */
 const ahead = (s: Side, d: number) => (s === 0 ? 100 - d : d);
 const clampY = (y: number) => Math.min(96, Math.max(4, y));
+const mix = (a: number, b: number, p: number) => a + (b - a) * p;
+const within = (lo: number, hi: number, v: number) => Math.min(hi, Math.max(lo, v));
+const dist = (a: V, b: V) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const mixV = (a: V, b: V, p: number): V => [mix(a[0], b[0], p), mix(a[1], b[1], p)];
+/** From `a`, `d` toward `b` (and no further than `b`). */
+const toward = (a: V, b: V, d: number): V => {
+  const l = dist(a, b);
+  return l < 0.001 || d <= 0 ? [a[0], a[1]] : mixV(a, b, Math.min(1, d / l));
+};
 
-/** The keys of one half, in time order. `events` are that half's, in order. */
-export function keyframes(events: MatchEvent[], start: number, end: number, kickOff: Side): Key[] {
-  const keys: Key[] = [{ t: start, ball: [50, 50], side: kickOff, dead: true }];
+/** The keys of one half, in time order. `list` are that half's events. */
+export function keyframes(list: MatchEvent[], start: number, end: number, kickOff: Side, plan: Plan = {}): Key[] {
+  const events = [...list].sort((a, b) => a.second - b.second);
+  const f = plan.formations ?? (["4-4-2", "4-4-2"] as [Formation, Formation]);
+  const rate = plan.rate ?? 4.5;
+  /** Real seconds, in match seconds. */
+  const real = (s: number) => s * rate;
+  // Pitch units a match second: a man with the ball, a pass along the ground, a long ball.
+  const CARRY = 5 / rate;
+  const LONG = 36 / rate;
+  /** A pass along the ground: the longer, the harder it is hit. */
+  const pace = (len: number) => Math.min(36, 15 + len * 0.55) / rate;
+
+  const reds = events.filter((e) => e.kind === "red").map((e) => ({ side: e.home ? 0 : 1, k: e.player, t: e.second }));
+  /** The slot is played, and its player has not been sent off. */
+  const here = (side: Side, k: number, t: number) => !plan.absent?.(side, k) && !reds.some((r) => r.side === side && r.k === k && r.t <= t);
+  /** Where the eleven of `side` stands with the ball at `ball` and `has` on it: the block alone, nobody sent to the ball. */
+  const shape = (side: Side, ball: V, has: Side) => positions(f[side], side, ball, has, undefined, { free: true });
+  /** The outfield player of `side` whose place is nearest to `p`. */
+  const nearestOf = (side: Side, p: V, t: number, has: Side, except = -1) => {
+    const out = shape(side, p, has);
+    let best = 1;
+    let d = Infinity;
+    for (let k = 1; k < 11; k++) {
+      if (k === except || !here(side, k, t)) continue;
+      const dd = dist(out[k]!, p);
+      if (dd < d) (d = dd), (best = k);
+    }
+    return best;
+  };
+  /** Who kicks off for `side`: the one the kick-off shape puts on the ball. */
+  const kicker = (side: Side, t: number) => {
+    const out = positions(f[side], side, [50, 50], side, undefined, { restart: "kickoff" });
+    let best = 1;
+    let d = Infinity;
+    for (let k = 1; k < 11; k++) {
+      if (!here(side, k, t)) continue;
+      const dd = dist(out[k]!, [50, 50]);
+      if (dd < d) (d = dd), (best = k);
+    }
+    return best;
+  };
+
+  const keys: Key[] = [{ t: start, ball: [50, 50], side: kickOff, carrier: kicker(kickOff, start), dead: true }];
   const last = () => keys[keys.length - 1]!;
+  /** The last kick-off: when, and whose. */
+  let kickoff = { t: start, side: kickOff };
+  /**
+   * Where the eleven of `side` is at `t`, as far as the keys so far tell: around
+   * the ball where it is now, not yet stepped up if it has just won it, and
+   * still coming out of its own half after a kick-off. A pass goes to where
+   * a player can be, not to where he would be in a settled side.
+   */
+  const placed = (side: Side, t: number): V[] => {
+    const cur = last();
+    let i = keys.length - 1;
+    while (i > 0 && keys[i - 1]!.side === cur.side) i--;
+    const att = cur.side === side ? within(0, 1, (t - keys[i]!.t) / real(1.6)) : 0;
+    const out = positions(f[side], side, cur.ball, cur.side, undefined, { free: true, attack: att });
+    const p = within(0, 1, (t - kickoff.t - real(0.7)) / real(3.5));
+    if (p >= 1) return out;
+    const lined = positions(f[side], side, [50, 50], kickoff.side, undefined, { restart: "kickoff" });
+    return out.map((v, k) => mixV(lined[k]!, v, p));
+  };
+  /** The outfield player of `side` who is nearest to `p` now. */
+  const closest = (side: Side, p: V, t: number, except = -1) => {
+    const out = placed(side, t);
+    let best = 1;
+    let d = Infinity;
+    for (let k = 1; k < 11; k++) {
+      if (k === except || !here(side, k, t)) continue;
+      const dd = dist(out[k]!, p);
+      if (dd < d) (d = dd), (best = k);
+    }
+    return best;
+  };
   /** What follows an event (a goal kick, the walk back to the centre) is over before the next event starts. */
   let bound = end;
   const push = (k: Key) => {
     if (k.t > bound) k = { ...k, t: bound };
     if (k.t < last().t) k = { ...k, t: last().t };
-    keys.push({ ...k, ball: [Math.min(100, Math.max(0, k.ball[0])), clampY(k.ball[1])] });
+    keys.push({ ...k, ball: [within(0, 100, k.ball[0]), clampY(k.ball[1])] });
+  };
+  /** Changes the last key. */
+  const tag = (patch: Partial<Key>) => {
+    keys[keys.length - 1] = { ...last(), ...patch };
+  };
+  /** The man on the ball takes it to `ball`. */
+  const carryTo = (t: number, ball: V) => {
+    const c = last();
+    tag({ move: "carry" });
+    push({ t, ball, side: c.side, ...(c.carrier !== undefined ? { carrier: c.carrier } : {}) });
+  };
+  /** The ball is played to `ball`, where `carrier` of `side` gets it. */
+  const passTo = (t: number, ball: V, side: Side, carrier?: number) => {
+    tag({ move: "pass" });
+    push({ t, ball, side, ...(carrier !== undefined ? { carrier } : {}) });
+  };
+  /** The same key a little later: he stands on the ball. */
+  const wait = (t: number) => {
+    const { move: _, ...c } = last();
+    push({ ...c, t });
   };
 
-  /** Open play from the last key to `t`, the ball moving toward `toward` for side `s` (and lost on the way when long). */
-  const play = (t: number, s: Side, to: V) => {
-    const from = last();
-    const gap = t - from.t;
-    if (gap <= 6) return;
-    // A long spell: the other side has it for a while first.
-    if (gap > 150) {
-      const o = (1 - s) as Side;
-      const mid = from.t + gap * 0.45;
-      play(mid, o, [ahead(o, 40 + noise(mid) * 15), 20 + noise(mid + 1) * 60]);
+  /**
+   * Side `s` plays the ball from where it is to `to`, where it is at `until`:
+   * a carry and a pass at a time, each to a team-mate standing where his
+   * formation puts him, forward overall and from side to side on the way.
+   * The last ball goes to `final` (by default the one whose place is there),
+   * from `via` when there is time; with `lose` it is cut out by the other side.
+   */
+  const chain = (until: number, s: Side, to: V, o: { final?: number; via?: number; lose?: boolean } = {}) => {
+    const other = (1 - s) as Side;
+    let waited = false;
+    /** The one credited with the last pass has the ball: his next ball is the last. */
+    let direct = false;
+    const via = o.via !== undefined && o.via > 0 && o.via !== o.final ? o.via : -1;
+    for (let guard = 0; guard < 400; guard++) {
+      let cur = last();
+      const left = until - cur.t;
+      if (left < real(0.3)) return;
+      if (cur.carrier === undefined || cur.side !== s) {
+        tag({ side: s, carrier: closest(s, cur.ball, cur.t) });
+        cur = last();
+      }
+      const c = cur.carrier!;
+      if (cur.dead && !waited) {
+        // A dead ball: he puts it down and looks up before he plays it.
+        waited = true;
+        wait(cur.t + Math.min(real(0.7), left * 0.4));
+        continue;
+      }
+      waited = true;
+      const seed = cur.t * 1.37 + keys.length * 0.61;
+      const n = Math.max(1, Math.round(left / real(2.3)));
+      if (n > 1 && !direct) {
+        // An ordinary beat: a step of the way, with a change of side or a ball back now and then.
+        const calm = Math.min(1, (n - 1) / 3);
+        // (A kick-off is played back to a midfielder.)
+        const centre = !!cur.dead && dist(cur.ball, [50, 50]) < 1.5;
+        const want: V = centre
+          ? [50 - (s === 0 ? 1 : -1) * (9 + noise(seed) * 5), 34 + noise(seed + 1) * 32]
+          : [
+              within(5, 95, cur.ball[0] + (to[0] - cur.ball[0]) / n + (noise(seed) - 0.5) * 22 * calm),
+              clampY(cur.ball[1] + (to[1] - cur.ball[1]) / n + (noise(seed + 1) - 0.5) * 52 * calm),
+            ];
+        // Where each team-mate can be when the ball gets there: between his place now and his place with the ball there.
+        const now = placed(s, cur.t);
+        const then = shape(s, want, s);
+        const spots = now.map((v, k) => mixV(v, then[k]!, 0.5));
+        let best = -1;
+        let score = Infinity;
+        if (n === 2 && via > 0 && via !== c && here(s, via, cur.t)) best = via;
+        else
+          for (let k = 1; k < 11; k++) {
+            if (k === c || k === o.final || !here(s, k, cur.t)) continue;
+            const len = dist(cur.ball, mixV(spots[k]!, want, 0.4));
+            const sc = dist(spots[k]!, want) + noise(seed + k * 7.3) * 8 + (len < 9 ? (9 - len) * 5 : 0) + (len > 34 ? len - 34 : 0);
+            if (sc < score) (score = sc), (best = k);
+          }
+        if (best >= 0) {
+          const at = mixV(spots[best]!, want, 0.4);
+          const hold = cur.dead ? 0 : real(0.5 + noise(seed + 2) * 1.7);
+          const from = toward(cur.ball, at, Math.min(CARRY * hold, Math.max(0, dist(cur.ball, at) - 9)));
+          const flight = Math.max(real(0.35), dist(from, at) / pace(dist(from, at)));
+          if (cur.t + hold + flight <= until - real(1.2)) {
+            if (hold > 0) carryTo(cur.t + hold, from);
+            passTo(last().t + flight, at, s, best);
+            direct = best === via;
+            continue;
+          }
+        }
+      }
+      // The last ball of the move.
+      if (!o.lose && o.final === c) {
+        carryTo(until, toward(cur.ball, to, CARRY * left));
+        return;
+      }
+      if (!o.lose && !direct && via > 0 && via !== c && here(s, via, cur.t) && left >= real(1.3)) {
+        // Through the one who is credited with the last pass.
+        const mid = mixV(placed(s, cur.t)[via]!, mixV(cur.ball, to, 0.5), 0.5);
+        passTo(cur.t + Math.max(real(0.35), Math.min(left * 0.45, dist(cur.ball, mid) / pace(dist(cur.ball, mid)))), mid, s, via);
+        direct = true;
+        continue;
+      }
+      const len = dist(cur.ball, to);
+      let flight = Math.max(real(0.35), len / pace(len));
+      let hold = left - flight;
+      if (hold < 0) (flight = left), (hold = 0);
+      if (hold > 0.01) {
+        if (cur.dead) wait(cur.t + hold);
+        else carryTo(cur.t + hold, toward(cur.ball, to, Math.min(CARRY * hold * 0.6, len * 0.3)));
+      }
+      if (o.lose) {
+        // Cut out by the one of the other side who is nearest to where it was going.
+        const j = closest(other, to, cur.t);
+        passTo(until, mixV(to, placed(other, cur.t)[j]!, 0.7), other, j);
+      } else passTo(until, to, s, o.final ?? closest(s, to, cur.t, c));
+      return;
     }
-    const f = last();
-    const n = Math.max(1, Math.min(6, Math.round((t - f.t) / 25)));
-    for (let i = 1; i <= n; i++) {
-      const at = f.t + ((t - f.t) * i) / (n + 1);
-      const p = i / (n + 1);
-      // Passes: forward overall, side to side on the way.
-      const x = f.ball[0] + (to[0] - f.ball[0]) * p;
-      const y = f.ball[1] + (to[1] - f.ball[1]) * p + (noise(at) - 0.5) * 34;
-      push({ t: at, ball: [x, y], side: s });
+  };
+
+  /**
+   * Open play from the last key to `until`, when side `s` has the ball at
+   * `to` (at the feet of `final`, after a touch of `touch` seconds). Over a
+   * long while the ball changes sides on the way, a spell each; if the other
+   * side has it now, it loses it first.
+   */
+  const openPlay = (until: number, s: Side, to: V, o: { final?: number; via?: number; touch?: number } = {}) => {
+    const cur = last();
+    const touch = Math.min(o.touch ?? 0, Math.max(0, (until - cur.t) * 0.4));
+    const recv = until - touch;
+    const at: V = [to[0] - (s === 0 ? 1 : -1) * CARRY * touch, to[1]];
+    // The spells of possession, the last one first.
+    const spells: { side: Side; end: number }[] = [{ side: s, end: recv }];
+    let from = recv - (55 + noise(recv) * 65);
+    let side = s;
+    while (from - cur.t > 40) {
+      side = (1 - side) as Side;
+      spells.unshift({ side, end: from });
+      from -= 60 + noise(from) * 70;
     }
+    if (spells[0]!.side !== cur.side) {
+      const gap = spells[0]!.end - cur.t;
+      spells.unshift({ side: cur.side, end: cur.t + gap * (gap > 40 ? 0.45 : 0.35) });
+    }
+    for (const sp of spells.slice(0, -1)) {
+      const b = last().ball;
+      if (sp.end - last().t < real(0.5)) {
+        // No time for a pass: the ball is won off him.
+        const taker = (1 - sp.side) as Side;
+        push({ t: sp.end, ball: [b[0], b[1]], side: taker, carrier: closest(taker, b, last().t) });
+        continue;
+      }
+      const tx = within(8, 92, b[0] + (sp.side === 0 ? 1 : -1) * (12 + noise(sp.end) * 28));
+      chain(sp.end, sp.side, [tx, 15 + noise(sp.end + 1) * 70], { lose: true });
+    }
+    chain(recv, s, at, { ...(o.final !== undefined ? { final: o.final } : {}), ...(o.via !== undefined ? { via: o.via } : {}) });
+    if (touch > 0 && last().side === s && until - last().t > 0.01) carryTo(until, toward(last().ball, to, CARRY * (until - last().t)));
+  };
+
+  /** A goal for `s` at `t`: the ball in the net, then on the centre spot for the other side (sooner when the next event is close). */
+  const restartAfter = (t: number, s: Side, y: number) => {
+    const def = (1 - s) as Side;
+    const at = Math.max(t + 0.5, Math.min(t + 45, bound));
+    push({ t, ball: [ahead(s, -0.5), y], side: def, dead: true, set: "kickoff" });
+    push({ t: Math.max(t, at - 10), ball: [ahead(s, -0.5), 50], side: def, dead: true, set: "kickoff" });
+    push({ t: at, ball: [50, 50], side: def, carrier: kicker(def, t), dead: true, set: "kickoff" });
+    kickoff = { t: last().t, side: def };
   };
 
   for (let i = 0; i < events.length; i++) {
     const e = events[i]!;
     const t = e.second;
     const s: Side = e.home ? 0 : 1;
+    const def = (1 - s) as Side;
     const k: EventKind = e.kind;
     const y0 = 30 + noise(t) * 40;
-    const next = events[i + 1];
+    // (An assist is told with its goal: what comes next is the event after it.)
+    const next = events.slice(i + 1).find((n) => n.kind !== "assist");
     const soon = next ? next.second - t : end - t;
-    bound = Math.max(t + 0.5, t + soon - 4);
     /** The next event is a shot by `side`, within twenty match seconds. */
     const shotNext = (side: Side) => !!next && soon < 20 && (next.kind === "goal" || next.kind === "saved" || next.kind === "missed") && (next.home ? 0 : 1) === side;
+    bound = Math.max(t + 0.5, t + soon - (shotNext(s) ? 2 : 4));
+    /**
+     * How far from the goal it attacks the side that has the ball after this event is, when `base` is
+     * where it would be otherwise: with a shot coming within seconds, the ball is already near the goal
+     * of the side that will shoot (the match runs faster than the picture: nobody crosses the pitch in two seconds).
+     */
+    const before = (owner: Side, base: number) => {
+      if (!next || soon > 45 || !(next.kind === "goal" || next.kind === "saved" || next.kind === "missed")) return base;
+      return (next.home ? 0 : 1) === owner ? Math.min(base, 22 + soon * 1.5) : Math.max(base, 82 - soon * 0.7);
+    };
+    /** From where the ball is, as far toward `to` as the players can follow before `t`. */
+    const reachable = (to: V): V => toward(last().ball, to, 8 + Math.max(0, t - last().t) * 2.4);
     switch (k) {
       case "goal":
       case "saved":
       case "missed": {
-        const fromSetPiece = last().dead && t - last().t <= 3;
-        if (!fromSetPiece) {
-          const before = keys.length;
-          play(t - 3, s, [ahead(s, 22), y0]);
-          // The shooter is in the move from the pass before: he does not appear at the ball at the last second.
-          for (let j = Math.max(before, keys.length - 2); j < keys.length; j++) if (keys[j]!.side === s && t - keys[j]!.t < 60) keys[j] = { ...keys[j]!, carrier: e.player };
-          // He shoots from where he can have got to: the match runs four and a half times faster than the picture, and a
-          // man with the ball covers about three units a match second. With little time since the last key, it is a long shot.
-          const from = last();
-          const reach = Math.max(0, t - 2 - from.t) * REACH;
-          const far = Math.abs(from.ball[0] - ahead(s, 0));
-          const d = Math.max(13 + noise(t + 2) * 8, Math.min(38, far - reach));
-          const y = from.ball[1] + Math.max(-reach * 0.6, Math.min(reach * 0.6, y0 - from.ball[1]));
-          push({ t: t - 2, ball: [ahead(s, d), y], side: s, carrier: e.player });
+        const strike = t - 2;
+        const lead = strike - last().t;
+        const spot: V = [ahead(s, 13 + noise(t + 2) * 9), y0];
+        const setPiece = !!last().dead && !!last().set && last().side === s;
+        if (setPiece) {
+          // Struck from where the ball was placed.
+        } else if (lead >= real(0.5)) {
+          // He shoots from where the ball can have got to: with little time, it is a long shot.
+          const from = reachable(spot);
+          const aim: V = Math.abs(from[0] - ahead(s, 0)) > 40 ? [ahead(s, 40), from[1]] : from;
+          const told = events[i + 1];
+          const assist = k === "goal" && told?.kind === "assist" && told.second === t && told.home === e.home ? told.player : undefined;
+          openPlay(strike, s, aim, { final: e.player, touch: real(0.6), ...(assist !== undefined ? { via: assist } : {}) });
+        } else if (last().side !== s || last().carrier !== e.player) {
+          if (lead > 0.3 && !last().dead) passTo(strike, toward(last().ball, spot, 4 + lead * 2.4), s, e.player);
+          else push({ t: last().t, ball: last().ball, side: s, carrier: e.player });
         }
+        if (last().t < strike) wait(strike);
+        if (last().carrier !== e.player && !setPiece) tag({ side: s, carrier: e.player });
+        tag({ move: "shot" });
         if (k === "goal") {
-          push({ t, ball: [ahead(s, -0.5), 46 + noise(t + 3) * 8], side: s, dead: true });
-          push({ t: t + 35, ball: [ahead(s, -0.5), 50], side: s, dead: true });
-          push({ t: t + 45, ball: [50, 50], side: (1 - s) as Side, dead: true });
+          restartAfter(t, s, 46 + noise(t + 3) * 8);
         } else if (k === "saved") {
-          push({ t, ball: [ahead(s, 3), 46 + noise(t + 4) * 8], side: (1 - s) as Side, carrier: 0 });
+          push({ t, ball: [ahead(s, 3), 46 + noise(t + 4) * 8], side: def, carrier: 0 });
           if (shotNext(s)) {
             // Parried: the ball comes back out to the side that shot, and it shoots again.
-            push({ t: t + 2, ball: [ahead(s, 11 + noise(t + 13) * 5), 36 + noise(t + 14) * 28], side: s, carrier: next!.player });
-          } else if (events[i + 1]?.kind !== "corner") {
-            push({ t: t + 10, ball: [ahead(s, 4), 50], side: (1 - s) as Side, carrier: 0 });
-            push({ t: t + 16, ball: [ahead(s, 50), 25 + noise(t + 5) * 50], side: (1 - s) as Side });
-          }
+            passTo(t + 2, [ahead(s, 11 + noise(t + 13) * 5), 36 + noise(t + 14) * 28], s, next!.player);
+          } else if (next?.kind === "corner" && (next.home ? 0 : 1) === s) {
+            // Tipped behind.
+            tag({ move: "pass" });
+            push({ t: t + 1.5, ball: [ahead(s, -1), noise(t + 6) < 0.5 ? 30 : 70], side: s, carrier: next.player, dead: true, set: "corner" });
+          } else wait(t + 9);
         } else {
-          push({ t, ball: [ahead(s, -1), noise(t + 6) < 0.5 ? 34 : 66], side: (1 - s) as Side, dead: true });
           if (shotNext(s)) {
-            // Off a defender and back to them: they go again at once.
-            push({ t: t + 2, ball: [ahead(s, 14 + noise(t + 15) * 6), 30 + noise(t + 16) * 40], side: s, carrier: next!.player });
-          } else if (events[i + 1]?.kind !== "corner") {
-            push({ t: t + 12, ball: [ahead(s, 6), 50], side: (1 - s) as Side, carrier: 0, dead: true });
-            push({ t: t + 17, ball: [ahead(s, 52), 25 + noise(t + 7) * 50], side: (1 - s) as Side });
+            // Blocked, and back to them: they go again at once.
+            push({ t, ball: [ahead(s, 7), 42 + noise(t + 6) * 16], side: s });
+            passTo(t + 2, [ahead(s, 14 + noise(t + 15) * 6), 30 + noise(t + 16) * 40], s, next!.player);
+          } else {
+            // Wide: a goal kick, or a corner when it came off a defender.
+            const corner = next?.kind === "corner" && (next.home ? 0 : 1) === s;
+            if (corner) push({ t, ball: [ahead(s, -1), noise(t + 6) < 0.5 ? 34 : 66], side: s, carrier: next.player, dead: true, set: "corner" });
+            else {
+              push({ t, ball: [ahead(s, -1), noise(t + 6) < 0.5 ? 34 : 66], side: def, dead: true });
+              push({ t: t + 12, ball: [ahead(s, 6), 50], side: def, carrier: 0, dead: true });
+            }
           }
         }
         break;
       }
       case "own_goal": {
         // Credited to `s`: the ball goes into the other side's net, off a defender.
-        play(t - 2, s, [ahead(s, 10), 50]);
-        push({ t, ball: [ahead(s, -0.5), 50], side: s, dead: true });
-        push({ t: t + 35, ball: [ahead(s, -0.5), 50], side: s, dead: true });
-        push({ t: t + 45, ball: [50, 50], side: (1 - s) as Side, dead: true });
+        if (t - 2 - last().t >= real(0.5)) openPlay(t - 2, s, [ahead(s, 12), 40 + noise(t) * 20]);
+        tag({ move: "shot" });
+        restartAfter(t, s, 50);
         break;
       }
       case "corner": {
-        const top = noise(t + 8) < 0.5;
-        push({ t, ball: [ahead(s, 0.5), top ? 1 : 99], side: s, carrier: e.player, dead: true, set: "corner" });
-        push({ t: t + 4, ball: [ahead(s, 0.5), top ? 1 : 99], side: s, carrier: e.player, dead: true, set: "corner" });
-        push({ t: t + 6, ball: [ahead(s, 8), 44 + noise(t + 9) * 12], side: s });
+        const top = last().ball[1] < 50;
+        const flag: V = [ahead(s, 0.5), top ? 1 : 99];
+        push({ t, ball: flag, side: s, carrier: e.player, dead: true, set: "corner" });
+        const header = shotNext(s);
+        // Swung into the box: onto the head of the one who shoots next, or headed away.
+        // (With a shot seconds later it is taken at once, to the near post.)
+        const quick = header && soon < 9;
+        const leave = quick ? t + 0.3 : t + Math.min(3, soon * 0.3);
+        const land = header ? Math.max(leave + 1, Math.min(leave + 3.8, next!.second - 2)) : leave + 3.8;
+        const box: V = quick ? [ahead(s, 5 + noise(t + 9) * 3), top ? 36 + noise(t + 9.5) * 6 : 58 + noise(t + 9.5) * 6] : [ahead(s, 7 + noise(t + 9) * 5), 42 + noise(t + 9.5) * 16];
+        push({ t: leave, ball: flag, side: s, carrier: e.player, dead: true, set: "corner" });
+        if (header) passTo(land, box, s, next!.player);
+        else passTo(land, box, def, nearestOf(def, [ahead(s, 14), 50], t, s));
         break;
       }
       case "foul": {
         // `home` is the side that fouled: the other side had the ball here.
-        const victim = (1 - s) as Side;
-        play(t, victim, [ahead(victim, 35 + noise(t + 10) * 25), y0]);
-        const at = last().ball;
-        push({ t: t + 0.5, ball: at, side: victim, dead: true });
-        const next = events[i + 1];
-        const setPiece = next && (next.kind === "penalty" || next.kind === "free_kick");
-        if (!setPiece) push({ t: t + 18, ball: at, side: victim, dead: true });
+        const victim = def;
+        const kick = next && (next.kind === "penalty" || next.kind === "free_kick") ? next : undefined;
+        // Where the set piece it gives will be taken.
+        const where: V = kick?.kind === "penalty" ? [ahead(victim, 9 + noise(t + 10) * 5), 36 + noise(t + 11) * 28] : kick ? [ahead(victim, 24), 32 + noise(kick.second + 11) * 36] : [ahead(victim, before(victim, 35 + noise(t + 10) * 25)), y0];
+        openPlay(t, victim, kick ? where : reachable(where), { touch: real(1.2) });
+        const { move: _, ...down } = last();
+        push({ ...down, t: t + 0.5, side: victim, dead: true });
+        if (!kick) wait(t + 18);
         break;
       }
       case "yellow":
       case "red": {
-        const at = last().ball;
-        push({ t: t + 6, ball: at, side: last().side, dead: true });
+        const { move: _, ...c } = last();
+        push({ ...c, t: t + 6, dead: true });
         break;
       }
       case "penalty": {
@@ -175,13 +453,14 @@ export function keyframes(events: MatchEvent[], start: number, end: number, kick
       }
       case "tackle": {
         // `home` is the tackler's side: the other side was running at him.
-        const runner = (1 - s) as Side;
-        play(t, runner, [ahead(runner, 30 + noise(t + 12) * 35), y0]);
+        // After it the tackler's side has the ball, that far from the goal it attacks.
+        const where: V = [ahead(s, before(s, 35 + noise(t + 12) * 35)), y0];
+        openPlay(t, def, reachable(where), { touch: real(1.2) });
         push({ t: t + 1, ball: last().ball, side: s, carrier: e.player });
         break;
       }
       case "assist":
-        break; // drawn with its goal
+        break; // drawn with its goal: the last pass is his
       case "free_kick": {
         const y = 32 + noise(t + 11) * 36;
         push({ t: Math.min(t - 12, last().t + 2), ball: [ahead(s, 24), y], side: s, carrier: e.player, dead: true, set: "free_kick" });
@@ -192,39 +471,48 @@ export function keyframes(events: MatchEvent[], start: number, end: number, kick
   }
   // After the last event: open play to the whistle.
   bound = end;
-  let t = last().t;
-  let s = last().side;
-  while (end - t > 60) {
-    const to = t + 60 + noise(t) * 60;
-    play(Math.min(end, to), s, [ahead(s, 30 + noise(to) * 30), 20 + noise(to + 1) * 60]);
-    s = (1 - s) as Side;
-    t = last().t;
+  if (end - last().t > real(1.5)) {
+    const s = last().side;
+    openPlay(end - 0.5, s, [ahead(s, 30 + noise(end) * 30), 20 + noise(end + 1) * 60]);
   }
-  push({ t: end, ball: last().ball, side: last().side, dead: true });
+  const { move: _, ...c } = last();
+  push({ ...c, t: end, dead: true });
   return keys;
 }
 
-/** The ball at second `s`: between two keys, eased. */
-export function frameAt(keys: Key[], s: number): Key {
+/** The ball at second `s`: between two keys, on its way from one to the next. */
+export function frameAt(keys: Key[], s: number): Frame {
   if (!keys.length) return { t: s, ball: [50, 50], side: 0, dead: true };
   if (s <= keys[0]!.t) return keys[0]!;
-  for (let i = 1; i < keys.length; i++) {
-    const b = keys[i]!;
-    if (s < b.t) {
-      const a = keys[i - 1]!;
-      const p = (s - a.t) / Math.max(0.001, b.t - a.t);
-      const q = p * p * (3 - 2 * p);
-      const ball: V = [a.ball[0] + (b.ball[0] - a.ball[0]) * q, a.ball[1] + (b.ball[1] - a.ball[1]) * q];
-      // Between two keys the ball is still the leaving side's (a pass, a shot on its way).
-      const k: Key = { t: s, ball, side: a.side };
-      const carrier = a.carrier;
-      if (carrier !== undefined) k.carrier = carrier;
-      if (a.dead && b.dead) k.dead = true;
-      if (a.set && a.set === b.set) k.set = a.set;
-      return k;
-    }
+  if (s >= keys[keys.length - 1]!.t) return keys[keys.length - 1]!;
+  // The first key after `s`.
+  let lo = 1;
+  let hi = keys.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (keys[mid]!.t > s) hi = mid;
+    else lo = mid + 1;
   }
-  return keys[keys.length - 1]!;
+  const a = keys[lo - 1]!;
+  const b = keys[lo]!;
+  const p = (s - a.t) / Math.max(0.001, b.t - a.t);
+  // A ball that is carried, passed or struck goes at an even pace; anything else (a ball fetched, put down) eases.
+  const q = a.move ? p : p * p * (3 - 2 * p);
+  // Between two keys the ball is still the leaving side's (a pass, a shot on its way).
+  const k: Frame = { t: s, ball: mixV(a.ball, b.ball, q), side: a.side };
+  if (a.dead && b.dead) k.dead = true;
+  if (a.set && a.set === b.set) k.set = a.set;
+  if (a.move) k.move = a.move;
+  if (a.move === "pass" || a.move === "shot") {
+    k.flight = { from: a.ball, to: b.ball, p };
+    if (b.carrier !== undefined) k.next = { side: b.side, k: b.carrier, at: b.ball };
+  } else {
+    if (a.carrier !== undefined) k.carrier = a.carrier;
+    // He is about to pass: the one he will find is already on the move.
+    const c = keys[lo + 1];
+    if (b.move === "pass" && c && c.carrier !== undefined && c.t - s < 12) k.next = { side: c.side, k: c.carrier, at: c.ball };
+  }
+  return k;
 }
 
 export interface Shape {
@@ -242,15 +530,17 @@ export interface Shape {
    */
   restart?: "kickoff" | "rest";
   /** A set piece is being placed (the key's `set`): the elevens line up for it. */
-  set?: "corner" | "penalty" | "free_kick";
+  set?: "corner" | "penalty" | "free_kick" | "kickoff";
   /** Where the eleven reads the play to be: the ball a moment ago (the live pitch follows it with a short delay). By default, the ball. */
   block?: V;
   /** The slot that went to the ball (or pressed) last time: he keeps going unless another is clearly nearer. */
   prefer?: number;
+  /** Nobody of this side is sent to the ball: it is on its way from one player to another. */
+  free?: boolean;
+  /** Where the side without the ball closes down: where a pass is going. By default, the ball. */
+  press?: V;
 }
 
-const mix = (a: number, b: number, p: number) => a + (b - a) * p;
-const within = (lo: number, hi: number, v: number) => Math.min(hi, Math.max(lo, v));
 
 /** The slot nearest to a point, with a head start for the one who was going already. */
 function nearest(out: V[], x: number, y: number, prefer?: number): number {
@@ -311,7 +601,7 @@ export function positions(formation: Formation, side: Side, ball: V, possession:
     if (k === 0) return [3 + within(0, 5, (gx - 45) * 0.12), 50 + (by - 50) * 0.12];
     return [mix(back, front, rank(sy)), clampY(50 + (100 - sx - 50) * width + (gy - 50) * lean)];
   });
-  if (shape.set) {
+  if (shape.set && shape.set !== "kickoff") {
     const taker = has ? (carrier !== undefined && carrier > 0 && carrier < 11 ? carrier : nearest(out, bx, by)) : -1;
     // The others, the ones who play highest first.
     const rest = [...Array(10).keys()].map((i) => i + 1).filter((k) => k !== taker).sort((a, b) => rank(spots[b]![1]) - rank(spots[a]![1]) || a - b);
@@ -348,13 +638,21 @@ export function positions(formation: Formation, side: Side, ball: V, possession:
     }
     return turn(out);
   }
+  if (shape.free) return turn(out);
   if (has) {
-    // The man named is on the ball; nobody named: the nearest outfield player goes to it.
-    const k = carrier !== undefined && carrier > 0 && carrier < 11 ? carrier : nearest(out, bx, by, shape.prefer);
-    out[k] = [bx - 1.2, by + 1.5];
+    if (carrier === 0) {
+      // The keeper has it, in his hands or at his feet.
+      out[0] = [within(1, 16, bx), by];
+    } else {
+      // The man named is on the ball; nobody named: the nearest outfield player goes to it.
+      const k = carrier !== undefined && carrier > 0 && carrier < 11 ? carrier : nearest(out, bx, by, shape.prefer);
+      out[k] = [bx - 1.2, by + 1.5];
+    }
   } else {
-    // Out of possession: one presses, goal side of the ball.
-    out[nearest(out, bx, by, shape.prefer)] = [bx - 4, by - 3];
+    // Out of possession: one closes down, goal side of the ball (or of where it is going).
+    const px = shape.press ? (side === 0 ? shape.press[0] : 100 - shape.press[0]) : bx;
+    const py = shape.press ? (side === 0 ? shape.press[1] : 100 - shape.press[1]) : by;
+    out[nearest(out, px, py, shape.prefer)] = [px - 4, py - 3];
   }
   return turn(out);
 }

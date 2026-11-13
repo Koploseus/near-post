@@ -396,7 +396,10 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
     const evs = half === 0 ? m.events.slice(0, m.first_half_events) : m.events.slice(m.first_half_events);
     const start = half === 0 ? 0 : HALF_SECONDS;
     const end = m.half_ends[half] ?? start + HALF_SECONDS;
-    return keyframes(evs, start, end, half === 0 ? 0 : 1);
+    return keyframes(evs, start, end, half === 0 ? 0 : 1, {
+      formations: [m.formations[half * 2] ?? m.formations[0]!, m.formations[half * 2 + 1] ?? m.formations[1]!],
+      absent: (side, k) => half === 1 && m.elevens[2 + side]?.[k] === "",
+    });
   }, [m, half]);
   const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time" || c.phase === "before";
   const at = stopped ? { t: c.second, ball: [50, 50] as [number, number], side: 0 as const } : frameAt(keys, c.second);
@@ -405,8 +408,8 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
     (second && m.elevens[2 + side]?.[k] === "") ||
     shown.some((e) => e.kind === "red" && e.half === half && Number(!e.home) === side && e.player === k);
   // Stopped, or a kick-off: each eleven in its own half.
-  const restart = stopped ? ("rest" as const) : "dead" in at && at.dead && Math.hypot(at.ball[0] - 50, at.ball[1] - 50) < 1.5 ? ("kickoff" as const) : undefined;
-  const teams = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined, { ...(restart ? { restart } : {}), ...("set" in at && at.set ? { set: at.set } : {}) }));
+  const restart = stopped ? ("rest" as const) : "dead" in at && at.dead && (at.set === "kickoff" || Math.hypot(at.ball[0] - 50, at.ball[1] - 50) < 1.5) ? ("kickoff" as const) : undefined;
+  const teams = ([0, 1] as const).map((side) => positions(f[side]!, side, at.ball, at.side, at.side === side ? at.carrier : undefined, { ...(restart ? { restart } : {}), ...("set" in at && at.set && at.set !== "kickoff" ? { set: at.set } : {}), ...("flight" in at && at.flight && at.side === side ? { free: true } : {}) }));
   // Club colours on the pitch; when both clubs wear the same, the away side changes.
   const home = crestOf(m.home);
   const away = crestOf(m.away);
