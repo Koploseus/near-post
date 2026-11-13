@@ -1,0 +1,3 @@
+The WIT files under deps/ are not ours: near-rpc, storage, enc and signing-keys come from
+OutLayer (worker/wit, MIT OR Apache-2.0, https://github.com/out-layer/outlayer); the wasi-*
+folders are WASI 0.2 as shipped with @bytecodealliance/jco (Apache-2.0 WITH LLVM-exception).

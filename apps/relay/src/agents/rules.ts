@@ -65,18 +65,20 @@ export interface Coach {
   club_name: string;
   name: string;
   style: Style;
+  /** The club it plays its derby against (its account prefix), when it has one. */
+  rival?: string;
 }
 
 /** Fictional coaches of the fictional clubs (see scripts/seed-demo.mjs), and the club names they give them. */
 export const COACHES: Coach[] = [
-  { club: "rive-nord", club_name: "Northbank Rovers", name: "Arthur Penhale", style: "gambler" },
-  { club: "port-lune", club_name: "Moonhaven FC", name: "Edith Calloway", style: "builder" },
-  { club: "pont-levant", club_name: "Drawbridge Athletic", name: "Rupert Hollins", style: "tactician" },
-  { club: "haute-ville", club_name: "Highcastle City", name: "Margaret Thornbury", style: "careful" },
-  { club: "marais", club_name: "Marshwick Town", name: "Douglas Fenwright", style: "careful" },
-  { club: "vieux-phare", club_name: "Lanternpoint FC", name: "Agnes Kilbride", style: "gambler" },
-  { club: "saint-cendre", club_name: "St Cinder Albion", name: "Cecil Ashcombe", style: "builder" },
-  { club: "cote-rouge", club_name: "Redcliff Wanderers", name: "Harriet Dunmore", style: "tactician" },
+  { club: "rive-nord", club_name: "Northbank Rovers", name: "Arthur Penhale", style: "gambler", rival: "port-lune" },
+  { club: "port-lune", club_name: "Moonhaven FC", name: "Edith Calloway", style: "builder", rival: "rive-nord" },
+  { club: "pont-levant", club_name: "Drawbridge Athletic", name: "Rupert Hollins", style: "tactician", rival: "haute-ville" },
+  { club: "haute-ville", club_name: "Highcastle City", name: "Margaret Thornbury", style: "careful", rival: "pont-levant" },
+  { club: "marais", club_name: "Marshwick Town", name: "Douglas Fenwright", style: "careful", rival: "vieux-phare" },
+  { club: "vieux-phare", club_name: "Lanternpoint FC", name: "Agnes Kilbride", style: "gambler", rival: "marais" },
+  { club: "saint-cendre", club_name: "St Cinder Albion", name: "Cecil Ashcombe", style: "builder", rival: "cote-rouge" },
+  { club: "cote-rouge", club_name: "Redcliff Wanderers", name: "Harriet Dunmore", style: "tactician", rival: "saint-cendre" },
   { club: "val-ombre", club_name: "Shadowvale Sporting", name: "Winifred Lockyer", style: "tactician" },
   { club: "pierrefeu", club_name: "Emberstone AFC", name: "Bertram Quayle", style: "gambler" },
   { club: "docks", club_name: "Dockside Stars", name: "Florence Pengelly", style: "careful" },

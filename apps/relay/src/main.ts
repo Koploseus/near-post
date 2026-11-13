@@ -9,6 +9,7 @@ import { near } from "./chain.js";
 import { parseCrowd } from "./crowd.js";
 import { Journal } from "./agents/journal.js";
 import { askWith } from "./agents/minds.js";
+import { type Enclave, Waker, enclaveAccounts } from "./agents/enclave.js";
 import { type Custody, custodyChain, keyOfImplicit, seedOf, walletAccounts } from "./agents/custody.js";
 import { agentKey, roster } from "./agents/roster.js";
 import { COACHES, FOOTBALLERS } from "./agents/rules.js";
@@ -42,10 +43,16 @@ const custody: Custody | null =
   config.AGENTS_CUSTODY_URL && config.AGENTS_CUSTODY_ACCOUNT && config.AGENTS_CUSTODY_KEY
     ? { url: config.AGENTS_CUSTODY_URL, accountId: config.AGENTS_CUSTODY_ACCOUNT, privateKey: config.AGENTS_CUSTODY_KEY }
     : null;
+// Or the agents run by themselves in an enclave (agents/enclave.ts): then the relay only wakes their program.
+const enclave: Enclave | null =
+  config.AGENTS_ENCLAVE_URL && config.AGENTS_ENCLAVE_KEY
+    ? { url: config.AGENTS_ENCLAVE_URL, key: config.AGENTS_ENCLAVE_KEY, shares: config.AGENTS_ENCLAVE_SHARES, parallel: config.AGENTS_ENCLAVE_PARALLEL, low: near(config.AGENTS_LOW_NEAR), ...(config.AGENTS_ENCLAVE_SECRETS ? { secrets: { profile: config.AGENTS_ENCLAVE_SECRETS.split(":")[0]!, account_id: config.AGENTS_ENCLAVE_SECRETS.split(":")[1]! } } : {}) }
+    : null;
 const leagueVersion = config.LEAGUE_ID?.match(/^league-([^.]+)\./)?.[1] ?? "v0";
-const agentsOn = !!((config.AGENTS_SEED || custody) && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
-const custodyAccounts =
-  custody && agentsOn
+const agentsOn = !!((config.AGENTS_SEED || custody || enclave) && signer && config.LEAGUE_ID && config.GOALARS_ID && config.PLAYERS_ID);
+const custodyAccounts = enclave && agentsOn
+  ? await enclaveAccounts(enclave, config.DATA_DIR ? `${config.DATA_DIR}/enclave-${config.LEAGUE_ID}.json` : null)
+  : custody && agentsOn
     ? await walletAccounts(custody, [...COACHES.map((c) => c.club), ...FOOTBALLERS.map((f) => f.id)], leagueVersion, config.DATA_DIR ? `${config.DATA_DIR}/custody-${config.LEAGUE_ID}.json` : null)
     : undefined;
 // One journal per league: a new league's match days start again at 1.
@@ -105,7 +112,16 @@ if (config.PLAY_MATCH_DAYS && signer && config.LEAGUE_ID) {
   console.log(`scheduler on${crowdKey && clubs.length ? `, crowd of ${clubs.reduce((n, c) => n + c.fans.length, 0)} fans` : ""}`);
 }
 
-if (agents && (config.AGENTS_SEED || custody)) {
+if (agents && enclave) {
+  const waker = new Waker(enclave, chain, config.LEAGUE_ID!, agents.journal, agents.roster.map((a) => a.account));
+  let looking = false;
+  setInterval(() => {
+    if (looking) return;
+    looking = true;
+    void waker.tick().catch((e) => console.error(`agents: ${e instanceof Error ? e.message : e}`)).finally(() => (looking = false));
+  }, config.AGENTS_EVERY_MS);
+  console.log(`agents on: ${agents.roster.length}, by themselves in the enclave (${enclave.url}), woken in ${enclave.shares} shares`);
+} else if (agents && (config.AGENTS_SEED || custody)) {
   const seed = config.AGENTS_SEED ?? "";
   const attester = config.ATTESTER_PRIVATE_KEY ? KeyPair.fromString(config.ATTESTER_PRIVATE_KEY as `ed25519:${string}`) : null;
   // One budget of RPC requests for all agents, so the scheduler keeps its share.

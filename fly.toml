@@ -12,18 +12,21 @@ primary_region = 'cdg'
 [env]
   NEAR_NETWORK = "testnet"
   NEAR_RPC_URL = "https://test.rpc.fastnear.com"
-  LEAGUE_ID = "league-v11.near-post.testnet"
-  GOALARS_ID = "goalars-v11.near-post.testnet"
+  LEAGUE_ID = "league-v12.near-post.testnet"
+  GOALARS_ID = "goalars-v12.near-post.testnet"
   # 1M G to each new email account, from the parent's G (seeded from AI coaches, nothing minted), 30 a day at most.
   WELCOME_G = "1000000000000"
   WELCOME_PER_DAY = "30"
-  PLAYERS_ID = "players-v11.near-post.testnet"
-  TICKETS_ID = "tickets-v11.near-post.testnet"
-  # AI agents: their keys live in OutLayer wallets (an Intel TDX enclave), one per agent.
-  # The relay asks a wallet for a call and signs the request with the AGENTS_CUSTODY_KEY
-  # secret, a key of AGENTS_CUSTODY_ACCOUNT; it holds no agent key. NEAR_AI_API_KEY for the model.
-  AGENTS_CUSTODY_URL = "https://testnet-api.outlayer.ai"
-  AGENTS_CUSTODY_ACCOUNT = "keeper.near-post.testnet"
+  PLAYERS_ID = "players-v12.near-post.testnet"
+  TICKETS_ID = "tickets-v12.near-post.testnet"
+  # AI agents: they run by themselves in an enclave (apps/enclave, on OutLayer). The relay holds no
+  # agent key and decides nothing for them: it starts runs of their program, paid with the
+  # AGENTS_ENCLAVE_KEY secret (a payment key), and tops up their accounts in NEAR for gas.
+  AGENTS_ENCLAVE_URL = "https://testnet-api.outlayer.ai/call/warden.near-post.testnet/agents"
+  AGENTS_ENCLAVE_SECRETS = "default:clubhouse.near-post.testnet"
+  AGENTS_ENCLAVE_SHARES = "16"
+  AGENTS_ENCLAVE_PARALLEL = "8"
+  AGENTS_LOW_NEAR = "0.35"
   AGENTS_RPS = "2"
   AGENTS_RPC_URL = "https://near-testnet.drpc.org"
   PARENT_ACCOUNT_ID = "near-post.testnet"
@@ -39,7 +42,7 @@ primary_region = 'cdg'
   CROWD = "rive-nord:5,port-lune:4,pont-levant:3,haute-ville:4,marais:2,vieux-phare:3,saint-cendre:2,cote-rouge:3"
   CROWD_EVERY = "3"
   # The parent tops up the contracts' storage balance when it runs low.
-  KEEP_FUNDED = "league-v11.near-post.testnet,players-v11.near-post.testnet,goalars-v11.near-post.testnet,items-v11.near-post.testnet,tickets-v11.near-post.testnet"
+  KEEP_FUNDED = "league-v12.near-post.testnet,players-v12.near-post.testnet,goalars-v12.near-post.testnet,items-v12.near-post.testnet,tickets-v12.near-post.testnet"
 
 # Passkey backups (encrypted in the browser) live on a volume. Create it once:
 #   fly volumes create near_post_data --region cdg --size 1

@@ -23,6 +23,8 @@ export interface CoachAgent {
   style: Style;
   /** The name he gives his club. */
   clubName: string;
+  /** The account of the club his plays its derby against, when it has one. */
+  rival?: string;
 }
 export interface FootballerAgent {
   kind: "footballer";
@@ -40,7 +42,7 @@ export type Agent = CoachAgent | FootballerAgent;
 export function roster(parent: string, accounts?: Record<string, string>): Agent[] {
   const account = (slug: string) => (accounts ? accounts[slug] : `${slug}.${parent}`);
   const all: Agent[] = [
-    ...COACHES.map((c): CoachAgent => ({ kind: "coach", slug: c.club, account: account(c.club)!, name: c.name, style: c.style, clubName: c.club_name })),
+    ...COACHES.map((c): CoachAgent => ({ kind: "coach", slug: c.club, account: account(c.club)!, name: c.name, style: c.style, clubName: c.club_name, ...(c.rival && account(c.rival) ? { rival: account(c.rival)! } : {}) })),
     ...FOOTBALLERS.map(
       (f): FootballerAgent => ({
         kind: "footballer",
@@ -57,12 +59,11 @@ export function roster(parent: string, accounts?: Record<string, string>): Agent
   return all.filter((a) => a.account);
 }
 
-const ED25519_PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
-
 /** The agent's ed25519 key: HKDF-SHA256(seed, account) as the private seed. */
 export function agentKey(seed: string, account: string): { publicKey: string; privateKey: string } {
   const secret = Buffer.from(hkdfSync("sha256", seed, "near-post agents v1", account, 32));
-  const priv = createPrivateKey({ key: Buffer.concat([ED25519_PKCS8, secret]), format: "der", type: "pkcs8" });
+  const pkcs8 = Buffer.from("302e020100300506032b657004220420", "hex");
+  const priv = createPrivateKey({ key: Buffer.concat([pkcs8, secret]), format: "der", type: "pkcs8" });
   const pub = createPublicKey(priv).export({ format: "der", type: "spki" }).subarray(-32);
   const privateKey = `ed25519:${baseEncode(Buffer.concat([secret, pub]))}`;
   const kp = KeyPair.fromString(privateKey as `ed25519:${string}`);

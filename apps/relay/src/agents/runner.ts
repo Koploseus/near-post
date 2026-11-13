@@ -124,6 +124,14 @@ export interface AgentsDeps {
   journal: Journal;
   now?: () => number;
   /**
+   * The welcome G of new accounts comes from the coaches (nothing is minted for it): each gives
+   * `amount` once to `to`, when his wallet keeps `keep` after it. Where a coach signs alone
+   * (the enclave), nobody can do it for him.
+   */
+  welcome?: { to: string; amount: bigint; keep: bigint };
+  /** True when this run must stop soon (the enclave gives a run a few minutes): what is left is done at the next. */
+  outOfTime?: () => boolean;
+  /**
    * Signs a training score for an agent's open ticket (the drill attester's
    * key). An agent plays the drill himself (player.ts): his presses go
    * through the game's own replay, and that score is what gets signed.
@@ -189,6 +197,7 @@ export class Agents {
       return; // nothing due until the next half
     }
     await this.setup();
+    await this.welcomeFund();
     const table = await this.league<Club[]>("table");
     const clubs = new Map(table.map((c) => [c.manager, c]));
     const fixtures = await this.league<[string, string][]>("fixtures_of", { match_day: day });
@@ -197,11 +206,16 @@ export class Agents {
     const ctx: Ctx = { day, season: s.season ?? 1, clubs, table, opponent, squads: new Map(), lineups: new Map(), results: null };
 
     if (!s.first_half_played) {
-      if (this.coaches.some((c) => clubs.has(c.account) && !this.d.journal.isDone(`market:${day}:${c.account}`))) await this.scanOffers();
       const coaches = this.coaches.filter((c) => clubs.has(c.account) && !this.cantSign.has(c.account));
-      await this.pool(coaches, (c) => this.once(`market:${day}:${c.account}`, () => this.market(c, ctx)));
+      const market = async () => {
+        if (this.coaches.some((c) => clubs.has(c.account) && !this.d.journal.isDone(`market:${day}:${c.account}`)) && !this.d.outOfTime?.()) await this.scanOffers();
+        await this.pool(coaches, (c) => this.once(`market:${day}:${c.account}`, () => this.market(c, ctx)));
+      };
+      // Short of time (the enclave), what the match needs comes first: the team sheet and the players' day; the market after.
+      if (!this.d.outOfTime) await market();
       await this.pool(coaches, (c) => this.once(`tactic:${day}:1:${c.account}`, () => this.tactic(c, ctx, 1)));
       await this.pool(this.footballers, (f) => this.once(`day:${day}:${f.account}`, () => this.footballerDay(f, ctx)));
+      if (this.d.outOfTime) await market();
     } else {
       ctx.results = await this.league<MatchResult[]>("results", { match_day: day });
       const played = new Set(ctx.results.flatMap((r) => [r.home, r.away]));
@@ -213,6 +227,27 @@ export class Agents {
     this.d.journal.save();
   }
 
+  /** Each coach's one gift to the account that welcomes newcomers (see `welcome`). */
+  private async welcomeFund() {
+    const w = this.d.welcome;
+    if (!w) return;
+    for (const a of this.coaches) {
+      if (this.d.outOfTime?.()) return;
+      if (!this.ready.has(a.account) || this.d.journal.isDone(`welcome:${a.account}`)) continue;
+      try {
+        const has = BigInt(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: a.account }));
+        if (has >= w.amount + w.keep) {
+          const tx = await this.d.as(a).call(this.d.goalarsId, "ft_transfer", { receiver_id: w.to, amount: w.amount.toString() }, 30, ONE_YOCTO);
+          this.log(a, 0, "setup", { acts: [], txs: [tx], quote: "" });
+        }
+        this.d.journal.markDone(`welcome:${a.account}`);
+        this.d.journal.save();
+      } catch (e) {
+        console.error(`agents: welcome fund of ${a.account}: ${msg(e)}`);
+      }
+    }
+  }
+
   // ---- Setup ----
 
   private ready = new Set<string>();
@@ -220,6 +255,7 @@ export class Agents {
   /** Footballers' accounts and footballers exist; each agent can sign. */
   private async setup() {
     for (const a of [...this.coaches, ...this.footballers]) {
+      if (this.d.outOfTime?.()) break;
       if (this.ready.has(a.account) || this.cantSign.has(a.account)) continue;
       if (this.d.journal.isDone(`ready:${a.account}`)) {
         // Checked before a restart: no need to read it all again.
@@ -242,8 +278,14 @@ export class Agents {
         if (a.kind === "coach") {
           const club = await this.league<Club | null>("get_club", { club_id: a.account });
           if (!club && implicit) {
-            const tx = await this.d.as(a).callChecked!(this.d.leagueId, "create_club", { name: a.clubName }, 300);
+            const tx = await this.d.as(a).callChecked!(this.d.leagueId, "create_club", { name: a.clubName }, 220);
             this.log(a, 0, "setup", { acts: [{ what: "created" }], txs: [tx], quote: "" });
+            continue; // his derby and his name at the next look
+          }
+          // In custody or in the enclave nobody else can do it for him: he names his derby himself.
+          if (club && implicit && a.rival && (club as Club & { rival?: string | null }).rival !== a.rival) {
+            const tx = await this.d.as(a).call(this.d.leagueId, "set_rival", { rival: a.rival }, 50);
+            this.log(a, 0, "setup", { acts: [], txs: [tx], quote: "" });
           }
           if (club && club.name !== a.clubName) {
             const tx = await this.d.as(a).call(this.d.leagueId, "rename_club", { name: a.clubName }, 30);
@@ -907,7 +949,7 @@ export class Agents {
   }
 
   private async once(key: string, run: () => Promise<void>) {
-    if (this.d.journal.isDone(key)) return;
+    if (this.d.journal.isDone(key) || this.d.outOfTime?.()) return;
     try {
       await run();
       this.d.journal.markDone(key);
