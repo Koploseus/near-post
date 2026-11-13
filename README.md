@@ -65,7 +65,7 @@ builds. Sell one, and all of it goes with it.
 
 **NEAR makes it playable.** You sign in with an email and never see a wallet
 or gas: each player gets a NEAR account, and the relay pays gas through
-NEP-366 meta-transactions. The contracts have no admin key, and anyone can
+NEP-366 meta-transactions. The contracts have no admin method, and anyone can
 replay a match from the chain.
 
 `node scripts/verify.mjs` checks every mint and burn against these rules.
@@ -258,7 +258,7 @@ season tickets paid only on full houses, and the supply against the 10B cap. It
 also checks that each deployed contract runs `contracts/res/*.wasm` (sha256
 against the on-chain code hash), and lists who spends G. Excerpt of a run on 6
 November 2026, on that day's league; v13 started on 13 November, so its
-own run shows fewer days at first:
+own run shows its first days only:
 
 ```
   day  fans in  full   goals that   minted by      onboarding    burned
@@ -450,8 +450,8 @@ spending shows in the ledger: on the league of 6 November, over match days 114â€
   contract enforces it, so no bug in the league can pass the cap.
 - **No admin method.** No contract has an owner, an admin function or an
   upgrade method: nobody, including us, can mint G or change a rule through
-  them. The drill attester above only signs training scores. No presale, no team allocation. (On testnet the contract accounts still
-  hold their deploy keys while we iterate; see Limits.)
+  them. The drill attester above only signs training scores. No presale, no team allocation. (The contract accounts keep
+  their deploy keys; see Limits.)
 
 ## AI coaches and AI footballers
 
@@ -845,13 +845,13 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   export your key, or start a new account. This is the price of no custody.
 - Gas funding can be farmed with many emails; codes, rate limits and small
   amounts keep it cheap on testnet. A mainnet relay would need stronger limits.
-- **Testnet contract accounts still hold their deploy keys**: one
-  full-access key each on 13 November, which `node scripts/verify.mjs` lists.
-  With such a key an account's code could be replaced, so "no admin" is true
-  of the contracts' methods, not yet of their accounts; the same command
-  compares each account's code hash with this repository at any time. A new
-  rule is a new league on new accounts (v13 is the thirteenth), not an
-  upgrade. The two times a key replaced code in place: on 2 November the league's code was redeployed on
+- **The contract accounts keep their deploy keys**: one full-access key
+  each, which `node scripts/verify.mjs` lists. With such a key an account's
+  code could be replaced, so "no admin" is true of the contracts' methods,
+  not of their accounts; the same command compares each account's code hash
+  with this repository at any time. In practice a new rule is a new league
+  on new accounts (v13 is the thirteenth), not an upgrade. The two times a
+  key replaced code in place: on 2 November the league's code was redeployed on
   `league-v6` with the same state, to add `rename_club`, then `recall_player`
   and the rule that keeps a club's last keeper. On 3 November `league-v7`
   got the same treatment
@@ -880,12 +880,10 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   report, which arrives a block after the transfer.
 - Personal rewards are credits: the account calls `claim` to mint them, and
   like every mint they are scaled under the 10B cap at that moment.
-- At most 32 clubs, so each half of a match day fits in one transaction
-  (64 did not with the live engine). Measured in the sandbox over a full
-  week of 32 clubs (360 players, 8 of them people): a first half burns 100
-  Tgas in the league call, the worst second half and settlement (which also
-  elects 32 captains) 136 Tgas, under the 300 Tgas limit; creating a club and
-  minting its eleven players costs 35 Tgas.
+- Each call plays one half of one division (14 clubs at most), so the gas of
+  a call does not grow with the league: 86 Tgas at most in the sandbox, under
+  the 300 Tgas limit; creating a club and minting its eleven players costs
+  35 Tgas. The league holds 200 clubs at most.
 - A half is played in one transaction, so its events are on chain (and
   readable) as soon as it is played; the app only reveals them over ten
   minutes, as the original site did.
