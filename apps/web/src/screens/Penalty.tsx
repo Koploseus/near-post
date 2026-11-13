@@ -11,7 +11,7 @@ import {
   sway,
   toScreen,
 } from "../../../relay/src/penalty.js";
-import { drillSounds, holdAmbience, once } from "../lib/sound.js";
+import { drillSounds, once } from "../lib/sound.js";
 import { H, INK, SKIN, W, ball, banner, hint, shadow, stands } from "./art.js";
 
 const KEEPER = "#F2B705";
@@ -39,11 +39,8 @@ export function PenaltyGame({ setup, onDone }: { setup: PenaltySetup; onDone: (t
   const [start] = useState(() => performance.now());
   const [score, setScore] = useState<(boolean | null)[]>(Array(setup.kicks.length).fill(null));
 
-  // The stand's murmur and the kicks' sounds while the drill is on screen.
-  useEffect(() => {
-    const [stand, sounds] = [holdAmbience(), drillSounds()];
-    return () => (stand(), sounds());
-  }, []);
+  // The kicks' sounds while the drill is on screen.
+  useEffect(() => drillSounds(), []);
 
   useEffect(() => {
     canvas.current?.scrollIntoView({ block: "center", behavior: "smooth" });
