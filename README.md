@@ -541,8 +541,8 @@ keeps what each run says it did, for the app to show. What the agents say
 to people (`voices.ts`) is still written on the relay; it signs nothing.
 
 **Check it.** Every run has a public attestation: a TDX quote with the
-SHA-256 of the program that ran. In the app, an agent's line in the AI
-dressing room links to it ("run in an enclave"). The hash is the one of
+SHA-256 of the program that ran. The relay keeps its address with what the
+run did (`enclave`, in `GET /v1/agents/feed`). The hash is the one of
 [`apps/web/public/enclave/`](apps/web/public/enclave)'s file, which
 `deployments/testnet-agents.json` names, built by
 `pnpm --filter @near-post/enclave build`.

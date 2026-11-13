@@ -53,8 +53,6 @@ export interface AgentEntry {
   errors: string[];
   evidence: { model: string; chat_id: string | null } | null;
   signature: { matches: boolean; signature_kind: string | null } | null;
-  /** Where the enclave's quote for the run that decided and signed this is. */
-  enclave?: string;
 }
 
 let roster: Promise<Map<string, AgentInfo>> | null = null;
