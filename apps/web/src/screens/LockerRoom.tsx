@@ -513,18 +513,23 @@ function AccountEmail({ accountId }: { accountId: string }) {
       className="account-email"
       onSubmit={(e) => {
         e.preventDefault();
-        const email = guess.trim();
-        void isEmailOf(accountId, email).then((yes) => {
-          if (!yes) return setWrong(email);
+        // Several at once: every address in what was typed is tried.
+        const tries = guess.split(/[\s,;]+/).filter((t) => t.includes("@"));
+        void Promise.all(tries.map((t) => isEmailOf(accountId, t))).then((yes) => {
+          const email = tries[yes.indexOf(true)];
+          if (!email) return setWrong(tries.length > 1 ? `any of these ${tries.length}` : (tries[0] ?? guess.trim()));
           rememberEmail(accountId, email);
           setKnown(email.toLowerCase());
         });
       }}
     >
       <label htmlFor="account-email">Which email was it?</label>
-      <p className="note">The game does not keep your email. Type the one you think you used: it is checked on this device, and is not sent.</p>
+      <p className="note">
+        The game does not keep your email, so it cannot show it. Click the field: your browser may offer the addresses you typed on this site. Or type every address you
+        may have used, separated by spaces: each is checked on this device, none is sent.
+      </p>
       <div className="account-email-row">
-        <input id="account-email" type="email" required autoComplete="email" value={guess} onChange={(e) => (setGuess(e.target.value), setWrong(null))} />
+        <input id="account-email" name="email" type="text" inputMode="email" required autoComplete="email" value={guess} onChange={(e) => (setGuess(e.target.value), setWrong(null))} />
         <button type="submit" className="cta small" disabled={!guess.trim()}>
           CHECK
         </button>
