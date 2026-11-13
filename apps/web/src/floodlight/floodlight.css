@@ -982,8 +982,11 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .account-email-row .cta { flex: none; min-height: 0; }
 
 /* Live: the sound switch, under the pitch. */
-.sound-toggle { justify-self: end; margin-top: 8px; font-size: 12px; }
-.sound-toggle.on { background: var(--np-green); color: var(--np-outline); }
+/* The sound button in the header: a small pixel speaker. */
+.sound-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; background: var(--np-panel); color: var(--np-muted-2); box-shadow: var(--px); cursor: pointer; }
+.sound-btn.on { color: var(--np-yellow); }
+.sound-btn:hover { background: var(--np-chip); }
+.sound-btn:focus-visible { outline: 3px solid var(--np-yellow); outline-offset: 2px; }
 /* Training: the skill's bar fills up and the points pop out. */
 .skill-gain { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; margin-top: 6px; }
 .skill-gain-name { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--np-muted-2); }
@@ -1001,3 +1004,5 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .transfer-news .transfer-line b { color: var(--np-yellow, #F2B705); font-weight: 400; }
 .suitors { margin-top: 16px; }
 .suitors .clubs { list-style: none; margin: 10px 0 0; padding: 0; }
+/* Small phones: the sound button fits in the header next to the rest. */
+@media (max-width: 480px) { .top-band .top-right { gap: 8px; } .top-band .online-pill { display: none; } .sound-btn { width: 36px; height: 36px; } .top-band:has(.me-chip) .brand-text { display: none; } }
