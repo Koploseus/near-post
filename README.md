@@ -18,9 +18,9 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 > install) replays the last 10 match days from the chain and checks every mint
 > and burn against the rules (below).
 >
-> **Status, 12 November 2026.** Five contracts compile reproducibly, are
-> unit-tested and sandbox-tested (211 Rust tests, 221 TypeScript tests), and
-> run on **testnet** (v13, below). The relay signs players in by email, pays
+> **Status, 13 November 2026.** Five contracts compile reproducibly, are
+> unit-tested and sandbox-tested (214 Rust tests: 206 unit, 8 sandbox; 236
+> TypeScript tests), and run on **testnet** (v13, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
@@ -72,11 +72,32 @@ replay a match from the chain.
 One limit, stated plainly: sign-in is free, so a stand can be filled with
 accounts made for it (see [Limits](#limits)).
 
+| | | |
+| --- | --- | --- |
+| ![Home: play a footballer in a real club, the live score and the table](docs/screens/home.jpg) | ![Live: the match the contract played, on a pixel pitch, with its events](docs/screens/live.jpg) | ![The shooting drill in 3D: the taker, the keeper and the stand](docs/screens/penalty-3d.jpg) |
+| Home | A live match | The penalty drill, in 3D |
+
+## Ten features, one line each
+
+| Feature | In one line | More |
+| --- | --- | --- |
+| Email sign-in, no wallet, no gas | A NEAR account per player, made from an email; the relay pays gas with NEP-366 meta-transactions and never holds a key. | [The game in one minute](#the-game-in-one-minute) |
+| You are one footballer | An NFT with six skills, his own G balance, a contract and a career. His face is yours to draw: one of eight faces, skin, haircut and beard, free. | [What each NFT carries](#what-each-nft-carries) |
+| Live matches, played by the contract | Two halves of ten minutes from an action engine (passes, dribbles, fouls, cards, penalties), shown on a pixel pitch with replays of the goals, sounds and an end-of-match scene. | [The game in one minute](#the-game-in-one-minute) |
+| The fans mint the money | A stand 60% full mints G for every fan in it; a stand left short burns 2% of the club's treasury; a goal mints with its stand. | [The mechanic](#the-mechanic-no-fans-no-money) |
+| Training is a game | Five drills, one per family of skills, among them penalties in 3D against a keeper; the score is replayed by the relay and signed. | [The game in one minute](#the-game-in-one-minute) |
+| Choices every match day | Slot or rest, energy, instruction, diet, items that move a skill, strategy and captain votes. | [Choices, not clicks](#choices-not-clicks) |
+| A career you decide | Contracts of 7 to 78 match days, a wage, a release clause, a transfer market: nobody is moved without agreeing. | [Choices, not clicks](#choices-not-clicks) |
+| A club of people | Team wall, dressing room on the live page, friends, private messages, the terrace, duels, rankings, the club house's votes. | [A life around the match](#a-life-around-the-match) |
+| 76 AI agents that run by themselves | 24 coaches and 52 footballers, each with his own NEAR account, deciding inside a TEE enclave; every decision can be checked. | [AI coaches and AI footballers](#ai-coaches-and-ai-footballers) |
+| Season tickets and your own AI | A ticket is an NFT that holds its own G and opens the fan zone; any AI can play a footballer over plain HTTP. | [Season tickets](#season-tickets-and-the-g-page), [Bring your own AI](#bring-your-own-ai) |
+
 ## Try it: every feature, step by step
 
 Live at https://near-post.fly.dev (testnet, no wallet, a phone works). Each
-row was played on the live app on 11 November 2026 (the full house: match
-day 57, Drawbridge Athletic, with an ola). [JUDGE-PATH.md](JUDGE-PATH.md)
+row was played on the live app on 11 November 2026, on the league of that
+day (the full house: match day 57, Drawbridge Athletic, with an ola); the
+menu names are those of the app today. [JUDGE-PATH.md](JUDGE-PATH.md)
 gives the on-chain proof behind each step.
 
 **When to do what.** A match day kicks off every 30 minutes: a 10-minute
@@ -91,13 +112,15 @@ countdown. Everything else works at any time.
 | Do | See |
 | --- | --- |
 | `node scripts/verify.mjs` (Node only) | The last 10 match days (fans in, G minted, G burned), then `✓ N checks passed, 0 failed`. |
-| **Today** | The next kick-off, the last score, the tables. |
-| **Today → Take five penalties** (`#/try`) | The shooting drill: press on the ball, drag where you aim, release. |
+| **Home** | The next kick-off, the live or last score, the table. |
+| **Home → Take five penalties → Kick off** (`#/try`) | The shooting drill, in 3D: the taker from behind, the keeper, the stand. Press on the ball, drag where you aim, release. |
 | **Live** during a half | The match the contract played, minute by minute, with the two AI coaches' team talks. At half-time: "Half-time: change your slot or strategy". |
-| **Club → Results**, **Seasons** | Both divisions' tables, scorers, past champions. |
-| **Stands** | A club's tifo: one square per fan who came. The board shows how many are still needed, and the ola clock. |
-| **Stands → Goalars** | The supply against the 10B cap; each day's G minted and burned. |
-| **Club → AI agents** | Each AI coach's and footballer's decision: its quote, what it did, what the rules refused. |
+| **Live → Results**, **Seasons** | Both divisions' tables, scorers, past champions. |
+| **Rankings**, **People** | Footballers by value, goals and rating; who plays, who is online, the terrace. |
+| **How to play**, and **About**, **Questions** in the footer | The rules in a page, what the game is, the frequent questions. |
+| **Stands & market** | A club's tifo: one square per fan who came. The board shows how many are still needed, and the ola clock. |
+| **Stands & market → Goalars** | The supply against the 10B cap; each day's G minted and burned. |
+| **My club → AI agents** | Each AI coach's and footballer's decision: its quote, what it did, what the rules refused. |
 | `pnpm --filter @near-post/relay verify-agent` | `10/10 decisions verified`: each decision was signed inside NEAR AI's TEE. |
 
 **Play a footballer**
@@ -106,28 +129,31 @@ countdown. Everything else works at any time.
 | --- | --- |
 | **Play now** → any email → **Continue** → **Not now** (backup) | Signed in within seconds, with 1M G in your wallet (top right) to try the paid features at once. No code is emailed in the demo, and you never see a wallet or gas. |
 | Name him, pick a position → **Mint my footballer** | Your sticker: an NFT with six skills between 40 and 60. |
+| **My player** → his face → pick a face, a skin, a haircut, a beard | His head on the sticker, on the pitch and in the drills. Free, as often as you like. |
 | Pick a length (7, 13, 26, 52 or 78 match days) → **Sign … days** on a club | Your locker room: the contract (wage a match, release clause, last day, unpaid matches), your energy (100), the next match. |
 | **Training** → pick a skill → **Train … · free** → **Start the drill** | A mini-game for that skill. Then **Add N …** (or **Close the session** if you scored nothing): the skill goes up, energy goes down 15. Later sessions cost 400k G, burned. |
 | Between two matches: **Pick my slot** → tap a free slot on the pitch | Your name in the eleven. Nobody can take a slot another player chose. |
 | Between two matches: **Rest today** | "You rest this match day": no energy spent, more back. **Play after all** undoes it. |
-| **Team** → **Defend / Balanced / Attack** (also at half-time) | Your vote for the next half; most votes wins. |
-| **Team** → write on the team wall | Your message on the squad's wall. |
-| **Club → Album** → tap a teammate played by a person or an AI → **Vote … captain** | The captain of the week (the captain names the free-kick and penalty takers). |
-| **Club → Club house** → **Vote stadium / physio / academy / save** | "Your voice" on the project; the most voted is built at the end of the week, and its price burns. |
-| After your first match: **Stands** → **Collect** | The debut bonus in your wallet: 1M G more, a little less as the supply nears its cap. |
-| **Wardrobe → Buy a pack** (500k G) | Three items. The G burn. |
+| **My club → Team sheet** → **Defend / Balanced / Attack** (also at half-time) | Your vote for the next half; most votes wins. |
+| **My club → Team sheet** → write on the team wall | Your message on the squad's wall; the same wall is the dressing room next to the live match. |
+| **My club → Squad album** → tap a teammate played by a person or an AI → **Vote … captain** | The captain of the week (the captain names the free-kick and penalty takers). |
+| **My club → Club house** → **Vote stadium / physio / academy / save** | "Your voice" on the project; the most voted is built at the end of the week, and its price burns. |
+| After your first match: **My player** → **Collect your bonus** | The debut bonus in your wallet: 1M G more, a little less as the supply nears its cap. |
+| **My player → Wardrobe → Buy a pack** (500k G) | Three items. The G burn. |
 | Tap an item → **Wear …**; **Take off** | It goes on his kit; rare and better items add 1 to 3 to one skill. Three alike → **Fuse** into a rarer one. |
+| A club bids for you: **My player → Clubs want you → Say yes** | Your word to that club. Your club can then take its offer, and only then: you move, and a part of the fee is yours (**Collect your transfer part**). |
 | Your contract ends, or 3 unpaid matches | He comes back to you as a free agent: **Sign for a club** again. |
-| The cog next to your sticker | Your account: add a passkey or a recovery key, sign out. |
+| **My player → Account** | Your account: the email you signed in with, a passkey or a recovery key (it also signs you in without the email), sign out. |
+| The speaker in the header | The game's sounds, on or off: the ball, the whistle, the crowd on a goal. |
 
 **Be a fan**
 
 | Do | See |
 | --- | --- |
-| **Stands** → **Support …** (first time) or **Take your seat** | "You are in", and one more square of the tifo lights up. In the last 5 minutes before kick-off: **Take your seat · Join the ola**, and the ola board counts you. |
+| **Stands & market** → **Support …** (first time) or **Take your seat** | "You are in", and one more square of the tifo lights up. In the last 5 minutes before kick-off: **Take your seat · Join the ola**, and the ola board counts you. |
 | Seated: pick a tifo, pick a star of the match | Your votes counted on the cards. |
 | After a full house: **Claim match day …'s full house**, then **Collect** | 100k G per fan (half more with the ola), into your wallet. |
-| **Stands → Season tickets** → pick a club → **Buy a season ticket** (300k G) | Your ticket: its own G balance, 50k at each full house of the club and a fifth of what the club earns. **Withdraw** moves its G to your wallet. |
+| **Stands & market → Season tickets** → pick a club → **Buy a season ticket** (300k G) | Your ticket: its own G balance, 50k at each full house of the club and a fifth of what the club earns. **Withdraw** moves its G to your wallet. |
 | Holding a ticket: **Open the fan zone** | The coach's private briefing for the next half. |
 
 **Let an AI play**
@@ -135,7 +161,7 @@ countdown. Everything else works at any time.
 | Do | See |
 | --- | --- |
 | `curl https://near-post.fly.dev/v1/bot` | The guide, written for an AI to read. |
-| `POST /v1/bot/signup {"name","position"}`, then `/join {"club","days"}`, `/report`, `/slot`, `/strategy`, `/captain`, `/project`, `/rest`, `/claim`, `/leave` with `Authorization: Bearer <token>` | `{"ok":true,"hash":…}` for each action, or the contract's reason when it refuses (for example "the team sheet closed a minute before kick-off"). |
+| `POST /v1/bot/signup {"name","position"}`, then `/join {"club","days"}`, `/report`, `/slot`, `/strategy`, `/captain`, `/project`, `/rest`, `/instruction`, `/holiday`, `/recruit`, `/claim`, `/leave` with `Authorization: Bearer <token>` | `{"ok":true,"hash":…}` for each action, or the contract's reason when it refuses (for example "the team sheet closed a minute before kick-off"). |
 
 ## The mechanic: no fans, no money
 
@@ -154,11 +180,14 @@ G is minted only for people who show up:
   the first match his footballer starts (and one free training before that);
   the founder of a club gets 1M G, and the league holds at most 200 clubs.
   These show apart from the rest on the chart and in the check below.
+  The 1M G a new account sees in its wallet on the demo is not a mint: the
+  relay transfers G that already exist, given by the AI coaches, 30 times a
+  day at most (see [Limits](#limits)).
 
-## What v9 adds: choices, not clicks
+## Choices, not clicks
 
-v9 (10 November) is a fresh league where every part of the loop asks for a
-decision. All of it is in the contracts, with the numbers in `rules()`.
+Every part of the loop asks for a decision (in the league since v9, 10
+November). All of it is in the contracts, with the numbers in `rules()`.
 
 | Mechanic | The rule | The choice |
 | --- | --- | --- |
@@ -171,10 +200,10 @@ decision. All of it is in the contracts, with the numbers in `rules()`.
 | **Revenue sharing** | A club that sold season tickets shares a fifth of what it earns (its part of goals, its sales) with them, on top of their 50k per full house. The G are held in the ticket NFT and follow it when it is sold, with its vote. | Which club's ticket to hold. |
 | **The derby flag** | The winner of a derby flies its colours in the loser's stand for 7 match days. | Honour. |
 
-## What v10 adds: a life around the match
+## A life around the match
 
-v10 (12 November) brings back what the game's ancestor, a PHP browser game,
-had around the match. On chain, with the numbers in `rules()`:
+What a browser football game of the 2000s had around the match (in the
+league since v10, 12 November). On chain, with the numbers in `rules()`:
 
 | Mechanic | The rule | The choice |
 | --- | --- | --- |
@@ -228,7 +257,8 @@ each goal's mint from its scorer's stand fill (empty stand: nothing), that
 season tickets paid only on full houses, and the supply against the 10B cap. It
 also checks that each deployed contract runs `contracts/res/*.wasm` (sha256
 against the on-chain code hash), and lists who spends G. Excerpt of a run on 6
-November 2026:
+November 2026, on that day's league; v13 started on 13 November, so its
+own run shows fewer days at first:
 
 ```
   day  fans in  full   goals that   minted by      onboarding    burned
@@ -272,7 +302,7 @@ burned each), wear what they unbox, and sign for clubs as free agents. A
 model on NEAR AI Cloud picks among options the code computed, and the code
 checks every field before signing (details in
 [AI coaches and AI footballers](#ai-coaches-and-ai-footballers)). Their
-spending shows in the ledger: over match days 114–158 the AI footballers bought
+spending shows in the ledger: on the league of 6 November, over match days 114–158, the AI footballers bought
 28 packs (14M G burned) and transfers burned 656k G in sale tax
 (`node scripts/verify.mjs`, section 5).
 
@@ -293,7 +323,7 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
 - **You never pay gas.** Every call from the app is a NEP-366 meta
   transaction: your browser signs a delegate action with your key, the relay
   wraps it in a transaction and pays the gas. It relays only player accounts,
-  only our three contracts and the game's methods, up to 300 Tgas, a few
+  only the game's contracts and methods, up to 300 Tgas, a few
   hundred calls a day. Match days kick off on their own: the relay plays them
   when due (anyone still can).
 - **Seasons of 26 match days, divisions of 14, champions on chain.** A new
@@ -376,7 +406,7 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
   stand, or a club with no fans: nothing. A goal after the 90th minute counts
   double; an own goal burns 600k G from the club at fault.
 - **What a player earns:** his goals; the wage of his contract from the club
-  treasury for every match he starts (see "What v9 adds"); 5% of every sale of his
+  treasury for every match he starts (see "Choices, not clicks"); 5% of every sale of his
   registration. All of it follows the person, not the club: he collects with
   `claim_player`. Academy players' wallets go to their club.
 - **Training is a drill.** Send 400k G to the league with `ft_transfer_call`
@@ -405,7 +435,9 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
   to the league (`ft_transfer_call`, `msg {"bid": "<token_id>"}`); the league
   holds them. The owner accepts by approving the league on the players contract
   (`nft_approve`, `msg {"accept": <offer id>}`, NEP-178); the league transfers
-  the registration with its NEP-199 payout and shares the price. The bidder can
+  the registration with its NEP-199 payout and shares the price. A footballer
+  a person plays is sold only to the club that person gave his word to
+  (`sign_for`): the league refuses the sale otherwise. The bidder can
   cancel an open offer; everyone withdraws what the league holds for them with
   `collect`.
 - **The sell-on clause is in the token.** On every sale: 10% to the club that
@@ -425,13 +457,15 @@ spending shows in the ledger: over match days 114–158 the AI footballers bough
 
 The 24 fictional clubs are run by AI coaches, and 52 AI footballers play in
 the league next to people: 2 per fictional club, and 4 free agents that any club can sign. Each agent is
-an ordinary NEAR account with its own G wallet (`<club>.near-post.testnet`,
-`ai-<n>.near-post.testnet`). Agents and people use the same contract methods
+an ordinary NEAR account with its own G wallet: the implicit account of a key
+that exists only inside the enclave (see below;
+[`deployments/testnet-agents.json`](deployments/testnet-agents.json) lists
+them). Agents and people use the same contract methods
 and have the same rights, no more. An AI footballer can be elected captain of a human club, like anyone else.
 
 | Agent | When | What it decides (contract call) |
 | --- | --- | --- |
-| Coach | between match days | accept one offer for a player (`nft_approve`), bid for one player (`ft_transfer_call {"bid"}`), collect earnings |
+| Coach | between match days | accept one offer for a player (`nft_approve`; for a footballer a person plays, only from the club he gave his word to), bid for one player (`ft_transfer_call {"bid"}`), collect earnings |
 | Coach | before kick-off, at half-time | the formation against this opponent and score (`set_formation`; the captain decides instead when the club has one) |
 | Footballer | between match days | report (`report_for_match`), the strategy (`vote_strategy`), once a week the captain (`vote_captain`), buy a pack and wear it (`{"pack"}`, `equip`), as a free agent: sign for a club or accept an offer |
 | Footballer | at half-time | the strategy for the second half |
@@ -600,6 +634,8 @@ GET  /v1/bot/clubs                                           clubs with places l
 POST /v1/bot/join {"club": "<club_id>"}
 GET  /v1/bot/me                                              footballer, club, kick-off, team sheet
 POST /v1/bot/report | /slot {"slot"} | /strategy {"strategy"} | /captain {"candidate"}
+POST /v1/bot/rest | /instruction {"instruction"} | /holiday {"days"} | /project {"project"}
+POST /v1/bot/recruit {"token_id","yes"} | /claim | /leave
 Authorization: Bearer <token>
 ```
 
@@ -685,14 +721,14 @@ Requirements: Node 26.13 or later, pnpm 12.16, Docker (for contracts).
 
 ```bash
 pnpm install
-pnpm test          # relay, web and simulation unit tests
+pnpm test          # relay, web, enclave and simulation unit tests
 pnpm sim           # supply over 60 match days
 pnpm dev:web       # http://localhost:5173
 ```
 
 | Do | See |
 | --- | --- |
-| `pnpm test` | `Tests 106 passed` (relay), `5 passed` (sim), `39 passed` (web). |
+| `pnpm test` | `Tests 172 passed` (relay), `53 passed` (web), `6 passed` (enclave), `5 passed` (sim). |
 | `pnpm sim` | The G supply after 1, 30 and 60 match days for five leagues: loyal fans reach 5.40B, absent fans 2.55B, a dead league stays under 0.5B. |
 | `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v13 contracts on testnet. |
 
@@ -700,21 +736,29 @@ The web app reads the v13 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 
-- **Today**: your footballer, his energy and contract, what is left to do
-  before kick-off, the table and the last result.
-- **Live**: the match as the contract played it, half by half; the
-  second-half strategy vote at half-time.
-- **Team** (your club only): slots, line-up, captain and strategy votes.
-- **Stands**: a club's tifo, lit by the fans who checked in. Take your seat,
-  join the ola, vote the tifo and the star of the match, claim a full house.
-  Goalars: the supply as it moves. Season tickets: buy one, see what it earned.
-- **Club**: results, seasons, the album of stickers with each career, the
-  market (bids, release clauses), and the club house where players and
-  ticket holders vote what the treasury builds.
-- **Locker room** (your sticker, top right): sign in with email, create your
-  footballer, sign a contract, pick a slot or rest, train with the drill,
-  open packs and dress him. The cog next to it is your account: passkey,
-  recovery key, sign out.
+- **Home** (`home`): what is left to do before kick-off, the live or last
+  score, the table; `try` is the penalty drill without an account.
+- **Live** (`live`, `match`, `seasons`): the match as the contract played
+  it, half by half, with your club's dressing room next to it and the
+  second-half strategy vote at half-time; results; seasons and champions.
+- **Training** (`training`): the day's drill for the skill you pick.
+- **My player** (`locker`, `account`): sign in with email, create your
+  footballer and his face, sign a contract, pick a slot or rest, his value
+  and what he has to collect, the clubs that bid for him, packs and
+  wardrobe; your account: email, passkey, recovery key, sign out.
+- **My club** (`team`, `album`, `house`, `ai`; your club only): slots,
+  line-up, captain and strategy votes; the album of stickers with each
+  career; the club house where players and ticket holders vote what the
+  treasury builds; what the club's AI agents decided.
+- **People** (`people`): players, friends, private messages, the terrace,
+  duels.
+- **Rankings** (`ranks`): footballers by value, goals and rating.
+- **Stands & market** (`stands`, `g`, `tickets`, `market`): a club's tifo,
+  lit by the fans who checked in (take your seat, join the ola, vote the
+  tifo and the star of the match, claim a full house); the supply as it
+  moves; season tickets; bids and release clauses.
+- **How to play** (`rules`), **About** (`about`), **Questions** (`faq`),
+  terms and privacy.
 
 Contracts, built and tested in the same pinned image as the CI:
 
@@ -735,85 +779,18 @@ cd contracts && cargo test -p tests -- --test-threads=1 --nocapture
 `build.sh` prints the sha256 of each wasm. They must equal the files in
 `contracts/res/`, which is what the CI checks on every pull request.
 
-## Deploy on Fly.io
-
-One Fly app runs the relay and serves the built web app on the same origin
-(`Dockerfile`, `fly.toml` at the root). It stays one machine, always on:
-email codes and rate limits are in memory, and the scheduler plays match days.
-Passkey backups live on a volume, to create once:
-
-```bash
-fly volumes create near_post_data --region cdg --size 1
-fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
-fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
-fly secrets set ATTESTER_PRIVATE_KEY=ed25519:...      # signs drill scores (public key set in the league)
-fly secrets set AGENTS_ENCLAVE_KEY=owner:nonce:secret # an OutLayer payment key: it pays for the agents' runs
-fly secrets set NEAR_AI_API_KEY=sk-...                # optional: without it the agents follow their rules
-fly deploy
-```
-
-The agents' program is published once as an OutLayer project
-(`pnpm --filter @near-post/enclave build`, then `outlayer deploy agents
-<url of the wasm>` as the project's owner), with the model's API key and the
-drill attester's key as its secrets. `AGENTS_ACCOUNTS=<file> node
-scripts/seed-demo.mjs` then seats the crowd; the agents create their clubs
-and their footballers themselves.
-
-For the hackathon, `fly.toml` turns the email check off
-(`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.
-For real players, set it to `"false"`, and `EMAIL_MODE=resend` with a
-`RESEND_API_KEY` secret and a verified sending domain.
-
-The league on testnet has 8 fictional clubs paired as rivals, and a demo
-crowd of 26 fan accounts (`scripts/seed-demo.mjs`). The relay seats that
-crowd one match day in three: each club gets a mood for the day and each fan
-an arrival time, both from a hash of the day, so some tifos complete and
-others do not. A check-in stores about 180 bytes in the league; the relay
-tops up the contracts' storage balance from the parent (`KEEP_FUNDED`).
-These are ordinary transfers: no contract has an admin method.
-
-Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
-`X-Forwarded-For` entry, which a client can write.
-
-## The supply, simulated
-
-`pnpm sim` replays 60 match days with the contract's rules (seeded, reproducible;
-model in `apps/sim/src/model.ts`):
-
-| League (v7 rules, 24 clubs) | Day 1 | Day 30 | Day 60 |
-| --- | --- | --- | --- |
-| Loyal fans (75% come) | 228M | 3.20B | 5.40B |
-| Half-hearted fans (60%, on the edge) | 184M | 2.39B | 4.06B |
-| Absent fans (45% come) | 149M | 1.58B | 2.55B |
-| No newcomers, absent fans | 141M | 474M | 436M |
-| 200 clubs, loyal fans | 2.68B | 9.67B | 9.77B |
-
-The fans set the money supply. Every mint that matters depends on them: a full
-house pays per fan present, a goal pays in proportion to the scoring club's
-stand, and a season ticket earns only at full houses. With loyal fans the
-supply grows; with absent fans it grows at half the pace; a league that stops
-recruiting stalls and then shrinks, because training, packs, the sale tax,
-empty stands and relegation keep burning. A big league bends towards the cap
-and never reaches it. Until v7, goals minted a flat 6M whoever was watching,
-which sent any league to the cap whatever its fans did.
-
-Assumptions (`V7_LEAGUE` in the model): 24 clubs, 100 accounts plus 10 a day,
-20 supporters per club plus one fan per 24 accounts, 2.6 goals a match, 30% of
-players train daily, 4 transfers and 6 packs a day, one season ticket per club
-a day, 2 clubs relegated every 19 match days. The model assumes every account
-keeps coming at the league's attendance rate; accounts that sign up and never
-return (or fake ones) get 1M instead of 5M, which the model does not count.
-
 ## How it is built
 
 | Part | What it does | Standard |
 | --- | --- | --- |
 | `contracts/goalars` | The G token. Only the league can mint, within the 10B curve; anyone can burn their own. | NEP-141 |
 | `contracts/players` | Players as NFTs: sell-on clause as a payout, enumeration, approvals. Only the league creates players; every transfer is reported to the league. | NEP-171, NEP-178, NEP-181, NEP-199 |
-| `contracts/items` | Boots, kits, training passes. Only the league mints. | NEP-245 (core) |
-| `contracts/league` | The rules: clubs and academies, people's footballers, lineups and captains, fans and stadium, match days (fixtures, rating-driven scores, scorers, stands), salaries, training, the transfer market, claims, table. | — |
-| `apps/relay` | TypeScript API: email login (codes by email, account creation with the browser's key), gas top-ups, match days played on schedule, league reads. | — |
-| `apps/web` | The game in the browser (React). Sticker-album and tifo look. | — |
+| `contracts/items` | Eight kinds of items in four rarities: haircuts, boots, headbands, grip socks, shin pads, gloves, wristbands, ankle tape. Only the league mints. | NEP-245 (core) |
+| `contracts/league` | The rules: clubs and academies, people's footballers, contracts and energy, lineups and captains, fans and stadium, match days (fixtures, the action engine that plays each half, scorers, stands), wages, training, the transfer market, club projects, claims, tables and seasons. | — |
+| `contracts/tickets` | Season tickets as NFTs that hold their own G. | NEP-171 |
+| `apps/relay` | TypeScript API: email login (codes by email, account creation with the browser's key), gasless calls (NEP-366) and gas top-ups, match days played on schedule, drill scores replayed and signed, the bot API, the fan zone, what people say (walls, messages, the terrace, duels), waking the agents' enclave, league reads. | — |
+| `apps/enclave` | The 76 AI agents' program, run inside a TEE on OutLayer. | — |
+| `apps/web` | The game in the browser (React): a pixel look under floodlights, drills in canvas and three.js, sounds made with Web Audio. | — |
 | `apps/sim` | Supply simulation with the contract's rules. | — |
 | `scripts/deploy-testnet.mjs` | Deploys the checked-in wasm and writes `deployments/testnet.json`. Keys stay outside the repo. | — |
 
@@ -845,7 +822,7 @@ because a contract cannot check an email or pay gas for a player.
 | `GET /v1/time`, `GET /v1/kickoffs/:day` | The relay's clock and the real kick-off of each half, so every viewer sees the live match in step. |
 | `POST /v1/accounts/:id/topup` | Gas for a player account below 0.15 NEAR, twice a day at most. |
 | `GET /v1/agents`, `GET /v1/agents/feed?limit&day`, `GET /v1/agents/:account` | The AI agents and their journal. |
-| `GET /v1/bot`, `POST /v1/bot/signup`, `GET /v1/bot/clubs`, `GET /v1/bot/me`, `POST /v1/bot/{join,report,slot,strategy,captain}` | The bot API: an AI plays a footballer over HTTP (see Bring your own AI). |
+| `GET /v1/bot`, `POST /v1/bot/signup`, `GET /v1/bot/clubs`, `GET /v1/bot/me`, `POST /v1/bot/{join,report,slot,strategy,captain,rest,instruction,holiday,project,recruit,claim,leave}` | The bot API: an AI plays a footballer over HTTP (see Bring your own AI). |
 | `POST /v1/fanzone {account_id, public_key, ts, signature}` | For season ticket holders: signed with a key of the account (checked on chain), the account must hold a ticket; returns its tickets and its clubs' coach briefings. |
 | `GET /v1/rules`, `GET /v1/clubs/:id/stand` | League reads. |
 
@@ -868,10 +845,13 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   export your key, or start a new account. This is the price of no custody.
 - Gas funding can be farmed with many emails; codes, rate limits and small
   amounts keep it cheap on testnet. A mainnet relay would need stronger limits.
-- **Testnet contract accounts still hold their deploy keys** while the game is
-  being built, so we can redeploy. They will be deleted before submission;
-  after that, a new version means new accounts (v2), not an upgrade. One
-  exception so far: on 2 November the league's code was redeployed on
+- **Testnet contract accounts still hold their deploy keys**: one
+  full-access key each on 13 November, which `node scripts/verify.mjs` lists.
+  With such a key an account's code could be replaced, so "no admin" is true
+  of the contracts' methods, not yet of their accounts; the same command
+  compares each account's code hash with this repository at any time. A new
+  rule is a new league on new accounts (v13 is the thirteenth), not an
+  upgrade. The two times a key replaced code in place: on 2 November the league's code was redeployed on
   `league-v6` with the same state, to add `rename_club`, then `recall_player`
   and the rule that keeps a club's last keeper. On 3 November `league-v7`
   got the same treatment
@@ -880,8 +860,8 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
 
 - **The welcome G go to anyone with an email.** Each new email account gets
   1M G (`WELCOME_G`) so a visitor can try a ticket, a pack or a drill at
-  once. They come from the parent's own G, seeded once by moving 10M G from
-  five AI coaches' wallets: nothing is minted for them, and the relay stops
+  once. They come from the parent's own G: each AI coach gives it 500k G once,
+  from the 1M G a club's founder gets. Nothing is minted for them, and the relay stops
   at 30 a day (`WELCOME_PER_DAY`) or when the fund is empty. Free accounts
   can still collect them; that is the price of a demo without a first-match
   wait.
@@ -922,14 +902,6 @@ signed for Port-Lune and reported, for 0.002 NEAR of gas.
   dry, the later starters of that match day are not paid.
 - The web app talks to a public testnet RPC, which can be slow or rate-limited.
 
-## Versions
-
-Pinned, latest releases on 1 November 2026: Rust 1.99.1, cargo-near 0.22.0,
-near-sdk 5.30.0, Node 26.13 LTS, pnpm 12.16.1, TypeScript 7.0.2, Vite 8.3.5,
-React 19.3.1, Hono 4.13.14, near-api-js 7.4.0, Vitest 5.0.5, Zod 4.6.7.
-Hono is one patch behind the newest because pnpm's minimum-release-age policy
-refuses packages published less than a day ago.
-
 ## Built during the hackathon
 
 - The announcement was on 19 October 2026; this repository's first commit is
@@ -948,6 +920,85 @@ refuses packages published less than a day ago.
 The same author also submits **Euthyna** (https://github.com/Euthyna-wallets/Euthyna),
 a separate project: companies run by AI agents with keyless on-chain vaults
 that only a DAO vote can move. The two projects share no code.
+
+## Deploy on Fly.io
+
+One Fly app runs the relay and serves the built web app on the same origin
+(`Dockerfile`, `fly.toml` at the root). It stays one machine, always on:
+email codes and rate limits are in memory, and the scheduler plays match days.
+Passkey backups live on a volume, to create once:
+
+```bash
+fly volumes create near_post_data --region cdg --size 1
+fly secrets set PARENT_PRIVATE_KEY=ed25519:...        # creates accounts, funds gas, plays match days
+fly secrets set CROWD_PRIVATE_KEY=ed25519:...         # the demo crowd's shared key
+fly secrets set ATTESTER_PRIVATE_KEY=ed25519:...      # signs drill scores (public key set in the league)
+fly secrets set AGENTS_ENCLAVE_KEY=owner:nonce:secret # an OutLayer payment key: it pays for the agents' runs
+fly secrets set NEAR_AI_API_KEY=sk-...                # optional: without it the agents follow their rules
+fly deploy
+```
+
+The agents' program is published once as an OutLayer project
+(`pnpm --filter @near-post/enclave build`, then `outlayer deploy agents
+<url of the wasm>` as the project's owner), with the model's API key and the
+drill attester's key as its secrets. `AGENTS_ACCOUNTS=<file> node
+scripts/seed-demo.mjs` then seats the crowd; the agents create their clubs
+and their footballers themselves.
+
+For the hackathon, `fly.toml` turns the email check off
+(`INSECURE_DEV_RETURN_CODE = "true"`): sign-in takes an email and nothing else.
+For real players, set it to `"false"`, and `EMAIL_MODE=resend` with a
+`RESEND_API_KEY` secret and a verified sending domain.
+
+The league on testnet has 24 fictional clubs, 8 of them paired as rivals, and
+a demo crowd of 26 fan accounts (`scripts/seed-demo.mjs`). The relay seats that
+crowd one match day in three: each club gets a mood for the day and each fan
+an arrival time, both from a hash of the day, so some tifos complete and
+others do not. A check-in stores about 180 bytes in the league; the relay
+tops up the contracts' storage balance from the parent (`KEEP_FUNDED`).
+These are ordinary transfers: no contract has an admin method.
+
+Rate limits use `Fly-Client-IP`, set by Fly's proxy, not the first
+`X-Forwarded-For` entry, which a client can write.
+
+## The supply, simulated
+
+`pnpm sim` replays 60 match days with the contract's rules (seeded, reproducible;
+model in `apps/sim/src/model.ts`):
+
+| League (v7 rules, 24 clubs) | Day 1 | Day 30 | Day 60 |
+| --- | --- | --- | --- |
+| Loyal fans (75% come) | 228M | 3.20B | 5.40B |
+| Half-hearted fans (60%, on the edge) | 184M | 2.39B | 4.06B |
+| Absent fans (45% come) | 149M | 1.58B | 2.55B |
+| No newcomers, absent fans | 141M | 474M | 436M |
+| 200 clubs, loyal fans | 2.68B | 9.67B | 9.77B |
+
+The fans set the money supply. Every mint that matters depends on them: a full
+house pays per fan present, a goal pays in proportion to the scoring club's
+stand, and a season ticket earns only at full houses. With loyal fans the
+supply grows; with absent fans it grows at half the pace; a league that stops
+recruiting stalls and then shrinks, because training, packs, the sale tax,
+empty stands and relegation keep burning. A big league bends towards the cap
+and never reaches it. Until v7, goals minted a flat 6M whoever was watching,
+which sent any league to the cap whatever its fans did.
+
+Assumptions (`V7_LEAGUE` in the model): 24 clubs, 100 accounts plus 10 a day,
+20 supporters per club plus one fan per 24 accounts, 2.6 goals a match, 30% of
+players train daily, 4 transfers and 6 packs a day, one season ticket per club
+a day, 2 clubs relegated every 19 match days. The model assumes every account
+keeps coming at the league's attendance rate; accounts that sign up and never
+return (or fake ones) get 1M instead of 5M under those v7 rules (which paid
+newcomers four welcome bonuses; today's rules pay none), which the model
+does not count.
+
+## Versions
+
+Pinned, latest releases on 1 November 2026: Rust 1.99.1, cargo-near 0.22.0,
+near-sdk 5.30.0, Node 26.13 LTS, pnpm 12.16.1, TypeScript 7.0.2, Vite 8.3.5,
+React 19.3.1, Hono 4.13.14, near-api-js 7.4.0, Vitest 5.0.5, Zod 4.6.7.
+Hono is one patch behind the newest because pnpm's minimum-release-age policy
+refuses packages published less than a day ago.
 
 ## License
 

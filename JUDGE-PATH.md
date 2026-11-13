@@ -25,11 +25,11 @@ a half.
 
 | Do | See | Proof |
 | --- | --- | --- |
-| Open **Today** | The live score and the table. | Read by your browser from the league contract, no backend in between. |
+| Open **Home** | The live score and the table. | Read by your browser from the league contract, no backend in between. |
 | Open **Live** | The match played on chain, revealed minute by minute: shots, saves, tackles, cards, goals with their assist; players and ball move from those events. The two AI coaches' team talks. | Each half is one `play_match_day` transaction; the events are in its result. |
-| **Club → Results** | Scorers, man of the match, the two divisions. | `league-v13.near-post.testnet` views `results`, `table`. |
-| **Stands** | The busiest stand of the day: its tifo, painted square by square by the fans who came. | View `stand`. |
-| **Team → Season stats** | Leaderboards: players (goals, assists, tackles, saves, clean sheets...), clubs (attack, defence, form, winning runs, fair play), fans (crowds, full houses). | Counted from the on-chain match sheets and stands (`results`, `stand_result`); anyone can recount them. |
+| **Live → Results** | Scorers, man of the match, the two divisions. | `league-v13.near-post.testnet` views `results`, `table`. |
+| **Stands & market** | The busiest stand of the day: its tifo, painted square by square by the fans who came. | View `stand`. |
+| **My club → Team sheet → Season stats** | Leaderboards: players (goals, assists, tackles, saves, clean sheets...), clubs (attack, defence, form, winning runs, fair play), fans (crowds, full houses). | Counted from the on-chain match sheets and stands (`results`, `stand_result`); anyone can recount them. |
 
 ## 2. Play a footballer (4 min)
 
@@ -40,7 +40,7 @@ a half.
 | Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v13` in your name. |
 | Pick a contract length → **Sign … days for** a club (one with fans) | Your locker room: club, ratings, energy, your contract, the club house. | `sign_for`, then your NFT is transferred to the club. Your contract is on the NFT's record (`get_player`): wage, last day, release clause. When it ends, or after 3 unpaid matches, the league sends the NFT back to you. |
 | **Training** → pick a skill → **Train · free** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. Your first session is free; then 400k G, burned. It costs 15 energy. | `train_free`. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
-| **Team** | The team sheet: tap a free slot, see the formation, vote the strategy. | Nobody can take a slot another player chose, and the contract closes the sheet a minute before kick-off; then free slots go to the best of the squad. Every person in the squad votes the strategy; AI footballers vote too. |
+| **My club → Team sheet** | The team sheet: tap a free slot, see the formation, vote the strategy. | Nobody can take a slot another player chose, and the contract closes the sheet a minute before kick-off; then free slots go to the best of the squad. Every person in the squad votes the strategy; AI footballers vote too. |
 
 Slots and **Rest today** only work between two matches: the team sheet opens
 at the final whistle and closes a minute before the next kick-off (about 4
@@ -54,15 +54,15 @@ minutes left, and closes training in the last 3. Gas is paid by the relay
 
 | Do | See | Proof |
 | --- | --- | --- |
-| **Stands → Support … · Take your seat** | You are in the stand; the tifo gets a square. Then vote the tifo and your star of the match. In the last 5 minutes before kick-off the ola window opens: enough fans in it and the full house pays half more. | `follow` + `check_in`, `vote_tifo`, `vote_star`. Taking a seat mints nothing by itself. |
-| **Club → Club house** | What the treasury can buy (stadium, physio, academy) with this week's votes; vote one. | `vote_project`; season ticket holders vote through their ticket NFT. |
-| **Locker → Rest today** (before kick-off) | You sit out; a day off gives energy back faster. | `rest_today`. |
-| **Locker → Off the pitch** | Pick an instruction, a diet (200k G, burned) or a holiday. | `set_instruction`, `{"diet":…}` through `ft_transfer_call`, `go_on_holiday`; read them back with `condition_of`. |
-| **Club → Club house → Recruitment / Gifts** | How the club recruits (open or by vote), who applied, and the gifts to its treasury. | `recruitment_of`, `applicants`, `vote_recruit`, `gifts_of`. |
-| **Club → People** | The terrace, private messages, friends, and duels on the five drills. | Off chain, signed with your key; a duel has no stake. |
-| **Stands → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
+| **Stands & market → Support … · Take your seat** | You are in the stand; the tifo gets a square. Then vote the tifo and your star of the match. In the last 5 minutes before kick-off the ola window opens: enough fans in it and the full house pays half more. | `follow` + `check_in`, `vote_tifo`, `vote_star`. Taking a seat mints nothing by itself. |
+| **My club → Club house** | What the treasury can buy (stadium, physio, academy) with this week's votes; vote one. | `vote_project`; season ticket holders vote through their ticket NFT. |
+| **My player → Rest today** (before kick-off) | You sit out; a day off gives energy back faster. | `rest_today`. |
+| **My player → Off the pitch** | Pick an instruction, a diet (200k G, burned) or a holiday. | `set_instruction`, `{"diet":…}` through `ft_transfer_call`, `go_on_holiday`; read them back with `condition_of`. |
+| **My club → Club house → Recruitment / Gifts** | How the club recruits (open or by vote), who applied, and the gifts to its treasury. | `recruitment_of`, `applicants`, `vote_recruit`, `gifts_of`. |
+| **People** | The terrace, private messages, friends, and duels on the five drills. | Off chain, signed with your key; a duel has no stake. |
+| **Stands & market → Goalars** | Supply against the 10B cap, today's stands, **every mint and burn** of the league. | View `ledger` (last 600 entries). |
 | Read the rules card | A full house (60% of fans in) pays 100k G per fan present; a goal pays **up to 600k G, as full as the scoring club's stand is**; an incomplete tifo burns 2% of the club's treasury. | `rules` view. No admin method changes them. |
-| **Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v13` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
+| **Stands & market → Season tickets → Buy** (300k G, 50 per club; your welcome G pay for it) | Your ticket, then **Open the fan zone**: the coach's private briefing for the next half. | An NFT on `tickets-v13` that **holds its own G**: 50k at each full house of its club. Sell it, its G go with it. |
 
 Why it matters for a memecoin: supply follows attendance. Simulation over 60
 match days (`pnpm sim`): loyal fans 5.4B, absent fans 2.6B, a league that stops
@@ -95,8 +95,10 @@ near contract call-function as-read-only league-v13.near-post.testnet ledger jso
   `items-v13`, `tickets-v13` `.near-post.testnet`. Only the league mints G.
 - The wasm in `contracts/res/` is rebuilt by the CI in a pinned image and must
   match byte for byte; `deployments/testnet.json` gives each hash.
-- No contract has an owner, admin or upgrade method. On testnet the deploy keys
-  are still held, to fix bugs before the deadline (see README, Limits).
+- No contract has an owner, admin or upgrade method. On testnet each contract
+  account still holds its deploy key (`verify.mjs` lists them; see README, Limits).
+- A footballer a person plays is sold only to the club that person gave his
+  word to: `nft_on_approve` on the league refuses the sale otherwise.
 
 ## Known limits
 
@@ -104,7 +106,5 @@ near contract call-function as-read-only league-v13.near-post.testnet ledger jso
 - A stand can be filled by accounts made for it: sign-in is free and a full
   house pays every fan in it. The contract cannot tell them apart; the fix is
   a rule change (a fixed pot per full house), so a next league (README, Limits).
-- One club, "Kop Test FC", was made by an end-to-end test and cannot be removed:
-  no contract can delete a club.
 - If you close the tab during a drill, reopen the locker room: the relay gives
   your signed score back.
