@@ -120,12 +120,23 @@ function CoachNote({ club }: { club: string | null }) {
   );
 }
 
-export function Offers({ tokenId, accept }: { tokenId: string; accept?: (o: Offer) => Promise<unknown> }) {
+export function Offers({ tokenId, accept, ask }: { tokenId: string; accept?: (o: Offer) => Promise<unknown>; /** A club sells: a person-played footballer must have agreed. */ ask?: boolean }) {
   const { session } = useGame();
   const roster = useAgents();
   const { data: table } = useData(() => league<Club[]>("table"), []);
   const clubOf = (a: string) => table?.find((c) => c.manager === a);
   const { data, reload } = useData(() => league<Offer[]>("offers_for", { token_id: tokenId }), [tokenId]);
+  // A person is sold only to the club he gave his word to.
+  const { data: word } = useData(
+    async () => {
+      if (!ask) return null;
+      const p = await league<Player | null>("get_player", { token_id: tokenId });
+      if (!p?.controller) return null;
+      const s = await league<{ club: string } | null>("signing_of", { token_id: tokenId }).catch(() => null);
+      return { club: s?.club ?? "" };
+    },
+    [tokenId, ask],
+  );
   const open = data?.filter((o) => o.state === "Open") ?? [];
   if (open.length === 0) return <p className="note">No open offer.</p>;
   return (
@@ -134,7 +145,7 @@ export function Offers({ tokenId, accept }: { tokenId: string; accept?: (o: Offe
         <li key={o.id}>
           <strong>{g(o.price)}</strong> from {clubOf(o.buyer) ? clubName(clubOf(o.buyer)!.name) : short(o.buyer)}
           {roster.get(o.buyer)?.kind === "coach" && <span className="ai-tag">AI</span>}
-          {accept && <Action label="ACCEPT" className="cta small" run={() => accept(o)} done={reload} />}
+          {accept && (word && word.club !== o.buyer ? <span className="chip">WAITS FOR HIS YES</span> : <Action label="ACCEPT" className="cta small" run={() => accept(o)} done={reload} />)}
           {session?.accountId === o.buyer && (
             <Action label="CANCEL" className="cta small" run={() => leagueCall(session, "cancel_offer", { offer_id: o.id }, 60)} done={reload} />
           )}
@@ -160,7 +171,7 @@ function MyClubOffers({ club }: { club: Club }) {
             <span>
               {p.name} · {positionLabel[p.position]}
             </span>
-            <Offers tokenId={p.token_id} accept={accept} />
+            <Offers tokenId={p.token_id} accept={accept} ask />
           </li>
         ))}
       </ul>
