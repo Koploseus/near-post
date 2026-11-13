@@ -977,3 +977,18 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
 .account-email-row { display: flex; gap: 8px; align-items: stretch; }
 .account-email-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 0; background: var(--np-chip); color: var(--np-text); box-shadow: var(--px); font: inherit; }
 .account-email-row .cta { flex: none; min-height: 0; }
+
+/* Live: the sound switch, under the pitch. */
+.sound-toggle { justify-self: end; margin-top: 8px; font-size: 12px; }
+.sound-toggle.on { background: var(--np-green); color: var(--np-outline); }
+/* Training: the skill's bar fills up and the points pop out. */
+.skill-gain { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; margin-top: 6px; }
+.skill-gain-name { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--np-muted-2); }
+.skill-gain-bar { position: relative; height: 14px; background: var(--np-outline); box-shadow: 0 0 0 2px var(--np-outline); overflow: hidden; }
+.skill-gain-bar i { position: absolute; inset: 0 auto 0 0; background: var(--np-yellow); }
+.skill-gain-bar b { position: absolute; top: 0; bottom: 0; background: var(--np-green); transition: width .35s steps(4); }
+.skill-gain-n { min-width: 34px; font-family: var(--np-led); font-size: 14px; text-align: right; color: var(--np-text); }
+.skill-gain-n.up { color: var(--np-green); animation: skill-pop .4s steps(4); }
+.skill-gain-plus { font-family: var(--np-display); font-style: normal; font-weight: 700; font-size: 22px; color: var(--np-green); animation: skill-pop .5s steps(5); }
+@keyframes skill-pop { 0% { transform: scale(.4); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .skill-gain-n.up, .skill-gain-plus { animation: none; } .skill-gain-bar b { transition: none; } }

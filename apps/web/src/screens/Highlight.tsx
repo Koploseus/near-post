@@ -12,9 +12,13 @@ export interface HighlightMoment {
   team: string;
   /** Varies the scene (corner, side, height). */
   seed: number;
+  /** It is your own footballer who did it: his goal gets its own treatment. */
+  mine?: boolean;
 }
 
 export const HIGHLIGHT_MS = 3_800;
+/** Your own goal stays on screen longer. */
+const MY_GOAL_MS = 6_200;
 const STRIKE = 900;
 const FLIGHT = 520;
 
@@ -49,7 +53,7 @@ export function Highlight({ m, onEnd }: { m: HighlightMoment; onEnd: () => void 
         if (m.kind === "red") redCard(g, t, m);
         else shot(g, t, m);
       }
-      if (t >= HIGHLIGHT_MS) onEnd();
+      if (t >= (m.mine && m.kind.endsWith("goal") && m.kind !== "own_goal" ? MY_GOAL_MS : HIGHLIGHT_MS)) onEnd();
       else raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -123,9 +127,51 @@ function shot(g: CanvasRenderingContext2D, t: number, m: HighlightMoment) {
     taker(g, 1, end);
     ball(g, bx, by, Math.max(4, r), (t - STRIKE) / 40);
   }
-  if (after > 0) banner(g, TITLE[m.kind], scored, after, 92);
+  const yours = !!m.mine && scored && m.kind !== "own_goal";
+  if (yours && after > 0) myGoal(g, after, m.name);
+  else if (after > 0) banner(g, TITLE[m.kind], scored, after, 92);
   else hint(g, pen ? `PENALTY · ${m.name}` : free ? `FREE KICK · ${m.name}` : `${m.name} shoots`, 128);
-  if (after > 250) hint(g, `${m.name} · ${m.team}`, 160);
+  if (after > 250 && !yours) hint(g, `${m.name} · ${m.team}`, 160);
+}
+
+/** Your own goal: a gold frame that pulses, a shower of gold, and your name as big as the word. */
+function myGoal(g: CanvasRenderingContext2D, after: number, name: string) {
+  const t = after / 1000;
+  const fxn = (n: number) => {
+    const x = Math.sin(n * 91.345 + 47.853) * 24634.6345;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i < 110; i++) {
+    const y = ((fxn(i) * (H + 60) + t * (160 + fxn(i + 50) * 220)) % (H + 60)) - 30;
+    const x = fxn(i + 100) * W + Math.sin(t * 3 + i) * 14;
+    g.fillStyle = i % 4 === 0 ? "#F3EAD7" : i % 4 === 1 ? "#FFE45C" : "#F2B705";
+    g.fillRect(x, y, Math.abs(Math.sin(t * 6 + i)) * 9 + 3, 7);
+  }
+  const pulse = 10 + 6 * Math.abs(Math.sin(t * 5));
+  g.strokeStyle = "#F2B705";
+  g.lineWidth = pulse;
+  g.strokeRect(pulse / 2, pulse / 2, W - pulse, H - pulse);
+  const p = Math.min(1, after / 350);
+  const scale = p < 1 ? 0.4 + 0.8 * p : 1.2 - 0.2 * Math.min(1, (after - 350) / 200) + 0.03 * Math.sin(t * 6);
+  g.save();
+  g.translate(W / 2, 150);
+  g.scale(scale, scale);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 96px 'Pixelify Sans', system-ui";
+  const w = Math.max(g.measureText("YOUR GOAL!").width, 300) + 70;
+  g.fillStyle = INK;
+  g.fillRect(-w / 2 - 6, -68, w + 12, 196);
+  g.fillStyle = "#F2B705";
+  g.fillRect(-w / 2, -62, w, 184);
+  g.fillStyle = INK;
+  g.fillText("YOUR GOAL!", 5, 5);
+  g.fillStyle = RED;
+  g.fillText("YOUR GOAL!", 0, 0);
+  g.font = "700 44px 'Pixelify Sans', system-ui";
+  g.fillStyle = INK;
+  g.fillText(name, 0, 82);
+  g.restore();
 }
 
 function redCard(g: CanvasRenderingContext2D, t: number, m: HighlightMoment) {
