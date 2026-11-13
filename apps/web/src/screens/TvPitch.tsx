@@ -26,7 +26,9 @@ const STADIUM = typeof Image !== "undefined" ? Object.assign(new Image(), { src:
 
 type G = CanvasRenderingContext2D;
 type Ev = MatchEvent & { half: 0 | 1 };
-type Act = "slide" | "down" | "joy" | "dive" | "hold" | "beaten" | null;
+type Act = "slide" | "down" | "joy" | "dive" | "hold" | "beaten" | "sad" | null;
+/** How the final whistle feels from where you sit: your club won, lost, drew, or it was not your match. */
+type Mood = "win" | "lose" | "draw" | "neutral";
 
 interface Body {
   x: number;
@@ -50,7 +52,7 @@ const rnd = (n: number) => {
   return x - Math.floor(x);
 };
 
-export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult; shown: Ev[]; c: Clock; players: Map<string, Player>; shirts: [string, string]; /** Your footballer's token id: he gets a gold marker. */ mine?: string | null }) {
+export function TvPitch({ m, shown, c, players, shirts, mine, myClub }: { m: MatchResult; shown: Ev[]; c: Clock; players: Map<string, Player>; shirts: [string, string]; /** Your footballer's token id: he gets a gold marker. */ mine?: string | null; /** Your club: the final whistle is a win, a defeat or a draw for you. */ myClub?: string | null }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
@@ -67,8 +69,8 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
   const stopped = c.phase === "half_time" || c.phase === "waiting_second_half" || c.phase === "full_time" || c.phase === "before";
 
   // What the loop reads: always the latest props, without restarting it.
-  const live = useRef({ m, shown, c, players, shirts, keys, half, second, stopped, mine });
-  live.current = { m, shown, c, players, shirts, keys, half, second, stopped, mine };
+  const live = useRef({ m, shown, c, players, shirts, keys, half, second, stopped, mine, myClub });
+  live.current = { m, shown, c, players, shirts, keys, half, second, stopped, mine, myClub };
 
   useEffect(() => {
     const el = canvas.current;
@@ -100,6 +102,8 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
     let placedBall = false;
     let last = performance.now();
     let raf = 0;
+    /** When the final whistle was first seen here. */
+    let endedAt: number | null = null;
 
     const frame = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -167,6 +171,32 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
       const orders: (V | undefined)[][] = [Array<V | undefined>(11).fill(undefined), Array<V | undefined>(11).fill(undefined)];
       let shot = false;
       let cheer = -1;
+      // The final whistle: the winners run together and jump, the beaten side hangs its head; after a draw they line up and shake hands.
+      const ended = L.c.phase === "full_time";
+      if (!ended) endedAt = null;
+      else endedAt ??= now;
+      const since = endedAt === null ? -1 : (now - endedAt) / 1000;
+      const won: 0 | 1 | null = L.m.home_goals > L.m.away_goals ? 0 : L.m.away_goals > L.m.home_goals ? 1 : null;
+      const mySide = L.myClub && L.myClub === L.m.home ? 0 : L.myClub && L.myClub === L.m.away ? 1 : null;
+      // (A test that looks at each ending sets `window.__npMood`.)
+      const asked = (window as unknown as { __npMood?: Mood }).__npMood;
+      const mood: Mood | null = !ended ? null : (asked ?? (won === null ? "draw" : mySide === null ? "neutral" : mySide === won ? "win" : "lose"));
+      if (ended) {
+        for (let k = 1; k < 11; k++) {
+          if (won === null) {
+            orders[0]![k] = [46.4, 12 + k * 7.6];
+            orders[1]![k] = [53.6, 12 + k * 7.6];
+          } else {
+            const lost = (1 - won) as 0 | 1;
+            const a = (k / 10) * Math.PI * 2;
+            orders[won]![k] = [(won === 0 ? 37 : 63) + 8 * Math.cos(a), 50 + 13 * Math.sin(a)];
+            acts[won]![k] = "joy";
+            acts[lost]![k] = "sad";
+          }
+        }
+        if (won !== null && mood !== "lose" && since < 18) cheer = since % 5.5;
+        else if (won !== null) cheer = since; // (the players still jump; the stand has gone quiet)
+      }
       let caption = "";
       if (!L.stopped)
         for (const e of L.m.events.slice(L.half === 0 ? 0 : L.m.first_half_events, L.half === 0 ? L.m.first_half_events : undefined)) {
@@ -388,6 +418,7 @@ export function TvPitch({ m, shown, c, players, shirts, mine }: { m: MatchResult
       }
       g.restore();
 
+      if (mood) finale(g, mood, since, now, won === null ? ["#F2B705", "#F3EAD7"] : [L.shirts[won]!, "#F2B705", "#F3EAD7"], L.m.home_goals, L.m.away_goals);
       if (caption) lowerThird(g, caption);
       radar(g, bodies, ballAt, L.shirts, gone, cam, myBody);
       raf = requestAnimationFrame(frame);
@@ -545,6 +576,7 @@ function player(g: G, P: Proj, b: Body, keeper: boolean, shirt: string, act: Act
     ok = sprite(g, "top", shirt, 5, h * 1.04, b.face < 0, who.face, who.hair);
   } else if (act === "slide") ok = sprite(g, "rivalFront", shirt, 4, h * 0.72, b.face > 0, who.face, who.hair);
   else if (act === "down") ok = sprite(g, "rivalFront", shirt, 5, h * 0.7, b.face > 0, who.face, who.hair);
+  else if (act === "sad" && b.v < 1.3) ok = sprite(g, "rivalSide", shirt, 5, h * 0.84, b.face < 0, who.face, who.hair);
   else if (b.v > 1.3) ok = sprite(g, "rivalSide", shirt, 1 + (Math.floor(b.phase) % 4), h, b.face < 0, who.face, who.hair);
   else ok = sprite(g, "top", shirt, 0, h, b.face < 0, who.face, who.hair);
   if (!ok) {
@@ -592,6 +624,114 @@ function tag(g: G, text: string, x: number, y: number, colour: string) {
   g.lineTo(x + 5, y + 11);
   g.lineTo(x, y + 17);
   g.fill();
+}
+
+/** A small deterministic noise (the same show for everyone). */
+const fx = (n: number) => {
+  const x = Math.sin(n * 91.345 + 47.853) * 24634.6345;
+  return x - Math.floor(x);
+};
+
+/**
+ * The final whistle, over the picture. A win: fireworks over the stand and confetti in the winners'
+ * colours. A defeat: the light goes down and it rains. A draw: a little confetti, no fireworks.
+ * Then the word, big, with the score.
+ */
+function finale(g: G, mood: Mood, since: number, now: number, colours: string[], home: number, away: number) {
+  const t = now / 1000;
+  if (mood === "lose") {
+    g.fillStyle = "rgba(11, 8, 32, .42)";
+    g.fillRect(0, 0, CW, CH);
+    g.fillStyle = "rgba(160, 190, 255, .5)";
+    for (let i = 0; i < 90; i++) {
+      const x = (fx(i) * (CW + 120) + t * 60) % (CW + 120) - 60;
+      const y = (fx(i + 200) * CH + t * (520 + fx(i + 400) * 240)) % CH;
+      g.fillRect(x, y, 2, 12);
+    }
+  } else {
+    // Fireworks, the first twenty seconds: a burst every half second, above the stand.
+    if (mood !== "draw" && since < 20)
+      for (let i = Math.max(0, Math.floor(since / 0.5) - 3); i <= Math.floor(since / 0.5); i++) {
+        const age = since - i * 0.5;
+        if (age < 0 || age > 1.6) continue;
+        // (On either side of the word, not behind it.)
+        const cx = i % 2 ? 40 + fx(i * 3.1) * 210 : CW - 250 + fx(i * 3.1) * 210;
+        const cy = 36 + fx(i * 7.7) * 170;
+        const colour = colours[i % colours.length]!;
+        const rise = Math.min(1, age / 0.25);
+        if (rise < 1) {
+          g.fillStyle = "#F3EAD7";
+          g.fillRect(cx - 2, CH * 0.5 + (cy - CH * 0.5) * rise, 4, 10);
+          continue;
+        }
+        const a2 = age - 0.25;
+        const fade = Math.max(0, 1 - a2 / 1.35);
+        // The flash, then the sparks with their tails, on a patch of night so that they show against the crowd.
+        g.globalAlpha = fade * 0.55;
+        g.fillStyle = "#0B0820";
+        g.beginPath();
+        g.arc(cx, cy, 30 + 120 * (1 - Math.exp(-a2 * 2.6)), 0, Math.PI * 2);
+        g.fill();
+        if (a2 < 0.12) {
+          g.globalAlpha = 1;
+          g.fillStyle = "#FFFFFF";
+          g.fillRect(cx - 14, cy - 14, 28, 28);
+        }
+        for (let p = 0; p < 40; p++) {
+          const ang = (p / 40) * Math.PI * 2 + fx(i + p) * 0.3;
+          const sp = 80 + fx(i * 13 + p) * 100;
+          for (let tail = 0; tail < 3; tail++) {
+            const at = Math.max(0, a2 - tail * 0.05);
+            const d = sp * (1 - Math.exp(-at * 2.6));
+            g.globalAlpha = fade * (1 - tail * 0.3);
+            g.fillStyle = tail === 0 && p % 3 === 0 ? "#FFFFFF" : colour;
+            const size = 9 - tail * 2;
+            g.fillRect(Math.round((cx + Math.cos(ang) * d) / 4) * 4, Math.round((cy + Math.sin(ang) * d + at * at * 40) / 4) * 4, size, size);
+          }
+        }
+        g.globalAlpha = 1;
+      }
+    // Confetti: thick after a win, a sprinkle after a draw.
+    const pieces = mood === "draw" ? 36 : since < 25 ? 130 : 50;
+    for (let i = 0; i < pieces; i++) {
+      const speed = 70 + fx(i + 50) * 90;
+      const y = ((fx(i) * (CH + 60) + t * speed) % (CH + 60)) - 30;
+      const x = fx(i + 100) * CW + Math.sin(t * (1 + fx(i + 150) * 2) + i) * 18;
+      g.fillStyle = colours[i % colours.length]!;
+      const w = Math.abs(Math.sin(t * 5 + i)) * 7 + 2;
+      g.fillRect(x, y, w, 6);
+    }
+  }
+  // The word drops in, with a bounce.
+  const word = mood === "win" ? "VICTORY!" : mood === "lose" ? "DEFEAT" : mood === "draw" ? "DRAW" : "FULL TIME";
+  const sub = mood === "win" ? "What a win. Enjoy it." : mood === "lose" ? "Heads up. The next one is yours." : mood === "draw" ? "A point each." : "";
+  const p = Math.min(1, Math.max(0, (since - 0.3) / 0.5));
+  if (p <= 0) return;
+  const bounce = p < 1 ? 1 + 0.25 * Math.sin(p * Math.PI) : 1 + (mood === "win" ? 0.03 * Math.sin(t * 4) : 0);
+  g.save();
+  g.translate(CW / 2, 150 - (1 - p) * 120);
+  g.scale(bounce, bounce);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 96px 'Pixelify Sans', system-ui";
+  const w = Math.max(g.measureText(word).width + 80, 420);
+  g.fillStyle = "#0B0820";
+  g.fillRect(-w / 2 - 6, -66, w + 12, sub ? 178 : 142);
+  g.fillStyle = mood === "win" ? "#F2B705" : mood === "lose" ? "#251A57" : mood === "draw" ? "#2F5DA8" : "#C8202F";
+  g.fillRect(-w / 2, -60, w, sub ? 166 : 130);
+  g.fillStyle = "#0B0820";
+  g.fillText(word, 5, 6);
+  g.fillStyle = mood === "win" ? "#C8202F" : "#F3EAD7";
+  g.fillText(word, 0, 0);
+  g.font = "400 30px 'Press Start 2P', monospace";
+  g.fillStyle = mood === "win" ? "#0B0820" : "#F2B705";
+  g.fillText(`${home} - ${away}`, 0, 66 - 4);
+  if (sub) {
+    g.font = "700 19px 'Archivo', system-ui";
+    g.fillStyle = mood === "win" ? "#0B0820" : "#F3EAD7";
+    g.fillText(sub, 0, 92);
+  }
+  g.restore();
 }
 
 /** The word of the moment, bottom left, as on TV. */

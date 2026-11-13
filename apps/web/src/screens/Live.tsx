@@ -395,7 +395,7 @@ export function MatchView({
 
 /** A small pitch: 22 players in their formations, and the ball going where the play is. */
 function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchEvent & { half: 0 | 1 })[]; c: Clock; players: Map<string, Player>; names: Map<string, string> }) {
-  const { me } = useGame();
+  const { me, clubId } = useGame();
   const second = c.phase === "second_half" || c.phase === "full_time";
   const half = second ? 1 : 0;
   const f = [m.formations[second ? 2 : 0] ?? m.formations[0]!, m.formations[second ? 3 : 1] ?? m.formations[1]!];
@@ -436,7 +436,7 @@ function Pitch({ m, shown, c, players, names }: { m: MatchResult; shown: (MatchE
     <>
     {/* The TV broadcast (camera on the ball); the small pitch of dots when motion is reduced. */}
     {!REDUCED ? (
-      <TvPitch m={m} shown={shown} c={c} players={players} shirts={[shirts[0]!, shirts[1]!]} mine={me?.token_id} />
+      <TvPitch m={m} shown={shown} c={c} players={players} shirts={[shirts[0]!, shirts[1]!]} mine={me?.token_id} myClub={clubId} />
     ) : (
     <div className="mini-pitch" aria-hidden="true">
       <span className="mp-line mp-half" />
