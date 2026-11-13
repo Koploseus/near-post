@@ -3,7 +3,7 @@ import type { Chain } from "../chain.js";
 import { Journal } from "./journal.js";
 import type { Ask } from "./minds.js";
 import { roster } from "./roster.js";
-import { type LeaguePlayer, Agents } from "./runner.js";
+import { type LeaguePlayer, Agents, approvalStorage } from "./runner.js";
 import type { Position } from "./rules.js";
 
 const P = "near-post.testnet";
@@ -34,6 +34,7 @@ function world(firstHalfPlayed = false, more: Record<string, (a: Record<string, 
   const ai: LeaguePlayer = { ...ours[9]!, token_id: "p900", controller: AI, name: "Remi Corbin" };
   ours[9] = ai;
   const calls: { signer: string; contract: string; method: string; args: Record<string, unknown> }[] = [];
+  const paid: { tgas: number | undefined; deposit: bigint | undefined }[] = [];
   let clubName = "Olympique Rive Nord";
   const views: Record<string, (a: Record<string, unknown>) => unknown> = {
     schedule: () => ({ match_day: 3, first_half_played: firstHalfPlayed }),
@@ -78,10 +79,10 @@ function world(firstHalfPlayed = false, more: Record<string, (a: Record<string, 
       calls.push({ signer, contract, method, args });
       return `tx-${calls.length}`;
     },
-    callChecked: async (contract, method, args) => (calls.push({ signer, contract, method, args }), `tx-${calls.length}`),
+    callChecked: async (contract, method, args, tgas, deposit) => (calls.push({ signer, contract, method, args }), method === "nft_approve" && paid.push({ tgas, deposit }), `tx-${calls.length}`),
   });
   const agents = roster(P).filter((a) => a.account === COACH || a.account === AI);
-  return { chain, calls, agents, ai };
+  return { chain, calls, paid, agents, ai };
 }
 
 /** A model that records what it is shown and answers with `pick`. */
@@ -162,6 +163,9 @@ describe("agents runner", () => {
     const by = (method: string) => w.calls.filter((c) => c.method === method);
     expect(by("set_formation")).toEqual([{ signer: COACH, contract: "league", method: "set_formation", args: { club_id: COACH, formation: "4-3-3" } }]);
     expect(by("nft_approve")[0]).toMatchObject({ signer: COACH, contract: "players", args: { token_id: "a1", msg: '{"accept":5}' } });
+    // The deposit is the approval's storage to the yocto: a refund to an agent's implicit account would take the gas the sale needs.
+    expect(w.paid[0]!.deposit).toBe(approvalStorage("league"));
+    expect(w.paid[0]!.tgas).toBeLessThan(300);
     expect(by("report_for_match")[0]!.signer).toBe(AI);
     expect(by("vote_strategy")[0]!.args).toEqual({ strategy: "attack" });
     expect(by("vote_captain")[0]!.args).toEqual({ candidate: "p900" });

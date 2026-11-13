@@ -131,6 +131,21 @@ const PLAYER_ACCOUNT = /^u[0-9a-f]{16}\./;
 export const isGasless = (accountId: string) => PLAYER_ACCOUNT.test(accountId);
 
 /** Calls a contract with the player's own key. Returns the tx hash and the decoded return value. */
+/**
+ * The owner accepts an offer for a player: he approves the league for it, with the offer's number.
+ *
+ * The deposit is the approval's storage to the yocto (the league's name, plus twelve bytes, at 10^19
+ * a byte), or one yocto when the league is approved already. The players contract sends back
+ * anything above it, and a transfer to an implicit account is charged as if the account had to be
+ * created: that refund takes more gas than the contract keeps before it calls the league, and the
+ * sale fails with "Exceeded the prepaid gas".
+ */
+export async function acceptOffer(s: Session, tokenId: string, offerId: number) {
+  const token = await view<{ approved_account_ids?: Record<string, number> } | null>(PLAYERS, "nft_token", { token_id: tokenId }).catch(() => null);
+  const deposit = token?.approved_account_ids?.[LEAGUE] !== undefined ? 1n : BigInt(LEAGUE.length + 12) * 10n ** 19n;
+  return call(s, PLAYERS, "nft_approve", { token_id: tokenId, account_id: LEAGUE, msg: JSON.stringify({ accept: offerId }) }, { deposit, tgas: 250 });
+}
+
 export async function call<T = unknown>(
   s: Session,
   contractId: string,
