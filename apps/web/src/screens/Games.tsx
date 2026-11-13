@@ -19,7 +19,7 @@ import {
   sprints,
   tackles,
 } from "../../../relay/src/games.js";
-import { drillSounds, holdAmbience, once } from "../lib/sound.js";
+import { drillSounds, once } from "../lib/sound.js";
 import { BLUE, H, INK, PAPER, RED, W, YELLOW, artReady, ball, banner, easeOut, figure, grass, hint, sideRunner, stands, topPlayer } from "./art.js";
 
 type G = CanvasRenderingContext2D;
@@ -54,11 +54,8 @@ function CanvasGame(props: {
   const [dots, setDots] = useState<(boolean | null)[]>(Array(props.rounds).fill(null));
   const now = () => Math.round(performance.now() - start);
 
-  // The stand's murmur and the drill's sounds while it is on screen.
-  useEffect(() => {
-    const [stand, words] = [holdAmbience(), drillSounds()];
-    return () => (stand(), words());
-  }, []);
+  // The drill's sounds while it is on screen.
+  useEffect(() => drillSounds(), []);
 
   useEffect(() => {
     canvas.current?.scrollIntoView({ block: "center", behavior: "smooth" });

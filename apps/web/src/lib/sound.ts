@@ -1,7 +1,7 @@
 /**
  * The game's sounds, made here with the Web Audio API (no file to load): the
- * ball, the referee's whistle, the crowd, a short tune when a drill or a match
- * ends. On unless the player turns them off; his choice is remembered on this
+ * ball, the net, the referee's whistle, a short tune when a drill or a match
+ * ends. No crowd: the stand stays silent. On unless the player turns them off; his choice is remembered on this
  * device. A browser plays nothing before the first tap, so the first tap anywhere
  * wakes the sound up.
  *
@@ -14,7 +14,6 @@
 const KEY = "near-post.sound";
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
-let amb: GainNode | null = null;
 
 export function soundOn(): boolean {
   try {
@@ -36,9 +35,6 @@ const context = (): AudioContext | null => {
     master = ctx.createGain();
     master.gain.value = 0.6;
     master.connect(limit).connect(ctx.destination);
-    amb = ctx.createGain();
-    amb.gain.value = 0;
-    amb.connect(master);
   }
   if (ctx.state === "suspended" && document.visibilityState === "visible") void ctx.resume().catch(() => {});
   return ctx;
@@ -54,7 +50,6 @@ export function setSound(on: boolean) {
   }
   if (on) {
     context();
-    syncAmbience();
     play("whistle");
   } else if (ctx) void ctx.suspend().catch(() => {});
 }
@@ -101,7 +96,7 @@ const tone = (a: AudioContext, freq: number, at: number, dur: number, type: Osci
   o.stop(at + dur + 0.02);
 };
 
-/** Filtered noise with an envelope: the crowd, the net, a swish. */
+/** Filtered noise with an envelope: the net, a swish, the leather. */
 const hiss = (a: AudioContext, at: number, dur: number, level: number, f0: number, f1: number, q = 0.7, attack = 0.18) => {
   const src = a.createBufferSource();
   src.buffer = noise(a);
@@ -121,14 +116,6 @@ const hiss = (a: AudioContext, at: number, dur: number, level: number, f0: numbe
   src.start(at, Math.random());
   src.stop(at + dur + 0.05);
 };
-
-/** The crowd on a goal or a win: louder and longer; the stadium's murmur steps back meanwhile. */
-const roar = (a: AudioContext, at: number, dur: number, level: number) => {
-  hiss(a, at, dur, level, 700, 1500);
-  duck(a, at, dur);
-};
-/** The crowd's "ooh": a short swell that falls. */
-const ooh = (a: AudioContext, at: number, level: number) => hiss(a, at, vary(0.9, 0.15), level, vary(620), 360, 1.1, 0.3);
 
 const whistle = (a: AudioContext, at: number, blows: number[]) => {
   let t = at;
@@ -159,11 +146,11 @@ const notes = (a: AudioContext, list: [number, number][], type: OscillatorType, 
 
 export type Sfx =
   | "whistle" | "full_time" | "goal" | "my_goal" | "win" | "lose" | "draw" | "gain"
-  | "kick" | "net" | "save" | "post" | "miss" | "ole" | "tackle" | "beaten" | "go" | "cheer"
-  | "passed" | "failed" | "foul" | "card" | "penalty" | "near";
+  | "kick" | "net" | "save" | "post" | "tackle" | "go"
+  | "passed" | "failed" | "foul" | "card" | "penalty";
 
 /** The least time (ms) between two of the same: the frequent ones never pile up. */
-const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, near: 4000, miss: 700, beaten: 700, cheer: 600, ole: 500, kick: 80, tackle: 400 };
+const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, kick: 80, tackle: 400 };
 const last = new Map<Sfx, number>();
 
 export function play(what: Sfx, power = 0.6) {
@@ -183,128 +170,28 @@ export function play(what: Sfx, power = 0.6) {
     case "penalty": return void whistle(a, t, [0.45]);
     case "go": return void whistle(a, t, [0.12]);
     case "goal":
-      roar(a, t, 2.4, 0.2);
       return notes(a, [[523, 0.1], [659, 0.1], [784, 0.22]], "square", 0.04, t);
     case "my_goal":
-      roar(a, t, 3.4, 0.26);
       return notes(a, [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.12], [784, 0.09], [1047, 0.34]], "square", 0.05, t);
     case "win":
-      roar(a, t, 3.2, 0.18);
       return notes(a, [[523, 0.14], [523, 0.14], [659, 0.14], [784, 0.2], [659, 0.12], [784, 0.14], [1047, 0.5]], "square", 0.05, t);
     case "lose":
-      ooh(a, t, 0.08);
       return notes(a, [[392, 0.26], [349, 0.26], [311, 0.26], [262, 0.6]], "triangle", 0.07, t + 0.3);
     case "draw": return notes(a, [[440, 0.18], [494, 0.18], [440, 0.4]], "triangle", 0.07, t);
     case "gain": return notes(a, [[1319, 0.07], [1568, 0.07], [2093, 0.16]], "square", 0.03, t);
     case "kick": return thump(a, t, Math.max(0, Math.min(1, power)));
     case "net":
-      hiss(a, t, 0.35, 0.06, 3200, 5000, 0.6, 0.1);
-      return roar(a, t + 0.05, vary(1.4, 0.1), 0.14);
+      return hiss(a, t, 0.35, 0.06, 3200, 5000, 0.6, 0.1);
     case "save":
-      tone(a, vary(220), t, 0.06, "sine", 0.12, 120);
-      return ooh(a, t + 0.08, 0.1);
+      return tone(a, vary(220), t, 0.06, "sine", 0.12, 120);
     case "post":
       tone(a, vary(880, 0.03), t, 0.5, "triangle", 0.06, 860);
-      tone(a, vary(1320, 0.03), t, 0.35, "sine", 0.03);
-      return ooh(a, t + 0.12, 0.1);
-    case "miss": case "beaten": return ooh(a, t, 0.09);
-    case "near": return ooh(a, t, 0.06);
-    case "ole":
-      hiss(a, t, 0.22, 0.09, 480, 520, 1.4, 0.3);
-      return hiss(a, t + 0.26, 0.5, 0.11, 760, 820, 1.4, 0.25);
+      return tone(a, vary(1320, 0.03), t, 0.35, "sine", 0.03);
     case "tackle":
-      hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
-      return roar(a, t + 0.15, 0.9, 0.08);
-    case "cheer": return roar(a, t, vary(1.1, 0.1), 0.11);
+      return hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
     case "passed": return notes(a, [[523, 0.1], [659, 0.1], [784, 0.1], [1047, 0.32]], "square", 0.045, t);
     case "failed": return notes(a, [[392, 0.2], [330, 0.4]], "triangle", 0.06, t);
   }
-}
-
-// ------------------------------------------------------------ the stadium
-
-const AMB = 0.05;
-let holds = 0;
-let ambSrc: AudioBufferSourceNode | null = null;
-let lfo: OscillatorNode | null = null;
-let ducked = 0;
-
-/** The murmur of the stand, very low: on while a drill or a match is being played. Returns its release. */
-export function holdAmbience(): () => void {
-  holds++;
-  syncAmbience();
-  let done = false;
-  return () => {
-    if (done) return;
-    done = true;
-    holds--;
-    syncAmbience();
-  };
-}
-
-function syncAmbience() {
-  const a = holds > 0 ? context() : ctx;
-  if (!a || !amb) return;
-  const t = a.currentTime;
-  if (holds > 0 && !ambSrc) {
-    const src = a.createBufferSource();
-    src.buffer = noise(a);
-    src.loop = true;
-    src.playbackRate.value = 0.5;
-    const low = a.createBiquadFilter();
-    low.type = "lowpass";
-    low.frequency.value = 1100;
-    const band = a.createBiquadFilter();
-    band.type = "bandpass";
-    band.frequency.value = 520;
-    band.Q.value = 0.5;
-    // The murmur breathes: a slow wave on its level.
-    const breathe = a.createGain();
-    breathe.gain.value = 1;
-    const o = a.createOscillator();
-    o.frequency.value = 0.13;
-    const depth = a.createGain();
-    depth.gain.value = 0.25;
-    o.connect(depth).connect(breathe.gain);
-    src.connect(low).connect(band).connect(breathe).connect(amb);
-    src.start();
-    o.start();
-    ambSrc = src;
-    lfo = o;
-  }
-  amb.gain.cancelScheduledValues(t);
-  amb.gain.setValueAtTime(amb.gain.value, t);
-  amb.gain.linearRampToValueAtTime(holds > 0 ? AMB : 0, t + (holds > 0 ? 1.2 : 0.8));
-  if (holds === 0 && ambSrc) {
-    const [s, o] = [ambSrc, lfo];
-    ambSrc = null;
-    lfo = null;
-    s.stop(t + 0.9);
-    o?.stop(t + 0.9);
-  }
-}
-
-/** The stand gets louder for a moment: an attack near the box. */
-export function excite(amount = 0.6) {
-  const a = ctx;
-  if (!a || !amb || holds === 0 || a.state !== "running") return;
-  const t = a.currentTime;
-  amb.gain.cancelScheduledValues(t);
-  amb.gain.setValueAtTime(amb.gain.value, t);
-  amb.gain.linearRampToValueAtTime(AMB * (1 + amount), t + 0.5);
-  amb.gain.linearRampToValueAtTime(AMB, t + 2.2);
-}
-
-/** A roar plays over the murmur, which steps back for it. */
-function duck(a: AudioContext, at: number, dur: number) {
-  if (!amb || holds === 0) return;
-  ducked++;
-  amb.gain.cancelScheduledValues(at);
-  amb.gain.setValueAtTime(amb.gain.value, at);
-  amb.gain.linearRampToValueAtTime(AMB * 0.4, at + 0.2);
-  amb.gain.setValueAtTime(AMB * 0.4, at + dur * 0.8);
-  amb.gain.linearRampToValueAtTime(AMB, at + dur + 0.6);
-  setTimeout(() => ducked--, (dur + 0.6) * 1000);
 }
 
 // ------------------------------------------------------------ the drills' words
@@ -323,17 +210,14 @@ export function once(key: string, what: Sfx, power?: number) {
   done.add(key);
   play(what, power);
 }
-const WORDS: Record<string, Sfx> = {
-  "OLÉ!": "ole", "TACKLED!": "beaten", "CLEAN TACKLE!": "tackle", "GO!": "go", "FIRST TO IT!": "cheer",
-  "ON HIS FEET!": "cheer", "GOAL!": "net", "SAVED!": "save", "OFF THE POST!": "post",
-};
+const WORDS: Record<string, Sfx> = { "CLEAN TACKLE!": "tackle", "GO!": "go", "GOAL!": "net", "SAVED!": "save", "OFF THE POST!": "post" };
 const heard = new Map<string, number>();
-/** Called with each big word as it is drawn, every frame: it sounds once, as it pops in. */
-export function word(text: string, good: boolean, since: number) {
+/** Called with each big word as it is drawn, every frame: those with a sound play it once, as they pop in. */
+export function word(text: string, _good: boolean, since: number) {
   if (drills === 0 || since < 0 || since > 150) return;
   const now = performance.now();
   if (now - (heard.get(text) ?? -1e9) < 900) return;
   heard.set(text, now);
-  const sfx = WORDS[text] ?? (text.endsWith("…") ? null : good ? "cheer" : "miss");
+  const sfx = WORDS[text];
   if (sfx) play(sfx);
 }
