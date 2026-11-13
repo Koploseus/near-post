@@ -84,12 +84,14 @@ describe("where the elevens stand", () => {
   it("a block turns from defending to attacking without a jump", () => {
     for (const f of FORMATIONS) {
       // The ball changes feet at the same place: eased, nobody's place moves more than a step at a time.
-      // (The one who pressed and the one who takes the ball have a run to make: they are left out.)
+      // (The ones who pressed or covered and the one who takes the ball have a run to make: they are left out.)
       let before = positions(f, 0, [55, 40], 1, undefined, { attack: 0 });
       const presser = atBall(before, [55, 40]);
       for (let i = 1; i <= 10; i++) {
         const now = positions(f, 0, [55, 40], 0, 5, { attack: i / 10 });
-        for (let k = 1; k < 11; k++) if (k !== 5 && k !== presser) expect(Math.hypot(now[k]![0] - before[k]![0], now[k]![1] - before[k]![1])).toBeLessThan(3.5);
+        const free = positions(f, 0, [55, 40], 1, undefined, { attack: 0, free: true });
+        const busy = (k: number) => i === 1 && Math.hypot(free[k]![0] - before[k]![0], free[k]![1] - before[k]![1]) > 0.01;
+        for (let k = 1; k < 11; k++) if (k !== 5 && k !== presser && !busy(k)) expect(Math.hypot(now[k]![0] - before[k]![0], now[k]![1] - before[k]![1])).toBeLessThan(3.5);
         before = now;
       }
     }
@@ -139,11 +141,16 @@ describe("where the elevens stand", () => {
     }
   });
 
-  it("the shooter is in the move before his shot, and a set piece's keys say which", () => {
+  it("the shooter gets the last pass and strikes it, and a set piece's keys say which", () => {
     const keys = keyframes([ev(600, true, "goal", 9), ev(900, false, "corner", 6), ev(1500, true, "penalty", 10), ev(1500, true, "goal", 10)], 0, 2700, 0);
-    const before = keys.filter((k) => k.t < 598 && k.t > 540);
-    expect(before.length).toBeGreaterThan(0);
-    expect(before.every((k) => k.carrier === 9 && k.side === 0)).toBe(true);
+    const strike = keys.findIndex((k) => k.move === "shot");
+    expect(keys[strike]!.t).toBe(598);
+    expect(keys[strike]!.carrier).toBe(9);
+    // He took a touch: the key before is his too, and the ball came to him from a team-mate.
+    expect(keys[strike - 1]!.carrier).toBe(9);
+    expect(keys[strike - 2]!.move).toBe("pass");
+    expect(keys[strike - 2]!.side).toBe(0);
+    expect(keys[strike - 2]!.carrier).not.toBe(9);
     expect(frameAt(keys, 902).set).toBe("corner");
     expect(frameAt(keys, 1495).set).toBe("penalty");
     expect(frameAt(keys, 700).set).toBeUndefined();
@@ -166,5 +173,70 @@ describe("tackles and assists on the live pitch", () => {
     expect(frameAt(keys, 402).side).toBe(1);
     expect(frameAt(keys, 702).side).toBe(0);
     expect(frameAt(keys, 900).ball[0]).toBeGreaterThan(98);
+  });
+});
+
+describe("the football between the events", () => {
+  const events = [ev(74, false, "tackle", 10), ev(169, true, "tackle", 4), ev(241, false, "saved", 10), ev(246, false, "corner", 10), ev(251, false, "goal", 3), ev(525, true, "foul", 6), ev(526, true, "yellow", 6), ev(915, false, "penalty", 7), ev(917, false, "saved", 7), ev(1226, false, "missed", 10), ev(1500, true, "goal", 9), ev(1500, true, "assist", 7), ev(2000, true, "red", 5), ev(2400, true, "tackle", 2)];
+  const RATE = 4.5;
+  const keys = keyframes(events, 0, 2760, 0, { formations: ["4-3-3", "4-2-3-1"], rate: RATE });
+  const legs = keys.slice(1).map((b, i) => ({ a: keys[i]!, b, d: Math.hypot(b.ball[0] - keys[i]!.ball[0], b.ball[1] - keys[i]!.ball[1]), dt: (b.t - keys[i]!.t) / RATE }));
+
+  it("the ball is passed from one player to another, hundreds of times a half", () => {
+    const passes = legs.filter((l) => l.a.move === "pass");
+    expect(passes.length).toBeGreaterThan(150);
+    // A pass leaves a player's feet and, in open play, arrives at another's.
+    for (const l of passes) expect(l.a.carrier).toBeDefined();
+    const open = passes.filter((l) => !l.b.dead);
+    for (const l of open) expect(l.b.carrier).toBeDefined();
+    for (const l of open) if (l.a.side === l.b.side) expect(l.b.carrier).not.toBe(l.a.carrier);
+    // Some are cut out: the ball changes sides in open play too.
+    expect(open.filter((l) => l.a.side !== l.b.side).length).toBeGreaterThan(8);
+  });
+
+  it("a man with the ball goes at a runner's pace, a pass at a pass's", () => {
+    for (const l of legs.filter((l) => l.a.move === "carry")) expect(l.d / Math.max(l.dt, 0.01)).toBeLessThan(7.6);
+    const speeds = legs.filter((l) => l.a.move === "pass" && l.dt > 0.3).map((l) => l.d / l.dt).sort((x, y) => x - y);
+    expect(speeds[Math.floor(speeds.length / 2)]!).toBeGreaterThan(14);
+    expect(speeds[Math.floor(speeds.length * 0.9)]!).toBeLessThan(40);
+    // Nobody keeps the ball for ever.
+    for (const l of legs.filter((l) => l.a.move === "carry")) expect(l.dt).toBeLessThan(4.5);
+  });
+
+  it("the ball is at the feet of the player the event names", () => {
+    // The side that is tackled was carrying the ball; the tackler has it after.
+    expect(frameAt(keys, 73).side).toBe(0);
+    expect(frameAt(keys, 73).move).toBe("carry");
+    expect(frameAt(keys, 75.5).carrier).toBe(10);
+    expect(frameAt(keys, 75.5).side).toBe(1);
+    // The assist: the scorer's pass came from the one who is credited with it.
+    const strike = keys.findIndex((k) => k.move === "shot" && k.t === 1498);
+    expect(keys[strike]!.carrier).toBe(9);
+    const pass = keys.slice(0, strike).reverse().find((k) => k.move === "pass")!;
+    expect(pass.carrier).toBe(7);
+    // And the kick-off after it waits for the elevens to be back in their halves.
+    expect(frameAt(keys, 1530).set).toBe("kickoff");
+    expect(frameAt(keys, 1530).side).toBe(1);
+    expect(frameAt(keys, 1545.5).ball).toEqual([50, 50]);
+    // The corner is headed in by the scorer, from the flag.
+    const header = keys.find((k) => k.move === "shot" && k.t === 249)!;
+    expect(header.carrier).toBe(3);
+    // Sent off: he is not passed to again.
+    expect(keys.filter((k) => k.t > 2001 && k.side === 0 && k.carrier === 5)).toHaveLength(0);
+  });
+
+  it("a ball on its way has no carrier, and says who it is going to", () => {
+    const i = keys.findIndex((k, j) => j > 4 && k.move === "pass" && !k.dead && keys[j + 1]!.t - k.t > 1);
+    const f = frameAt(keys, (keys[i]!.t + keys[i + 1]!.t) / 2);
+    expect(f.carrier).toBeUndefined();
+    expect(f.flight).toBeDefined();
+    expect(f.next).toMatchObject({ side: keys[i + 1]!.side, k: keys[i + 1]!.carrier, at: keys[i + 1]!.ball });
+    expect(f.next!.in).toBeCloseTo((keys[i + 1]!.t - keys[i]!.t) / 2, 5);
+    // On the ball: nobody of his side is at the ball when it is free, the carrier is when he has it.
+    const free = positions("4-3-3", 0, [60, 40], 0, undefined, { free: true });
+    expect(free.slice(1).every((p) => Math.hypot(p[0] - 60, p[1] - 40) > 2)).toBe(true);
+    const keeper = positions("4-3-3", 0, [5, 50], 0, 0);
+    expect(keeper[0]).toEqual([5, 50]);
+    expect(keeper.slice(1).every((p) => Math.hypot(p[0] - 5, p[1] - 50) > 5)).toBe(true);
   });
 });
