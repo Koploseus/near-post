@@ -114,6 +114,22 @@ describe("coach rules", () => {
     expect(careful.buys).toEqual([]);
   });
 
+  it("puts a person on the table only for the club he gave his word to", () => {
+    const ours = squad(50);
+    const him = ours[5]!;
+    him.controller = "ada.near-post.testnet";
+    const offers = [
+      { id: 1, token_id: him.token_id, buyer: "them", price: String(G(900_000)), state: "Open", match_day: 3 },
+      { id: 2, token_id: him.token_id, buyer: "others", price: String(G(950_000)), state: "Open", match_day: 3 },
+      { id: 3, token_id: ours[6]!.token_id, buyer: "them", price: String(G(300_000)), state: "Open", match_day: 3 },
+    ] as Parameters<typeof marketSituation>[0]["offers"];
+    const base = { style: "builder" as const, club: "us", wallet: G(1_000_000), squad: ours, formation: "4-4-2" as const, offers, others: [], bidding: new Set<string>(), market, table: { position: 10, clubs: 20 } };
+    // No word given: only the academy player can be sold.
+    expect(marketSituation(base).sells.map((o) => o.offer_id)).toEqual([3]);
+    // His word to "them": their offer, not the other club's.
+    expect(marketSituation({ ...base, word: new Map([[him.token_id, "them"]]) }).sells.map((o) => o.offer_id).sort()).toEqual([1, 3]);
+  });
+
   it("checks the model's market answer against the options", () => {
     const ours = squad(50);
     const s = marketSituation({

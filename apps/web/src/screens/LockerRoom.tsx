@@ -10,7 +10,7 @@ import { Crest, crestOf } from "./Crest.js";
 import { serverNow } from "../lib/time.js";
 import { EXPLORER, LEAGUE, PLAYERS } from "../lib/config.js";
 import { Offers } from "./Market.js";
-import type { Club, Player, Position, Rules } from "../lib/types.js";
+import type { Club, Offer, Player, Position, Rules } from "../lib/types.js";
 import { PasskeyIcon, RecoveryKeySetup, SignIn } from "./SignIn.js";
 import { passkeysAvailable, passkeysOf, saveWithPasskey } from "../lib/passkey.js";
 import { Sticker } from "./Sticker.js";
@@ -168,9 +168,9 @@ function PickClub({ me }: { me: Player }) {
       <Offers
         tokenId={me.token_id}
         accept={(o) =>
-          acceptOffer(session!, me.token_id, o.id).then(() =>
-            soon(refresh),
-          )
+          leagueCall(session!, "sign_for", { club_id: o.buyer, days }, 30)
+            .then(() => acceptOffer(session!, me.token_id, o.id))
+            .then(() => soon(refresh))
         }
       />
       <FoundClub me={me} />
@@ -314,6 +314,67 @@ function ContractSlip({ me, club, rules }: { me: Player; club: Club; rules: Rule
   );
 }
 
+/**
+ * Clubs that bid for him. Nobody moves him without his word: he agrees to one of them, then his club
+ * can take its offer. Nothing shows while no club asks.
+ */
+function Suitors({ me, club, rules }: { me: Player; club: Club; rules: Rules | null }) {
+  const { session, schedule } = useGame();
+  const day = schedule?.match_day ?? 0;
+  const { data, reload } = useData(async () => {
+    const [offers, word, table] = await Promise.all([
+      league<Offer[]>("offers_for", { token_id: me.token_id }),
+      league<{ club: string; days: number } | null>("signing_of", { token_id: me.token_id }).catch(() => null),
+      league<Club[]>("table"),
+    ]);
+    return { offers: offers.filter((o) => o.state === "Open" && o.buyer !== me.owner), word, table };
+  }, [me.token_id, me.owner, day]);
+  if (!session || !data || data.offers.length === 0) return null;
+  const days = rules?.default_contract_days ?? 26;
+  const bps = BigInt(rules?.player_sale_bps ?? 0);
+  return (
+    <section className="paper panel suitors" aria-labelledby="suitors-title">
+      <h2 id="suitors-title">Clubs want you</h2>
+      <p className="note">
+        You move only if you say yes. Agree to a club and {club.name} can take its offer: you sign there for {days} match days and a part of the fee is yours.
+      </p>
+      <ul className="clubs">
+        {data.offers.map((o) => {
+          const buyer = data.table.find((c) => c.manager === o.buyer);
+          const name = buyer?.name ?? short(o.buyer);
+          const agreed = data.word?.club === o.buyer;
+          const part = (BigInt(o.price) * bps) / 10_000n;
+          return (
+            <li className="club-row" key={o.id}>
+              <Crest clubId={o.buyer} name={name} size={40} />
+              <span className="club-who">
+                <strong>{name}</strong>
+                <span className="note">{buyer ? `Division ${buyer.division}, ${buyer.points} pts` : "A club"}</span>
+              </span>
+              <span className="club-pay">
+                <b>{g(o.price)}</b>
+                <span className="note">{part > 0n ? `${g(part)} for you` : `to ${club.name}`}</span>
+              </span>
+              {agreed ? (
+                <span className="chip applied">YOU SAID YES · {club.name} decides</span>
+              ) : (
+                <Action
+                  label="SAY YES"
+                  aria={`Agree to join ${name} for ${days} match days`}
+                  className="cta small"
+                  run={() => leagueCall(session, "sign_for", { club_id: o.buyer, days }, 30)}
+                  done={() => soon(reload)}
+                  success={`You said yes to ${name}`}
+                />
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function MyPlayer({ me, club }: { me: Player; club: Club }) {
   const { session, schedule, balance, refresh } = useGame();
   const day = schedule?.match_day ?? 0;
@@ -321,6 +382,9 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
   const { data: credits, reload: reloadCredits } = useData(() => league<string>("credits_of", { account_id: session!.accountId }), [session?.accountId, day]);
   const { data: rules } = useData(() => league<Rules>("rules"), []);
   const bonus = BigInt(credits ?? "0");
+  // His part of a transfer fee: the league keeps it until he collects.
+  const { data: kept, reload: reloadKept } = useData(() => league<string>("owed_of", { account_id: session!.accountId }).catch(() => "0"), [session?.accountId, day, me.owner]);
+  const part = BigInt(kept ?? "0");
   return (
     <div className="locker">
       <div className="locker-top">
@@ -339,7 +403,7 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
               </div>
               <div>
                 <dt>To collect</dt>
-                <dd>{g(owed + bonus)}</dd>
+                <dd>{g(owed + bonus + part)}</dd>
               </div>
               <div title="A guide from his rating and his goals, not a price: what a club would pay is what it offers.">
                 <dt>Your value</dt>
@@ -361,12 +425,25 @@ function MyPlayer({ me, club }: { me: Player; club: Club }) {
                 success="In your wallet"
               />
             )}
-            {owed + bonus === 0n && <p className="purse-note">Goals, wages and bonuses land here.</p>}
+            {part > 0n && (
+              <Action
+                className="cta small"
+                label={`Collect your transfer part, ${g(part)}`}
+                run={() => leagueCall(session!, "collect", {}, 60)}
+                done={() => {
+                  soon(reloadKept);
+                  soon(refresh);
+                }}
+                success={`${g(part)} in your wallet`}
+              />
+            )}
+            {owed + bonus + part === 0n && <p className="purse-note">Goals, wages and bonuses land here.</p>}
           </div>
         </div>
         <MatchBoard me={me} rules={rules} />
         <ContractSlip me={me} club={club} rules={rules} />
       </div>
+      <Suitors me={me} club={club} rules={rules} />
       <a className="house-link" href="#/house">
         <Crest clubId={club.manager} name={club.name} size={30} />
         <span>

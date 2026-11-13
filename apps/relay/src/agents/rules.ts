@@ -307,6 +307,11 @@ export function marketSituation(args: {
   bidding: Set<string>;
   /** Open bids by other clubs, by player: a coach does not join a crowd (a gambler joins one rival at most). */
   contested?: Map<string, number>;
+  /**
+   * The club each person-played footballer of the squad gave his word to (`sign_for`), by token.
+   * A person moves only if he agreed: an offer for him is on the table only from that club.
+   */
+  word?: Map<string, string>;
   market: Market;
   table: MarketSituation["table"];
 }): MarketSituation {
@@ -320,6 +325,7 @@ export function marketSituation(args: {
     .flatMap((o) => {
       const p = squad.find((x) => x.token_id === o.token_id);
       if (!p) return [];
+      if (p.controller && args.word?.get(p.token_id) !== o.buyer) return [];
       return [
         {
           id: `sell-${o.id}`,

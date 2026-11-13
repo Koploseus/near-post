@@ -437,6 +437,13 @@ export class Agents {
     }
     const wallet = BigInt(await this.view<string>(this.d.goalarsId, "ft_balance_of", { account_id: c.account }));
     const formation = (await this.lineup(ctx, c.account)).formation;
+    // A person is sold only to the club he gave his word to: read it for those with an offer.
+    const word = new Map<string, string>();
+    for (const p of squad as LeaguePlayer[]) {
+      if (!p.controller || !received.some((o) => o.token_id === p.token_id && o.state === "Open")) continue;
+      const signing = await this.league<{ club: string } | null>("signing_of", { token_id: p.token_id }).catch(() => null);
+      if (signing) word.set(p.token_id, signing.club);
+    }
     const s = marketSituation({
       style: c.style,
       club: c.account,
@@ -447,6 +454,7 @@ export class Agents {
       others,
       bidding,
       contested,
+      word,
       market: this.marketData(ctx.day),
       table: { position: this.rank(ctx, c.account), clubs: this.divisionSize(ctx, c.account) },
     });
