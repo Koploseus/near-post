@@ -37,6 +37,8 @@ export type Act =
   | { what: "aim"; aim: string };
 
 export interface Entry {
+  /** Where the enclave's quote for the run that did this is (agents/enclave.ts). */
+  enclave?: string;
   at: number;
   day: number;
   agent: string;
@@ -81,13 +83,16 @@ export class Journal {
   private s: State = { done: [], entries: [], offers: {}, cursor: 0 };
   private doneSet = new Set<string>();
 
-  constructor(private file: string | null) {
-    if (file) {
-      try {
-        this.s = { ...this.s, ...(JSON.parse(readFileSync(file, "utf8")) as State) };
-      } catch {
-        // a new journal
-      }
+  /** Kept in `file`, or in `store` (the enclave's own storage, apps/enclave), or in memory. */
+  constructor(
+    private file: string | null,
+    private store?: { read(): string | null; write(text: string): void },
+  ) {
+    try {
+      const text = store ? store.read() : file ? readFileSync(file, "utf8") : null;
+      if (text) this.s = { ...this.s, ...(JSON.parse(text) as State) };
+    } catch {
+      // a new journal
     }
     this.doneSet = new Set(this.s.done);
   }
@@ -107,6 +112,10 @@ export class Journal {
   add(e: Entry) {
     this.s.entries.push(e);
     if (this.s.entries.length > MAX_ENTRIES) this.s.entries.splice(0, this.s.entries.length - MAX_ENTRIES);
+  }
+  /** Every entry as it was written, oldest first (the enclave hands the new ones to the relay). */
+  entries(): Entry[] {
+    return this.s.entries;
   }
   /** Newest first, without what is for season ticket holders. */
   feed(limit = 50, agent?: string, day?: number): Entry[] {
@@ -148,6 +157,7 @@ export class Journal {
   }
 
   save() {
+    if (this.store) return this.store.write(JSON.stringify(this.s));
     if (!this.file) return;
     mkdirSync(dirname(this.file), { recursive: true });
     const tmp = `${this.file}.tmp`;

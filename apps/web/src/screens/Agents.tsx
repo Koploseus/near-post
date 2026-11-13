@@ -64,6 +64,12 @@ export function AgentLine({ e, a, clubs, names }: { e: AgentEntry; a?: AgentInfo
       <p className="note agent-proof">
         {e.source === "model" ? `Model: ${e.evidence?.model ?? "?"}` : "Rules"}
         {e.signature?.matches ? " · signed in a TEE ✓" : ""}
+        {e.enclave && (
+          <a href={e.enclave} target="_blank" rel="noreferrer" title="This agent decided and signed inside an enclave: the run's attestation">
+            {" "}
+            · run in an enclave ↗
+          </a>
+        )}
         {e.refused.length > 0 && <span title={e.refused.join("\n")}> · {e.refused.length} refused by the checks</span>}
         {e.txs.slice(0, 3).map((t) => (
           <a key={t} href={`${EXPLORER}/txns/${t}`} target="_blank" rel="noreferrer">
