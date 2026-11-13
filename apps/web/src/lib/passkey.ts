@@ -287,7 +287,17 @@ export async function signInWithRecoveryKey(text: string): Promise<Session> {
   const key = decodeRecovery(text);
   if (!key) throw new Error("That isn't a recovery key: 32 letters and digits, in groups of four.");
   const r = await fetch(`${RELAY}/v1/vault/find`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ credential_id: await recoveryId(key) }) });
-  if (r.status === 404) throw new Error("No account is backed up with this key. A key saved before 13 November 2026 needs your email first: sign in with it, then save a new key.");
+  if (r.status === 404) {
+    // An older key: its backup has a random name. The relay gives the few there are, and the key is tried on each here.
+    const old = await fetch(`${RELAY}/v1/vault/legacy`, { method: "POST" });
+    if (old.status === 429) throw new Error("Too many tries. Wait a while.");
+    const { vaults } = old.ok ? ((await old.json()) as { vaults: { account_id: string; vault: Backup }[] }) : { vaults: [] };
+    for (const v of vaults) {
+      const s = await unlockWithRecoveryKey(v.account_id, [v.vault], text).catch(() => null);
+      if (s) return s;
+    }
+    throw new Error("This recovery key opens no account. Check it letter by letter (it has 32 letters and digits).");
+  }
   if (r.status === 429) throw new Error("Too many tries. Wait a while.");
   if (!r.ok) throw new Error("The game could not look this key up. Try again.");
   const { account_id, vault } = (await r.json()) as { account_id: string; vault: Backup };

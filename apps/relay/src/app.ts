@@ -193,6 +193,13 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return c.json({ account_id: found.account_id, vault: { credential_id, salt, iv, ciphertext } });
   });
 
+  /** A recovery key whose backup has a random name (saved before 13 November 2026): the browser tries the key on each backup. */
+  app.post("/v1/vault/legacy", (c) => {
+    if (!findsByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    c.header("cache-control", "no-store");
+    return c.json({ vaults: vaults.recoveries().map(({ account_id, entry: { credential_id, salt, iv, ciphertext } }) => ({ account_id, vault: { credential_id, salt, iv, ciphertext } })) });
+  });
+
   app.get("/v1/vault/:accountId", (c) => {
     const id = AccountId.safeParse(c.req.param("accountId"));
     if (!id.success) return c.json({ error: "invalid_account_id" }, 400);

@@ -62,10 +62,15 @@ describe("recovery key backup", () => {
       // The key alone signs in: its backup's id is a hash of the key, the relay answers with the account and the backup.
       const { signInWithRecoveryKey, recoveryId, decodeRecovery } = await import("./passkey.js");
       expect(await recoveryId(decodeRecovery(key)!)).toBe(b.credential_id);
-      globalThis.fetch = (async (_u: string, init: { body: string }) =>
-        JSON.parse(init.body).credential_id === b.credential_id ? new Response(JSON.stringify({ account_id: accountId, vault: b }), { status: 200 }) : new Response("{}", { status: 404 })) as unknown as typeof fetch;
+      globalThis.fetch = (async (u: string, init: { body: string }) =>
+        String(u).endsWith("/legacy") ? new Response(JSON.stringify({ vaults: [] }), { status: 200 }) : JSON.parse(init.body).credential_id === b.credential_id ? new Response(JSON.stringify({ account_id: accountId, vault: b }), { status: 200 }) : new Response("{}", { status: 404 })) as unknown as typeof fetch;
       expect(await signInWithRecoveryKey(key.toLowerCase())).toEqual({ accountId, privateKey });
-      await expect(signInWithRecoveryKey(encodeRecovery(new Uint8Array(20)))).rejects.toThrow(/No account/);
+      await expect(signInWithRecoveryKey(encodeRecovery(new Uint8Array(20)))).rejects.toThrow(/opens no account/);
+      // An older key, whose backup has a random name: found among the old backups, by trying the key on each.
+      const other = { ...b, ciphertext: b.ciphertext.slice(0, -4) + "AAAA" };
+      globalThis.fetch = (async (u: string) =>
+        String(u).endsWith("/legacy") ? new Response(JSON.stringify({ vaults: [{ account_id: "u1111111111111111.near-post.testnet", vault: other }, { account_id: accountId, vault: { ...b, credential_id: "recovery-key-RaNdOmRaNdOmRaNd" } }] }), { status: 200 }) : new Response("{}", { status: 404 })) as unknown as typeof fetch;
+      expect(await signInWithRecoveryKey(key)).toEqual({ accountId, privateKey });
     } finally {
       globalThis.fetch = real;
     }
