@@ -237,9 +237,10 @@ agent to sign, welcome a newcomer and congratulate a scorer.
 
 Not brought back, on purpose: the old game's bets.
 
-So the supply follows the crowds. On testnet, match days whose stands were
-half full or more minted about **+7M G net**; days with empty stands burned
-about **650k G** (figures from the script below, they change every day). Most
+So the supply follows the crowds. On testnet (v13, its first four match
+days), the day the stands were half full or more minted about **+7.3M G
+net**; the days they were not lost about **2.2M G** a day on average
+(figures from the script below, they change every day). Most
 fans there are still our demo crowd of 26 accounts, which comes one match day
 in three (see [Deploy on Fly.io](#deploy-on-flyio)); real fans move the same
 numbers through the same contract calls.
@@ -256,21 +257,23 @@ full-house mint, each burn and that only stands that were not full burned,
 each goal's mint from its scorer's stand fill (empty stand: nothing), that
 season tickets paid only on full houses, and the supply against the 10B cap. It
 also checks that each deployed contract runs `contracts/res/*.wasm` (sha256
-against the on-chain code hash), and lists who spends G. Excerpt of a run on 6
-November 2026, on that day's league; v13 started on 13 November, so its
-own run shows its first days only:
+against the on-chain code hash), and lists who spends G. Excerpt of a run on
+13 November 2026, on v13, four match days after it started (the demo crowd
+came on day 3):
 
 ```
   day  fans in  full   goals that   minted by      onboarding    burned
        stands  houses minted G     presence
-  158      0%    0/8       0/49             0 G           0 G     47,857.3 G
-  157      0%    0/8       0/36             0 G           0 G    652,915.6 G
-  156     95%    6/8       7/32     6,099,980 G           0 G      3,288.4 G
-  155      0%    0/8       0/58             0 G           0 G    338,281.3 G
-  153     68%    3/8      17/48     7,649,900 G           0 G     36,893.9 G
-  ...
-✓ 432 checks passed, 0 failed
+    4      0%    0/8       0/44             0 G           0 G    4,359,188 G
+    3     95%    5/8      14/37     9,825,000 G   2,000,000 G  2,489,836.1 G
+    2     10%    0/8       4/40       600,000 G   5,000,000 G    2,785,792 G
+    1      0%    0/8       0/27             0 G  61,000,000 G            0 G
+...
+✓ 235 checks passed, 0 failed
 ```
+
+"Onboarding" is the 1M G of each club's founder (24 on day 1) and each
+person's debut bonus; it shows apart from what presence mints.
 
 The same numbers, as a chart, on the Goalars page (Stands → Goalars, "No fans,
 no money"): the share of fans in the stands as a line, G minted above the axis,
@@ -302,9 +305,9 @@ burned each), wear what they unbox, and sign for clubs as free agents. A
 model on NEAR AI Cloud picks among options the code computed, and the code
 checks every field before signing (details in
 [AI coaches and AI footballers](#ai-coaches-and-ai-footballers)). Their
-spending shows in the ledger: on the league of 6 November, over match days 114–158, the AI footballers bought
-28 packs (14M G burned) and transfers burned 656k G in sale tax
-(`node scripts/verify.mjs`, section 5).
+spending shows in the ledger: over v13's first four match days the AI
+footballers bought 22 diets, 6 packs and 3 trainings (8.6M G burned) and
+transfers burned 55k G in sale tax (`node scripts/verify.mjs`, section 5).
 
 **Seen on chain: an AI coach bought a person's footballer from another AI
 coach.** On 13 November (league v12), Redwell Athletic's coach bid 323,000 G
