@@ -122,7 +122,8 @@ export class Waker {
       this.busy.add(share);
       void this.wake(share, phase).finally(() => this.busy.delete(share));
     }
-    await this.fund();
+    // Not waited for: the runs must not wait for the chain's answers about 76 balances.
+    void this.fund();
   }
 
   private async wake(share: number, phase: string) {
@@ -142,19 +143,26 @@ export class Waker {
     }
   }
 
-  /** Tops up the agents that run low, a few at each look and each at most twice a day. */
+  private cursor = 0;
+  private funding = false;
+
+  /** Looks at a few agents' NEAR at each look, in turn, and tops up those that run low: each at most twice a day. */
   private async fund() {
-    let done = 0;
-    for (const account of this.accounts) {
-      if (done >= 3) return;
-      const day = Math.floor(this.now() / 86_400_000);
-      const k = `${account}:${day}`;
-      if ((this.toppedUp.get(k) ?? 0) >= 2) continue;
-      const balance = await this.chain.balance(account).catch(() => this.e.low ?? LOW);
-      if (balance !== null && balance >= (this.e.low ?? LOW)) continue;
-      this.toppedUp.set(k, (this.toppedUp.get(k) ?? 0) + 1);
-      await this.chain.transfer(account, TOP_UP).catch((e) => console.error(`agents: top-up of ${account}: ${e instanceof Error ? e.message : e}`));
-      done++;
+    if (this.funding || !this.accounts.length) return;
+    this.funding = true;
+    try {
+      for (let i = 0; i < Math.min(6, this.accounts.length); i++) {
+        const account = this.accounts[this.cursor++ % this.accounts.length]!;
+        const k = `${account}:${Math.floor(this.now() / 86_400_000)}`;
+        if ((this.toppedUp.get(k) ?? 0) >= 2) continue;
+        const low = this.e.low ?? LOW;
+        const balance = await this.chain.balance(account).catch(() => low);
+        if (balance !== null && balance >= low) continue;
+        this.toppedUp.set(k, (this.toppedUp.get(k) ?? 0) + 1);
+        await this.chain.transfer(account, TOP_UP).catch((e) => console.error(`agents: top-up of ${account}: ${e instanceof Error ? e.message : e}`));
+      }
+    } finally {
+      this.funding = false;
     }
   }
 }

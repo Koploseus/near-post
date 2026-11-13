@@ -73,8 +73,10 @@ describe("the agents by themselves: the relay only wakes their program", () => {
     const chain = { view: async () => ({ match_day: 1, first_half_played: false }), balance: async () => 10n ** 23n, transfer: async (to: string) => (sent.push(to), "TX") } as unknown as Chain;
     const { e } = outlayer(() => ({ error: "the run did not finish" }));
     const waker = new Waker(e, chain, "league.testnet", new Journal(null), [AGENT], () => 0);
-    for (let i = 0; i < 4; i++) await waker.tick();
-    await settle();
+    for (let i = 0; i < 4; i++) {
+      await waker.tick();
+      await settle();
+    }
     expect(sent).toEqual([AGENT, AGENT]);
   });
 });
