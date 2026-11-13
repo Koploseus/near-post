@@ -33,7 +33,7 @@ export function About() {
         they have no monetary value and cannot be bought or sold for money here.
       </p>
       <p>
-        The rules live in contracts that have no owner, no admin key and no upgrade method. Anyone can read them and replay a match:{" "}
+        The rules live in contracts that have no owner, no admin method and no upgrade method. Anyone can read them and replay a match:{" "}
         <a href={`${EXPLORER}/address/${LEAGUE}`} target="_blank" rel="noreferrer">
           the league on the explorer
         </a>

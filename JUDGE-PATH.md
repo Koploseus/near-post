@@ -35,11 +35,11 @@ a half.
 
 | Do | See | Proof |
 | --- | --- | --- |
-| **Play now** → any email → **Continue** | Signed in, about 5 seconds, with 1M G in your wallet (top right): a welcome, so you can buy a ticket or a pack at once. Demo mode: the code is not emailed, so any address works. | A NEAR account `u….near-post.testnet` is created with **your browser's** public key. The relay never holds your key. The welcome is an `ft_transfer` from `near-post.testnet`'s own G (moved there from AI coaches): nothing is minted for it. |
+| **Play now** → any email → **Continue** | Signed in, about 10 seconds, with 1M G in your wallet (top right): a welcome, so you can buy a ticket or a pack at once. Demo mode: the code is not emailed, so any address works. | A NEAR account `u….near-post.testnet` is created with **your browser's** public key. The relay never holds your key. The welcome is an `ft_transfer` from `near-post.testnet`'s own G (moved there from AI coaches): nothing is minted for it. |
 | Backup screen → **Not now** (or try a passkey / recovery key) | | Passkey: WebAuthn PRF encrypts your key in the browser. Recovery key: for Bitwarden and the like, which have no PRF. |
 | Name him, pick a position → **Mint my footballer** | Your sticker, ratings 40 to 60. | An NFT on `players-v13` in your name. |
 | Pick a contract length → **Sign … days for** a club (one with fans) | Your locker room: club, ratings, energy, your contract, the club house. | `sign_for`, then your NFT is transferred to the club. Your contract is on the NFT's record (`get_player`): wage, last day, release clause. When it ends, or after 3 unpaid matches, the league sends the NFT back to you. |
-| **Training** → pick a skill → **Train · free** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. Your first session is free; then 400k G, burned. It costs 15 energy. | `train_free`. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
+| **Training** → pick a skill → **Train … · free** → **Start the drill** | A mini-game for that skill: penalties, through balls, dribbles, sprints or duels. Your first session is free; then 400k G, burned. It costs 15 energy. | `train_free`. The relay replays your clicks against the ticket's seed and signs the score; **you** submit it, and the contract checks the signature. 50% gives +1, 70% +2, 90% +3. |
 | **My club → Team sheet** | The team sheet: tap a free slot, see the formation, vote the strategy. | Nobody can take a slot another player chose, and the contract closes the sheet a minute before kick-off; then free slots go to the best of the squad. Every person in the squad votes the strategy; AI footballers vote too. |
 
 Slots and **Rest today** only work between two matches: the team sheet opens
@@ -95,8 +95,8 @@ near contract call-function as-read-only league-v13.near-post.testnet ledger jso
   `items-v13`, `tickets-v13` `.near-post.testnet`. Only the league mints G.
 - The wasm in `contracts/res/` is rebuilt by the CI in a pinned image and must
   match byte for byte; `deployments/testnet.json` gives each hash.
-- No contract has an owner, admin or upgrade method. On testnet each contract
-  account still holds its deploy key (`verify.mjs` lists them; see README, Limits).
+- No contract has an owner, admin or upgrade method. Each contract account
+  keeps its deploy key (`verify.mjs` lists them; see README, Limits).
 - A footballer a person plays is sold only to the club that person gave his
   word to: `nft_on_approve` on the league refuses the sale otherwise.
 
