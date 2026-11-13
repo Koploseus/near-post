@@ -157,10 +157,10 @@ const notes = (a: AudioContext, list: [number, number][], type: OscillatorType, 
 export type Sfx =
   | "whistle" | "full_time" | "goal" | "my_goal" | "win" | "lose" | "draw" | "gain"
   | "kick" | "net" | "save" | "post" | "miss" | "ole" | "tackle" | "beaten" | "go" | "cheer"
-  | "passed" | "failed" | "foul" | "card" | "penalty" | "near";
+  | "passed" | "failed" | "foul" | "card" | "penalty" | "near" | "stir" | "thud";
 
 /** The least time (ms) between two of the same: the frequent ones never pile up. */
-const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, near: 4000, miss: 700, beaten: 700, cheer: 600, ole: 500, kick: 80, tackle: 400 };
+const GAP: Partial<Record<Sfx, number>> = { foul: 8000, card: 2500, near: 4000, miss: 700, beaten: 700, cheer: 600, ole: 500, kick: 80, tackle: 400, stir: 7000, thud: 5000 };
 const last = new Map<Sfx, number>();
 
 export function play(what: Sfx, power = 0.6, waited = false) {
@@ -217,6 +217,12 @@ export function play(what: Sfx, power = 0.6, waited = false) {
     case "tackle":
       return hiss(a, t, 0.18, 0.07, 400, 2000, 0.9, 0.2);
     case "cheer": return roar(a, t, vary(0.7, 0.1), 0.045);
+    // The stand stirs: an attack gets near the box (a low swell that rises, then lets go).
+    case "stir": return hiss(a, t, vary(1.3, 0.1), 0.03, 420, 900, 0.8, 0.55);
+    // Two bodies meet: a dull knock with a scuff of studs.
+    case "thud":
+      tone(a, vary(210, 0.08), t, 0.08, "triangle", 0.12, 110);
+      return hiss(a, t + 0.01, 0.07, 0.05, 900, 500, 1, 0.15);
     case "passed": return notes(a, [[523, 0.1], [659, 0.1], [784, 0.1], [1047, 0.32]], "square", 0.045, t);
     case "failed": return notes(a, [[392, 0.2], [330, 0.4]], "triangle", 0.06, t);
   }
