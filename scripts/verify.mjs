@@ -95,11 +95,18 @@ const target = (fans) => Math.ceil((fans * rules.stadium_target_bps) / 10_000);
 const [current, table, ledger] = await Promise.all([view(LEAGUE, "match_day"), view(LEAGUE, "table"), view(LEAGUE, "ledger", { limit: 600 })]);
 const clubs = table.map((c) => c.manager);
 const withFans = table.filter((c) => c.fans > 0).map((c) => c.manager);
-// The ledger is a ring: keep only days it still holds whole.
-const oldest = Math.min(...ledger.map((e) => e.match_day));
+// The ledger is a ring of 600 entries: keep only days it still holds whole. Until it is full
+// (a young league), its oldest day is whole too.
+const RING = 600;
+const oldest = ledger.length ? Math.min(...ledger.map((e) => e.match_day)) : current;
+const whole = ledger.length < RING ? oldest - 1 : oldest;
 const days = [];
-for (let d = current - 1; d > oldest && days.length < DAYS; d -= 1) days.push(d);
-console.log(`\n3. Replaying match days ${days.at(-1)}–${days[0]} (${withFans.length} clubs with fans, ${table.length} clubs)`);
+for (let d = current - 1; d > whole && d >= 1 && days.length < DAYS; d -= 1) days.push(d);
+console.log(
+  days.length
+    ? `\n3. Replaying match days ${days.at(-1)}–${days[0]} (${withFans.length} clubs with fans, ${table.length} clubs)`
+    : `\n3. No match day is settled yet (match day ${current} is the first): nothing to replay`,
+);
 
 const PRESENCE = new Set(["full_house", "goals", "season_tickets", "fans_star"]);
 const ONBOARDING = new Set(["signup", "welcome", "debut"]);
@@ -222,7 +229,7 @@ for (const e of ledger.filter((x) => !x.mint && ["pack", "training", "sale_tax",
   const [n, total] = spent.get(k) ?? [0, 0n];
   spent.set(k, [n + 1, total + BigInt(e.amount)]);
 }
-console.log(`\n5. Who spends G (burned on use, match days ${oldest + 1}–${current - 1})`);
+console.log(`\n5. Who spends G (burned on use, match days ${whole + 1}–${Math.max(whole + 1, current - 1)}, and today so far)`);
 for (const [k, [n, total]] of [...spent].sort((a, b) => (b[1][1] > a[1][1] ? 1 : -1))) {
   const [actor, kind] = k.split("|");
   console.log(`  ${actor.padEnd(32)} ${kind.padEnd(9)} ${String(n).padStart(4)} times  ${G(total).padStart(14)}`);
