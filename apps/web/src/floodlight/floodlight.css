@@ -968,3 +968,12 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .live-split.with-room .board .team b { font-size: 19px; }
   .live-split.with-room .board .score { font-size: 44px; padding: 8px 12px; align-self: start; }
 }
+
+/* Account: the email it was opened with, or a field to check one on this device. */
+.account-field span { overflow-wrap: anywhere; }
+.account-email { display: grid; gap: 6px; padding: 12px; background: var(--np-night-deep); }
+.account-email label { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--np-muted-2); }
+.account-email .note, .account-email .err { margin: 0; }
+.account-email-row { display: flex; gap: 8px; align-items: stretch; }
+.account-email-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 0; background: var(--np-chip); color: var(--np-text); box-shadow: var(--px); font: inherit; }
+.account-email-row .cta { flex: none; min-height: 0; }

@@ -1,6 +1,7 @@
 import { Account, FailoverRpcProvider, JsonRpcProvider, KeyPair, actions, encodeSignedDelegate } from "near-api-js";
 import { faceMessage, fanzoneMessage } from "../../../relay/src/vault-message.js";
 import { GOALARS, ITEMS, LEAGUE, PLAYERS, READ_RPCS, RELAY, RPC, TICKETS } from "./config.js";
+import { rememberEmail } from "./email.js";
 
 /**
  * For signing: the access key's nonce and a recent block, from the first RPC
@@ -113,6 +114,8 @@ export async function finishSignIn(email: string, code: string): Promise<SignInR
     code,
     public_key: kp.getPublicKey().toString(),
   });
+  // The code was right: this is the email of that account. This browser remembers it (the relay does not keep it).
+  rememberEmail(r.account_id, email);
   if (!r.created && !r.key_on_account) {
     if (r.vaults?.length) return { unlock: { accountId: r.account_id, backups: r.vaults } };
     throw new Error(
