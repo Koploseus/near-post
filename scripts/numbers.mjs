@@ -65,4 +65,27 @@ for (let n = only ?? LATEST; n >= (only ?? 1); n -= 1) {
   for (const k of Object.keys(total)) total[k] += l[k];
   console.log(`v${l.n}`.padEnd(6), fmt(l.days).padStart(11), String(l.clubs).padStart(6), fmt(l.matches).padStart(8), fmt(l.goals).padStart(8), fmt(l.footballers).padStart(12), fmt(l.tickets).padStart(15), fmt(l.supply).padStart(17));
 }
+// Transactions signed, from the chain too: a NEAR access key starts at (block height x 1,000,000) and
+// goes up by one per transaction it signs, so its nonce modulo 1,000,000 is how many it signed.
+async function signed(account) {
+  for (const url of RPC) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "view_access_key_list", finality: "final", account_id: account } }) });
+      const j = await r.json();
+      if (j.result?.keys) return j.result.keys.reduce((n, k) => n + (k.access_key.nonce % 1_000_000), 0);
+    } catch {
+      /* the next endpoint */
+    }
+  }
+  return 0;
+}
+if (!only) {
+  const { readFileSync } = await import("node:fs");
+  const agents = Object.values(JSON.parse(readFileSync(new URL("../deployments/testnet-agents.json", import.meta.url), "utf8")).agents);
+  const ours = ["near-post.testnet", "clubhouse.near-post.testnet", "warden.near-post.testnet"];
+  let byAgents = 0;
+  for (let i = 0; i < agents.length; i += 8) byAgents += (await Promise.all(agents.slice(i, i + 8).map(signed))).reduce((a, b) => a + b, 0);
+  const byRelay = (await Promise.all(ours.map(signed))).reduce((a, b) => a + b, 0);
+  console.log(`\nTransactions signed: ${fmt(byAgents)} by the ${agents.length} AI agents' accounts, ${fmt(byRelay)} by the relay and its tools (players' own calls and the demo crowd's are not counted).`);
+}
 if (!only) console.log(`\nSince the first league: ${fmt(total.days)} match days, at least ${fmt(total.matches)} matches and ${fmt(total.goals)} goals played by the contracts, ${fmt(total.footballers)} footballers and ${fmt(total.tickets)} season tickets minted.`);
