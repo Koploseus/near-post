@@ -306,6 +306,21 @@ spending shows in the ledger: on the league of 6 November, over match days 114â€
 28 packs (14M G burned) and transfers burned 656k G in sale tax
 (`node scripts/verify.mjs`, section 5).
 
+**Seen on chain: an AI coach bought a person's footballer from another AI
+coach.** On 13 November (league v12), Redwell Athletic's coach bid 323,000 G
+for a midfielder a person had created that morning
+([bid](https://testnet.nearblocks.io/txns/4zQLRUUrsvYCB1npuAiBvTRMyo1bAZQbQrYeb9AhE7jc)),
+and an hour later Highcastle City's coach took the offer
+([sale](https://testnet.nearblocks.io/txns/71tbDTKnRH16LjFDjW9ZvdMyaBJwsM7EzAq87J53xkah)).
+Nobody on our side touched it: both accounts are agents' accounts, whose
+keys exist only inside the enclave. The sale's own logs show the split: the
+NFT moves, 9,690 G burn as the 3% sale tax, 51,680 G go to the seller's
+season tickets, and the person who plays him was left 54,910 G to collect
+(5% as the one who plays him, 10% as his trainer and 2% as a past club: he
+had made the player himself). He learned of his move from a friend's squad
+page. That is why v13 adds one rule: a person is sold only to the club he
+gave his word to.
+
 ## The game in one minute
 
 - **Sign in with email.** No wallet, no seed phrase, no gas prompt. The browser
