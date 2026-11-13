@@ -239,13 +239,25 @@ async function recoveryAes(key: Uint8Array<ArrayBuffer>, salt: Uint8Array<ArrayB
   );
 }
 
+/**
+ * The name of a recovery key's backup at the relay: a hash of the key. With it the key alone finds
+ * its account (sign-in without the email); the relay learns nothing about the key from it.
+ */
+export async function recoveryId(key: Uint8Array<ArrayBuffer>): Promise<string> {
+  const label = enc.encode("near-post recovery id v1:");
+  const bytes = new Uint8Array(label.length + key.length);
+  bytes.set(label);
+  bytes.set(key, label.length);
+  return RECOVERY + b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)).slice(0, 12));
+}
+
 /** Makes a recovery key, stores the key it locks with the relay, and returns it (shown once). */
 export async function saveWithRecoveryKey(s: Session): Promise<string> {
   const key = random(20);
   const salt = random(32);
   const iv = random(12);
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: enc.encode(s.accountId) }, await recoveryAes(key, salt), enc.encode(s.privateKey));
-  await store(s, { credential_id: RECOVERY + b64u(random(12)), salt: b64u(salt), iv: b64u(iv), ciphertext: b64u(ciphertext) });
+  await store(s, { credential_id: await recoveryId(key), salt: b64u(salt), iv: b64u(iv), ciphertext: b64u(ciphertext) });
   return encodeRecovery(key);
 }
 
@@ -268,6 +280,18 @@ export async function unlockWithRecoveryKey(accountId: string, backups: Backup[]
     }
   }
   throw new Error("This recovery key doesn't open this account.");
+}
+
+/** Signs in with a recovery key and nothing else: the key finds its backup at the relay, then opens it here. */
+export async function signInWithRecoveryKey(text: string): Promise<Session> {
+  const key = decodeRecovery(text);
+  if (!key) throw new Error("That isn't a recovery key: 32 letters and digits, in groups of four.");
+  const r = await fetch(`${RELAY}/v1/vault/find`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ credential_id: await recoveryId(key) }) });
+  if (r.status === 404) throw new Error("No account is backed up with this key. A key saved before 13 November 2026 needs your email first: sign in with it, then save a new key.");
+  if (r.status === 429) throw new Error("Too many tries. Wait a while.");
+  if (!r.ok) throw new Error("The game could not look this key up. Try again.");
+  const { account_id, vault } = (await r.json()) as { account_id: string; vault: Backup };
+  return unlockWithRecoveryKey(account_id, [vault], text);
 }
 
 /** Opens a backup with the passkey: the account's key, back in this browser. */

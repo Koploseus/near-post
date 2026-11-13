@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useGame } from "../lib/game.js";
 import { type SignInResult, finishSignIn, loadSession, saveSession, startSignIn } from "../lib/near.js";
-import { type Backup, isRecovery, passkeysAvailable, saveWithPasskey, saveWithRecoveryKey, unlockWithPasskey, unlockWithRecoveryKey } from "../lib/passkey.js";
+import { type Backup, isRecovery, passkeysAvailable, saveWithPasskey, saveWithRecoveryKey, signInWithRecoveryKey, unlockWithPasskey, unlockWithRecoveryKey } from "../lib/passkey.js";
 import type { Session } from "../lib/near.js";
 import { toast } from "../lib/toast.js";
 
-type Step = { k: "email" } | { k: "code" } | { k: "unlock"; accountId: string; backups: Backup[] } | { k: "secure" };
+type Step = { k: "email" } | { k: "recovery" } | { k: "code" } | { k: "unlock"; accountId: string; backups: Backup[] } | { k: "secure" };
 
 /**
  * Email, code, done. A new player can add a passkey to sign in on his other
@@ -68,9 +68,50 @@ export function SignIn() {
               {busy ? "…" : "CONTINUE"}
             </button>
           </form>
+          <button type="button" className="link just-watch" onClick={() => setStep({ k: "recovery" })}>
+            Sign in with a recovery key instead
+          </button>
           <a className="link just-watch" href="#/try">
             No account yet? Take five penalties first
           </a>
+        </>
+      )}
+
+      {step.k === "recovery" && (
+        <>
+          <span className="k">NO EMAIL NEEDED</span>
+          <h2 id="signin-title">Your recovery key</h2>
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void go(async () => {
+                const s = await signInWithRecoveryKey(recovery);
+                saveSession(s);
+                setSession(s);
+                refresh();
+                toast("Welcome back");
+              });
+            }}
+          >
+            <label htmlFor="recovery-only">The key you saved in the locker room</label>
+            <input
+              id="recovery-only"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              spellCheck={false}
+              placeholder="XXXX-XXXX-…"
+              value={recovery}
+              onChange={(e) => setRecovery(e.target.value)}
+            />
+            <button className="cta" type="submit" disabled={busy || !recovery}>
+              {busy ? "…" : "SIGN IN"}
+            </button>
+            <button type="button" className="link" onClick={() => setStep({ k: "email" })}>
+              Use my email
+            </button>
+          </form>
         </>
       )}
 

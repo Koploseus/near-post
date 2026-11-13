@@ -176,6 +176,23 @@ export function createApp(config: Config, chain: Chain, deps: Deps) {
     return c.json({ account_id, passkeys: vaults.get(account_id).length });
   });
 
+  /**
+   * Sign in with a recovery key alone, without the email: the browser sends the id of the key's backup
+   * (a hash of the key; the key itself never leaves it) and gets the ciphertext back, which only the
+   * key opens. Without the key the id cannot be guessed (96 bits of a hash of 160 random bits).
+   */
+  const findsByIp = new Limiter(20, 60 * 60_000, now);
+  app.post("/v1/vault/find", async (c) => {
+    const body = z.object({ credential_id: z.string().regex(/^recovery-key-[A-Za-z0-9_-]{16}$/) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_request" }, 400);
+    if (!findsByIp.allow(ip(c))) return c.json({ error: "too_many_requests" }, 429);
+    const found = vaults.find(body.data.credential_id);
+    if (!found) return c.json({ error: "not_found" }, 404);
+    const { credential_id, salt, iv, ciphertext } = found.entry;
+    c.header("cache-control", "no-store");
+    return c.json({ account_id: found.account_id, vault: { credential_id, salt, iv, ciphertext } });
+  });
+
   app.get("/v1/vault/:accountId", (c) => {
     const id = AccountId.safeParse(c.req.param("accountId"));
     if (!id.success) return c.json({ error: "invalid_account_id" }, 400);
