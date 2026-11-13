@@ -20,7 +20,7 @@ Built for the NEAR Hackathon (November 2026), tracks: NFTs, Games, Memecoins.
 >
 > **Status, 12 November 2026.** Five contracts compile reproducibly, are
 > unit-tested and sandbox-tested (211 Rust tests, 221 TypeScript tests), and
-> run on **testnet** (v12, below). The relay signs players in by email, pays
+> run on **testnet** (v13, below). The relay signs players in by email, pays
 > their gas and plays match days; 76 AI agents play in the league. Live at
 > https://near-post.fly.dev.
 
@@ -162,7 +162,7 @@ decision. All of it is in the contracts, with the numbers in `rules()`.
 
 | Mechanic | The rule | The choice |
 | --- | --- | --- |
-| **Contracts** | A person signs for 7, 13, 26, 52 or 78 match days at the wage the club offers (`sign_for`, then the NFT transfer). Three matches in a row unpaid, or the contract's last day, and the league sends his registration back to him (`league_transfer`). Another club takes him by paying his release clause (wage × days × 2), once he signed for it. A contract without a wage can be left. | A long contract at a rich club, or a short one to stay free. |
+| **Contracts** | A person signs for 7, 13, 26, 52 or 78 match days at the wage the club offers (`sign_for`, then the NFT transfer). Three matches in a row unpaid, or the contract's last day, and the league sends his registration back to him (`league_transfer`). Another club takes him by paying his release clause (wage × days × 2), once he signed for it. His club can also sell him to an offer, but only to the club he gave his word to: a person is never moved without agreeing. A contract without a wage can be left. | A long contract at a rich club, or a short one to stay free. |
 | **Energy** | 0 to 100. A match costs 12, a training 15; each match day gives 8 back and a day off 17 more. Under 50, skills drop, down to 20% less at zero. | Play, train, or sit a match day out (`rest_today`). |
 | **Items that count** | Eight kinds of NEP-245 items: boots add pace, a headband physical, grip socks dribbling, a wristband passing, ankle tape shooting, shin pads defending (outfield), gloves defending (in goal); rare +1, epic +2, legendary +3. Haircuts are for show. | What a striker, a defender or a keeper should wear. |
 | **The ola** | Fans who take their seat in the last 5 minutes before kick-off count. When half the full-house target did and the house is full, the reward is 50% higher. | Come early and be safe, or wait for the window and risk missing it. |
@@ -641,18 +641,18 @@ view, the last 600, with the match day, the reason and the club).
 
 Do this - see that: sign in, follow a club, buy its season ticket (Stands →
 Season tickets); fill the stand with other fans; after the match day the
-ticket shows its share, and `tickets_of` on `tickets-v12.near-post.testnet`
+ticket shows its share, and `tickets_of` on `tickets-v13.near-post.testnet`
 shows the same balance.
 
-## Live on testnet (v12)
+## Live on testnet (v13)
 
 | Contract | Account |
 | --- | --- |
-| League | [`league-v12.near-post.testnet`](https://testnet.nearblocks.io/address/league-v12.near-post.testnet) |
-| Goalars | [`goalars-v12.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v12.near-post.testnet) |
-| Players | [`players-v12.near-post.testnet`](https://testnet.nearblocks.io/address/players-v12.near-post.testnet) |
-| Items | [`items-v12.near-post.testnet`](https://testnet.nearblocks.io/address/items-v12.near-post.testnet) |
-| Season tickets | [`tickets-v12.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v12.near-post.testnet) |
+| League | [`league-v13.near-post.testnet`](https://testnet.nearblocks.io/address/league-v13.near-post.testnet) |
+| Goalars | [`goalars-v13.near-post.testnet`](https://testnet.nearblocks.io/address/goalars-v13.near-post.testnet) |
+| Players | [`players-v13.near-post.testnet`](https://testnet.nearblocks.io/address/players-v13.near-post.testnet) |
+| Items | [`items-v13.near-post.testnet`](https://testnet.nearblocks.io/address/items-v13.near-post.testnet) |
+| Season tickets | [`tickets-v13.near-post.testnet`](https://testnet.nearblocks.io/address/tickets-v13.near-post.testnet) |
 
 Each account's code hash is the base58 sha256 of the matching file in
 `contracts/res/` (see `deployments/testnet.json`, which also records the drill
@@ -663,19 +663,20 @@ days) ends in 13 hours; a real league would play one match day a day. The
 league has 24 fictional clubs in two divisions, 8 of them in 4 derbies, a
 demo crowd and the AI agents above.
 
-v1 to v11 (1 to 12 November) stay on `*-v1` to `*-v11.near-post.testnet`;
+v1 to v12 (1 to 13 November) stay on `*-v1` to `*-v12.near-post.testnet`;
 they are no longer used. The contracts cannot be changed, so new rules mean a
-new league. v12 (13 November) is the same five wasm as v10, with the
-mechanics of "What v9 adds" and "What v10 adds". It starts again at season 1
-because a club belongs to its manager's account for good, and the AI agents'
-accounts are now those of keys that exist only inside an enclave (see "The
-agents run by themselves").
+new league. v13 (13 November) changes one rule of the league contract: a
+footballer a person plays is sold only to the club that person gave his word
+to (`sign_for`), so nobody is moved without agreeing. The four other wasm are
+those of v10. It starts again at season 1 because a club belongs to its
+manager's account for good; the AI agents' accounts are those of keys that
+exist only inside an enclave (see "The agents run by themselves").
 
 Read it yourself:
 
 ```bash
-near contract call-function as-read-only league-v12.near-post.testnet table json-args {} network-config testnet now
-near contract call-function as-read-only league-v12.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
+near contract call-function as-read-only league-v13.near-post.testnet table json-args {} network-config testnet now
+near contract call-function as-read-only league-v13.near-post.testnet results json-args '{"match_day":1}' network-config testnet now
 ```
 
 ## Try it locally
@@ -693,9 +694,9 @@ pnpm dev:web       # http://localhost:5173
 | --- | --- |
 | `pnpm test` | `Tests 106 passed` (relay), `5 passed` (sim), `39 passed` (web). |
 | `pnpm sim` | The G supply after 1, 30 and 60 match days for five leagues: loyal fans reach 5.40B, absent fans 2.55B, a dead league stays under 0.5B. |
-| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v12 contracts on testnet. |
+| `pnpm dev:web`, open http://localhost:5173 | The same app as the live one, reading the v13 contracts on testnet. |
 
-The web app reads the v12 contracts on testnet. Email sign-in goes through the
+The web app reads the v13 contracts on testnet. Email sign-in goes through the
 relay: run `pnpm dev:relay` too (see `apps/relay/.env.example`); the dev
 server proxies `/v1` to it. Screens, under `#/`:
 

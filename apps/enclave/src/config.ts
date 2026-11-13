@@ -2,7 +2,7 @@
  * Where the agents play. It is part of the program, not of its input: whoever
  * wakes the program cannot point the agents at other contracts.
  */
-export const VERSION = "v12";
+export const VERSION = "v13";
 export const PARENT = "near-post.testnet";
 export const LEAGUE = `league-${VERSION}.${PARENT}`;
 export const GOALARS = `goalars-${VERSION}.${PARENT}`;
