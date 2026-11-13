@@ -21,7 +21,8 @@ export function Album() {
   const [selected, setSelected] = useState<string | null>(null);
   const sel = data?.squad.find((p) => p.token_id === selected) ?? data?.squad[0] ?? null;
   const { data: table } = useData(() => league<Club[]>("table"), []);
-  const nameOf = (id: string) => table?.find((c) => c.manager === id)?.name ?? short(id);
+  /** The clubs he played for, by name: an account that is not a club (his own, before he signed anywhere) is left out. */
+  const pastClubs = (ids: string[]) => [...new Set(ids.flatMap((id) => table?.find((c) => c.manager === id)?.name ?? []))];
   const { data: career } = useData(() => (sel ? view<Career | null>(PLAYERS, "career", { token_id: sel.token_id }) : Promise.resolve(null)), [sel?.token_id]);
 
   if (!club || !clubId) return <p className="sub">Sign in and join a club to open its album.</p>;
@@ -46,12 +47,8 @@ export function Album() {
             <SkillBars p={sel} />
             {career && (
               <dl className="stats">
-                <dt>Trained by</dt>
-                <dd>{nameOf(career.trained_by)}</dd>
                 <dt>Past clubs</dt>
-                <dd>{career.past_clubs.length ? career.past_clubs.map(nameOf).join(", ") : "none"}</dd>
-                <dt>Wallet</dt>
-                <dd>{g(sel.wallet)}</dd>
+                <dd>{pastClubs(career.past_clubs).join(", ") || "none"}</dd>
               </dl>
             )}
             <p className="note">If he is sold: 10% to his trainer, 2% to each of his last 3 clubs, 5% to the person who plays him, 3% burned.</p>
