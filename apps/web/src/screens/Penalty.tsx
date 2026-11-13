@@ -68,7 +68,9 @@ export function PenaltyGame({ setup, onDone }: { setup: PenaltySetup; onDone: (t
 
   const at = (e: React.PointerEvent) => {
     const b = canvas.current!.getBoundingClientRect();
-    return { x: Math.round(((e.clientX - b.left) / b.width) * W), y: Math.round(((e.clientY - b.top) / b.height) * H) };
+    // A swipe often ends off the canvas, on a phone above all: kept on the pitch, as the relay replays only what is on it.
+    const on = (v: number, max: number) => Math.round(Math.min(max, Math.max(0, v)));
+    return { x: on(((e.clientX - b.left) / b.width) * W, W), y: on(((e.clientY - b.top) / b.height) * H, H) };
   };
   const now = () => Math.round(performance.now() - start);
 
