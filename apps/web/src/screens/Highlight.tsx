@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { play } from "../lib/sound.js";
 import { BALL, GOAL_SCREEN, toScreen } from "../../../relay/src/penalty.js";
 import { BLUE, H, INK, RED, W, ball, banner, easeOut, figure, grass, hint, shadow, stands } from "./art.js";
 import { goalBack, goalFront, keeper, pitch, taker } from "./Penalty.js";
@@ -44,8 +45,23 @@ export function Highlight({ m, onEnd }: { m: HighlightMoment; onEnd: () => void 
   useEffect(() => {
     const start = performance.now();
     let raf = 0;
+    // The replay's sounds: the strike, then the net (and the crowd), the keeper's hands, or a groan.
+    const scored = m.kind.endsWith("goal");
+    const landing = () => play(scored ? (m.mine && m.kind !== "own_goal" ? "my_goal" : "goal") : m.kind.endsWith("saved") ? "save" : "miss");
+    let struck = false;
+    let landed = false;
     const frame = () => {
       const t = performance.now() - start;
+      if (m.kind !== "red") {
+        if (!struck && t >= STRIKE) {
+          struck = true;
+          play("kick", m.kind.startsWith("penalty") ? 0.9 : 1);
+        }
+        if (!landed && t >= STRIKE + FLIGHT) {
+          landed = true;
+          landing();
+        }
+      }
       const c = canvas.current;
       const g = c?.getContext("2d");
       if (c && g) {
@@ -57,7 +73,11 @@ export function Highlight({ m, onEnd }: { m: HighlightMoment; onEnd: () => void 
       else raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      // Skipped before the ball went in: the goal is still cheered (not when React only remounts it at once).
+      if (!landed && scored && performance.now() - start > 300) play(m.mine && m.kind !== "own_goal" ? "my_goal" : "goal");
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m]);
   return (

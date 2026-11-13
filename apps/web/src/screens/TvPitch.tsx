@@ -3,6 +3,7 @@ import { type Frame, type V, atBall, frameAt, keyframes, positions } from "../li
 import { type Clock, HALF_SECONDS } from "../lib/live.js";
 import { BOT, type MatchEvent, type MatchResult, type Player } from "../lib/types.js";
 import { ball as drawBall, sprite } from "./art.js";
+import { play } from "../lib/sound.js";
 
 /**
  * The live match as a TV broadcast: a camera on the touchline follows the
@@ -106,6 +107,10 @@ export function TvPitch({ m, shown, c, players, shirts, mine, myClub, gain = 0 }
     let endedAt: number | null = null;
     /** When your pay for the match was first known here: it counts up from then. */
     let paidAt: number | null = null;
+    /** The last ball heard leaving a foot (its path), so each kick sounds once. */
+    let heardKick = "";
+    /** The stand has stirred for this attack (it stirs again once the ball is back in midfield). */
+    let stirred = false;
 
     const frame = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -117,6 +122,28 @@ export function TvPitch({ m, shown, c, players, shirts, mine, myClub, gain = 0 }
       else cur = Math.min(target + 1, cur + dt * RATE * (cur < target - 3 ? 2 : 1));
 
       const at: Frame = L.stopped ? { t: cur, ball: [50, 50], side: 0, dead: true } : frameAt(L.keys, cur);
+      // The ball leaving a foot: every shot (hard), the long balls, and one short pass in two (soft), so the
+      // match is heard without a kick every second. Only as it leaves the foot: a ball already halfway is silent.
+      if (!L.stopped && at.flight && at.flight.p < 0.3) {
+        const { from, to } = at.flight;
+        const id = `${from[0].toFixed(1)},${from[1].toFixed(1)}>${to[0].toFixed(1)},${to[1].toFixed(1)}`;
+        if (id !== heardKick) {
+          heardKick = id;
+          const far = Math.hypot(to[0] - from[0], to[1] - from[1]);
+          const coin = Math.floor(from[0] * 7 + from[1] * 13) % 2 === 0;
+          if (at.move === "shot") play("kick", 0.85 + 0.15 * ((from[1] * 10) % 1));
+          else if (far > 30) play("kick", 0.5 + Math.min(0.2, (far - 30) / 100));
+          else if (coin) play("kick", 0.15 + far / 150);
+        }
+      }
+      // The stand stirs when the ball, in open play, gets near either box; once per attack.
+      if (!L.stopped && !at.dead) {
+        const [bx, by] = at.ball;
+        if (!stirred && (bx < 20 || bx > 80) && by > 20 && by < 80) {
+          stirred = true;
+          play("stir");
+        } else if (bx > 30 && bx < 70) stirred = false;
+      }
       const f = [L.m.formations[L.second ? 2 : 0] ?? L.m.formations[0]!, L.m.formations[L.second ? 3 : 1] ?? L.m.formations[1]!];
       // Stopped, or the ball on the centre spot for a kick-off: each eleven in its own half.
       // (After a goal they go back to their half while the ball is fetched.)

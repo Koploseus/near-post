@@ -227,6 +227,8 @@ export function MatchView({
       else if (e.kind === "yellow" || e.kind === "red") play("card");
       else if (e.kind === "penalty") play("penalty");
       else if ((e.kind === "saved" || e.kind === "missed") && !set) play("near");
+      // A tackle now and then is heard (one in two at most, and not close together).
+      else if (e.kind === "tackle" && (e.second + e.player) % 2 === 0) play("thud");
     }
     for (let i = shown.length - 1; i >= shown.length - fresh.length; i--) {
       const e = shown[i]!;
@@ -244,7 +246,6 @@ export function MatchView({
         const who = (e.half === 1 ? m.elevens[2 + eleven] : undefined)?.[e.player] || m.elevens[eleven]?.[e.player];
         const yours = !!me && who === me.token_id;
         setReplay({ kind, name: name(e), team: clubName(names.get(e.kind === "own_goal" ? (e.home ? m.away : m.home) : side) ?? ""), seed: e.second * 7 + e.player, ...(yours ? { mine: true } : {}) });
-        if (kind.endsWith("goal")) play(yours && kind !== "own_goal" ? "my_goal" : "goal");
         break;
       }
     }
