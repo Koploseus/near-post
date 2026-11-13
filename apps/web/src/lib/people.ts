@@ -134,4 +134,14 @@ export const allPeople = (offset = 0) => read<{ total: number; online: number; p
 export const rankings = () => read<Rankings>("/v1/people/rankings", { valuable: [], scorers: [], richest: [], streaks: [] });
 
 /** "1.2M G" from whole G. */
+/**
+ * What a footballer is worth on the market, in whole G: a guide from his rating and his goals, not a
+ * price (the same sum as the relay's, relay/src/people.ts).
+ */
+export function valueOf(p: { overall: number; goals: number }): number {
+  const base = 50_000 * 1.12 ** (p.overall - 40);
+  const scorer = 1 + Math.min(p.goals, 50) / 50;
+  return Math.max(1_000, Math.round((base * scorer) / 1_000) * 1_000);
+}
+
 export const wholeG = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2).replace(/\.?0+$/, "")}M G` : n >= 1e3 ? `${Math.round(n / 1e3)}k G` : `${n} G`);
