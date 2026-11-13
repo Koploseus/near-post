@@ -79,6 +79,26 @@ function useAct(after?: () => void) {
   return { busy, run };
 }
 
+/** Whose words these are: an AI agent says so, and everyone wears his club's name in its colour. */
+function Badge({ club, clubName, ai }: { club?: string | null | undefined; clubName?: string | null | undefined; ai?: boolean | undefined }) {
+  return (
+    <>
+      {ai && (
+        <span className="ai-tag" title="An AI agent: he answers messages and plays duels by himself">
+          AI
+        </span>
+      )}
+      {club && clubName ? (
+        <span className="club-tag" style={{ borderColor: crestOf(club).main }}>
+          {clubName}
+        </span>
+      ) : (
+        clubName === null && <span className="club-tag free">Free agent</span>
+      )}
+    </>
+  );
+}
+
 /** One person: his head, his club, his rating and what you can do with him. */
 function PersonRow({ p, children, rank }: { p: Person; children?: ReactNode; rank?: number }) {
   const { session } = useGame();
@@ -230,10 +250,11 @@ function Terrace() {
         <ul className="posts">
           {lines.map((l) => (
             <li key={l.id} className={me?.token_id === l.token_id ? "mine" : ""}>
-              <Head n={faceNumber(l.token_id)} size={36} />
+              <Head n={faceNumber(l.token_id)} shirt={l.club ? crestOf(l.club).main : undefined} size={36} />
               <div>
                 <span className="post-who">
                   <b>{l.name}</b>
+                  <Badge club={l.club} clubName={l.club_name} ai={l.ai} />
                   <em>{ago(l.at, now)}</em>
                 </span>
                 <p>{l.text}</p>
@@ -275,6 +296,7 @@ function Thread({ other }: { other: string }) {
               <div>
                 <span className="post-who">
                   <b>{m.from === session!.accountId ? "You" : data.with.name}</b>
+                  {m.from !== session!.accountId && <Badge club={data.with.club} clubName={data.with.club_name} ai={data.with.ai} />}
                   <em>{ago(m.at, now)}</em>
                 </span>
                 <p>{m.text}</p>
@@ -320,6 +342,7 @@ function Messages({ box, reload }: { box: Inbox; reload: () => void }) {
               <a className="person-who" href={`#/people/messages/${encodeURIComponent(t.with.account)}`}>
                 <b>
                   {t.with.name}
+                  <Badge club={t.with.club} clubName={t.with.club_name} ai={t.with.ai} />
                   {t.unread > 0 && <span className="count-badge">{t.unread}</span>}
                 </b>
                 <span className="note">

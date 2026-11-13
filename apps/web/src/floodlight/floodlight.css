@@ -947,3 +947,24 @@ input, select, textarea { background: var(--np-outline); color: var(--np-text); 
   .today-player h3.longish { font-size: 22px; }
   .today-player h3.long { font-size: 17px; }
 }
+
+/* Live, for a player in a club: his dressing room beside the match, on the left when there is room for three columns. */
+.live-room { min-width: 0; order: 3; }
+.live-room .wall { margin: 0; }
+@media (min-width: 1000px) { .live-split.with-room .live-room { grid-column: 1 / -1; } }
+@media (min-width: 1200px) {
+  .live-split.with-room { grid-template-columns: 290px minmax(0, 1fr) 330px; gap: 22px; }
+  .live-split.with-room .live-room { order: 0; grid-column: auto; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+}
+/* Whose words: his club's name, with a bar in its colour. */
+.club-tag { display: inline-block; margin-left: 8px; padding: 1px 6px; border-left: 4px solid var(--np-muted-2); background: var(--np-night-deep); color: var(--np-muted-2); font: 700 11px/1.5 "Archivo", sans-serif; letter-spacing: .3px; vertical-align: middle; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.club-tag.free { border-left-color: transparent; font-style: italic; }
+.post-who { flex-wrap: wrap; row-gap: 2px; }
+/* (With three columns the match is narrower: the clubs' names go under their crests, as on a phone.) */
+@media (min-width: 1200px) {
+  .live-split.with-room .board { gap: 10px; }
+  .live-split.with-room .board .team, .live-split.with-room .board .team.away { flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; text-align: center; }
+  .live-split.with-room .board .team > span, .live-split.with-room .board .team.away > span { justify-items: center; }
+  .live-split.with-room .board .team b { font-size: 19px; }
+  .live-split.with-room .board .score { font-size: 44px; padding: 8px 12px; align-self: start; }
+}

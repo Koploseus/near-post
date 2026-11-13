@@ -120,6 +120,11 @@ export function Wall({ clubId, compact = false }: { clubId: string; compact?: bo
                 <div>
                   <span className="post-who">
                     <b>{p.name}</b>
+                    {p.ai && (
+                      <span className="ai-tag" title={p.ai === "coach" ? "The club's AI coach" : "An AI footballer of the squad"}>
+                        {p.ai === "coach" ? "AI COACH" : "AI"}
+                      </span>
+                    )}
                     {online.has(p.account) && <span className="online-dot inline" title="Online now" />}
                     <em>{ago(p.at, now)}</em>
                   </span>
